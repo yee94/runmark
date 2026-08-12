@@ -122,6 +122,17 @@ cd packages/plugin-claude-compat && bash install.sh --runtime claude
 cd packages/plugin-grok && bash install.sh
 ```
 
+
+## CI / 发布（GitHub Actions）
+
+| 产物 | 标签 | Workflow | 备注 |
+|------|------|----------|------|
+| PR / main 检查 | — | `.github/workflows/ci.yml` | `bun install` → build → test |
+| npm 客户端 | `npm-v*` | `.github/workflows/npm-release.yml` | 需 Secret `NPM_TOKEN`；`changeset publish` |
+| Server 包 + Docker + Release | `server-vX.Y.Z` | `.github/workflows/server-release.yml` | 标签版本 = `packages/server/package.json`；镜像 `ghcr.io/yee94/runmark/runmark-server` |
+
+详情见 [DEPLOY.md](DEPLOY.md)。自动更新默认 manifest：`https://github.com/yee94/runmark/releases/latest/download/server-manifest.json`。
+
 ## 环境变量
 
 ### Server (`packages/server`)

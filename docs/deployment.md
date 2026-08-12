@@ -2,26 +2,30 @@
 
 ## 概述
 
-开源版的服务端部署、客户端接入与健康检查，请先阅读仓库根目录 [README.md](../README.md)。Docker 部署见 [docker.md](docker.md)。
-
-内网自动构建 / 制品分发链路已移除；打包发布流程待迁移至 GitHub Actions。若仓库仍保留 `scripts/release/package-server.sh`，可在本机手动打包 Server 安装包。
+服务端部署、客户端接入与健康检查见仓库根目录 [README.md](../README.md)。Docker 见 [docker.md](docker.md)。CI 发布见根目录 [DEPLOY.md](../DEPLOY.md)。
 
 ## Manifest 协议（schemaVersion 1）
 
-自托管更新器使用以下 manifest 形状（`AGENT_TRACKER_UPDATE_MANIFEST_URL` 指向你自己托管的 JSON）：
+自动更新器读取 `AGENT_TRACKER_UPDATE_MANIFEST_URL` 指向的 JSON：
 
 ```json
 {
   "schemaVersion": 1,
-  "version": "0.2.3",
-  "publishedAt": "2026-07-10T08:00:00.000Z",
+  "version": "0.2.27",
+  "publishedAt": "2026-08-12T08:00:00.000Z",
   "notes": "...",
   "artifact": {
-    "url": "https://example.com/releases/0.2.3/agent-tracker-server-v0.2.3.tar.gz",
+    "url": "https://github.com/yee94/runmark/releases/download/server-v0.2.27/agent-tracker-server-v0.2.27.tar.gz",
     "sha256": "abc123...",
     "size": 123456
   }
 }
+```
+
+`server-v*` GitHub Actions 会生成该文件并上传到对应 Release。默认 URL：
+
+```text
+https://github.com/yee94/runmark/releases/latest/download/server-manifest.json
 ```
 
 ## 自动更新器
@@ -31,7 +35,7 @@
 | 变量 | 默认值 |
 |------|--------|
 | `AGENT_TRACKER_UPDATE_ENABLED` | `true` |
-| `AGENT_TRACKER_UPDATE_MANIFEST_URL` | （需自行配置托管地址） |
+| `AGENT_TRACKER_UPDATE_MANIFEST_URL` | GitHub Release latest `server-manifest.json` |
 | `AGENT_TRACKER_UPDATE_SCRIPT` | `/opt/runmark-updater/update.sh` |
 | `AGENT_TRACKER_UPDATE_STATE_PATH` | `/opt/runmark-updater/update-state.json` |
 
@@ -45,8 +49,8 @@ Phase: `downloading` → `verifying` → `installing` → `backing_up` → `rest
 
 ```bash
 bash /opt/runmark-updater/update.sh \
-  --manifest-url https://example.com/server-manifest.json \
-  --expected-version 0.2.4
+  --manifest-url https://github.com/yee94/runmark/releases/latest/download/server-manifest.json \
+  --expected-version 0.2.28
 ```
 
 ## 安全特性

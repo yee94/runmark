@@ -27,7 +27,7 @@ export interface ServerConfig {
   llmModel: string;
   agentThrottleMs: number;
   agentAutoRunEnabled: boolean;
-  /** 是否启用远程更新检查与调度。默认 true；需同时配置 updateManifestUrl 才实际检查 */
+  /** 是否启用远程更新检查与调度。默认 true；manifest 默认指向 GitHub Release latest */
   updateEnabled: boolean;
   /** 远端 manifest JSON URL（schemaVersion 1）；默认空，需显式配置才启用检查 */
   updateManifestUrl: string;
@@ -72,9 +72,12 @@ export function loadConfig(): ServerConfig {
     llmModel: env.AGENT_TRACKER_LLM_MODEL ?? "deepseek-chat",
     agentThrottleMs: Number(env.AGENT_TRACKER_AGENT_THROTTLE_MS ?? 10 * 60 * 1000),
     agentAutoRunEnabled: (env.AGENT_TRACKER_AGENT_AUTO_RUN_ENABLED ?? "true") === "true",
-    // 默认开启自动更新能力；仅当显式设为 false 时关闭（仍需配置 manifest URL 才会实际检查）
+    // 默认开启自动更新；仅当显式设为 false 时关闭
     updateEnabled: (env.AGENT_TRACKER_UPDATE_ENABLED ?? "true") === "true",
-    updateManifestUrl: env.AGENT_TRACKER_UPDATE_MANIFEST_URL ?? "",
+    // 默认指向 GitHub Release 上的 server-manifest.json（由 server-v* 流水线上传）
+    updateManifestUrl:
+      env.AGENT_TRACKER_UPDATE_MANIFEST_URL ??
+      "https://github.com/yee94/runmark/releases/latest/download/server-manifest.json",
     updateScript: env.AGENT_TRACKER_UPDATE_SCRIPT ?? "/opt/runmark-updater/update.sh",
     updateStatePath: env.AGENT_TRACKER_UPDATE_STATE_PATH ?? "/opt/runmark-updater/update-state.json",
   };

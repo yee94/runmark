@@ -36,5 +36,8 @@
     "grok-build",
     "telemetry",
     "hooks"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }

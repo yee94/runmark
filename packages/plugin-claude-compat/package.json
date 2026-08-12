@@ -29,5 +29,8 @@
     "tsdown": "^0.17.0",
     "typescript": "^5.5.0"
   },
-  "license": "MIT"
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public"
+  }
 }

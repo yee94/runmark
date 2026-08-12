@@ -4,7 +4,22 @@ Runmark Server 以 Bun 多阶段镜像构建。运行镜像只包含编译后的
 
 ## 镜像
 
-推荐从源码本地构建，或使用你自己的容器仓库托管镜像：
+### GHCR（推荐）
+
+`server-vX.Y.Z` 标签触发 GitHub Actions，推送：
+
+```text
+ghcr.io/yee94/runmark/runmark-server:X.Y.Z
+ghcr.io/yee94/runmark/runmark-server:latest
+```
+
+```bash
+# 私有包需登录；仓库 / 包设为 public 后可免登录
+echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+docker pull ghcr.io/yee94/runmark/runmark-server:0.2.27
+```
+
+### 本地构建
 
 ```bash
 docker build -t runmark-server:X.Y.Z .
@@ -38,7 +53,7 @@ AGENT_TRACKER_AGENT_THROTTLE_MS=600000
 AGENT_TRACKER_AGENT_AUTO_RUN_ENABLED=true
 
 AGENT_TRACKER_UPDATE_ENABLED=false
-AGENT_TRACKER_UPDATE_MANIFEST_URL=
+AGENT_TRACKER_UPDATE_MANIFEST_URL=https://github.com/yee94/runmark/releases/latest/download/server-manifest.json
 AGENT_TRACKER_UPDATE_SCRIPT=/opt/runmark-updater/update.sh
 AGENT_TRACKER_UPDATE_STATE_PATH=/app/data/update-state.json
 ```
@@ -130,7 +145,7 @@ docker compose ps
 | `AGENT_TRACKER_AGENT_THROTTLE_MS` | `600000` | Agent 自动触发最小间隔，单位毫秒 |
 | `AGENT_TRACKER_AGENT_AUTO_RUN_ENABLED` | `true` | Ingest 后自动调度 Agent |
 | `AGENT_TRACKER_UPDATE_ENABLED` | `false` | 容器内文件式自动更新开关 |
-| `AGENT_TRACKER_UPDATE_MANIFEST_URL` | 空 | 更新 manifest 地址（自托管） |
+| `AGENT_TRACKER_UPDATE_MANIFEST_URL` | GitHub Release latest | 文件式更新 manifest（Docker 默认关更新） |
 | `AGENT_TRACKER_UPDATE_SCRIPT` | `/opt/runmark-updater/update.sh` | 文件式更新脚本路径 |
 | `AGENT_TRACKER_UPDATE_STATE_PATH` | `/app/data/update-state.json` | 更新状态持久化路径 |
 

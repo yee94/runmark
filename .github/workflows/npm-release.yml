@@ -1,0 +1,55 @@
+name: npm release
+
+# Publish client packages to npmjs when an npm-v* tag is pushed.
+# Tag is for trigger/tracking only; published versions come from package.json (Changesets).
+# Example: git tag -a npm-v0.2.6 -m "npm clients" && git push origin npm-v0.2.6
+on:
+  push:
+    tags:
+      - "npm-v*"
+
+permissions:
+  contents: read
+  id-token: write
+
+jobs:
+  publish:
+    name: changeset publish
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.14
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install (bun workspaces)
+        run: bun install --frozen-lockfile
+
+      - name: Build publishable packages
+        run: |
+          bun run --filter @runmark/opencode-plugin build
+          bun run --filter @runmark/codex-plugin build
+          bun run --filter @runmark/grok-plugin build
+          bun run --filter @runmark/claude-compat-plugin build
+          bun run --filter @runmark/cursor-hooks build
+
+      - name: Install pnpm (for changesets)
+        run: npm install --global pnpm@8.15.9
+
+      - name: Publish to npmjs
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "ERROR: repository secret NPM_TOKEN is required"
+            exit 1
+          fi
+          # changesets uses npm; auth via NODE_AUTH_TOKEN + setup-node registry-url
+          pnpm exec changeset publish

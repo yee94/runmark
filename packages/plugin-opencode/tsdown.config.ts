@@ -12,6 +12,6 @@ export default defineConfig({
   treeshake: true,
   minify: true,
   external: ["@opencode-ai/plugin", "@opencode-ai/sdk"],
-  // 内网发布：@agent-tracker/shared 打进包
+  // 将 @agent-tracker/shared 打进包
   onlyBundle: [/^@agent-tracker\//],
 });

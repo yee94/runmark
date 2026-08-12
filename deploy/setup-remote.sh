@@ -36,7 +36,7 @@ for field in AGENT_TRACKER_UPDATE_ENABLED AGENT_TRACKER_UPDATE_MANIFEST_URL AGEN
   if ! grep -q "^${field}=" "$ENV_FILE" 2>/dev/null; then
     case "$field" in
       AGENT_TRACKER_UPDATE_ENABLED) echo "AGENT_TRACKER_UPDATE_ENABLED=true" >> "$ENV_FILE" ;;
-      AGENT_TRACKER_UPDATE_MANIFEST_URL) echo "AGENT_TRACKER_UPDATE_MANIFEST_URL=" >> "$ENV_FILE" ;;
+      AGENT_TRACKER_UPDATE_MANIFEST_URL) echo "AGENT_TRACKER_UPDATE_MANIFEST_URL=https://github.com/yee94/runmark/releases/latest/download/server-manifest.json" >> "$ENV_FILE" ;;
       AGENT_TRACKER_UPDATE_SCRIPT) echo "AGENT_TRACKER_UPDATE_SCRIPT=/opt/runmark-updater/update.sh" >> "$ENV_FILE" ;;
       AGENT_TRACKER_UPDATE_STATE_PATH) echo "AGENT_TRACKER_UPDATE_STATE_PATH=/opt/runmark-updater/update-state.json" >> "$ENV_FILE" ;;
     esac

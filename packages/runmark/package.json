@@ -29,5 +29,8 @@
     "workbuddy",
     "grok",
     "grok-build"
-  ]
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
 }
