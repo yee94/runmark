@@ -4,7 +4,7 @@
 
 <p align="center">
   <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/%3C/%3E-TypeScript-0072C4.svg" alt="TypeScript" /></a>
-  <a href="#license"><img src="https://img.shields.io/npm/l/@runmarks/runmark.svg" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-green.svg" alt="MIT License" /></a>
   <a href="https://www.npmjs.com/package/@runmarks/runmark"><img src="https://img.shields.io/npm/v/@runmarks/runmark.svg?logo=npm" alt="npm version" /></a>
   <a href="https://www.npmjs.com/package/@runmarks/runmark"><img src="https://img.shields.io/npm/dm/@runmarks/runmark.svg" alt="npm downloads" /></a>
   <a href="https://github.com/yee94/runmark/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yee94/runmark/ci.yml?branch=main&label=CI" alt="CI" /></a>
@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · MIT License
+  <a href="README.md">English</a> · <a href="LICENSE">MIT License</a>
 </p>
 
 ### ✨ 特性
@@ -224,4 +224,4 @@ bun test
 
 ## License
 
-MIT
+[MIT](LICENSE)
