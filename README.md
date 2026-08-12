@@ -2,42 +2,48 @@
   <img src="docs/images/runmark-logo.png" alt="Runmark" width="320" />
 </p>
 
-**Runmark** 是中心化 AI Agent 遥测服务——把分散在各个客户端里的会话收拢到一处，统一审查费用与对话，并借助 AI 做好日常记录。
+<p align="center">
+  <strong>Runmark</strong> — Centralize every AI coding conversation — from Codex on one machine, Claude Code on another — into a single place for analysis, search, and cost insight.
+</p>
+
+<p align="center">
+  <a href="README_ZH.md">中文</a> · MIT License
+</p>
 
 ### ✨ Features
 
-- 📡 **统一采集与审查** — 汇集 Cursor、OpenCode、Codex、Claude Code、CodeBuddy、WorkBuddy、Grok Build 等不同 Agent 客户端的会话，在一处查看费用用量与完整对话内容。
-- 📝 **AI 智能 Summary** — 自动总结你与 AI 的对话事项，快速了解做了什么，帮助做好日常记录与交接。
-- 🔗 **Open API 与 SDK** — 提供标准接口与接入能力，可把整套服务对接到你的任意 Agent 或自动化流程中。
-- 📊 **用量与费用洞察** — 按今天 / 本周 / 本月等时间窗口，聚合 token、费用、模型与客户端分布，一眼看清花在哪。
-- 📋 **事项归档** — 跨会话沉淀工作成果与可交接事项，优先回顾「做了什么」，不必逐条翻 Session。
-- 🔍 **会话调用链追溯** — 密集 trace 视图，回溯某次对话的消息、推理 turn 与工具调用细节。
-- 💰 **Cursor 账单同步** — 对接 Cursor Usage API，与本地遥测数据对账，补齐官方账单视角。
-- 🤖 **可配置智能体** — 自定义触发器（新对话 throttle、定时 CRON），自动执行 Summary、归档等后台任务。
-- 🚀 **一键部署** — `setup.sh` 完成服务安装、鉴权与客户端配置，Dashboard 内置帮助中心引导接入。
+- 📡 **Unified collection & review** — Aggregates sessions from Cursor, OpenCode, Codex, Claude Code, CodeBuddy, WorkBuddy, Grok Build and other AI coding clients into one place. Review usage, cost, and full conversation content across all your machines.
+- 📝 **AI-powered summaries** — Automatically summarizes your AI conversations, so you can quickly see what was done and keep handoff notes up to date.
+- 🔗 **Open API & SDK** — Standard ingest and query APIs let you plug Runmark into any agent or automation workflow.
+- 📊 **Usage & cost insight** — Aggregates tokens, cost, model, and client distribution over today / this week / this month windows, so you always know where the money goes.
+- 📋 **Matter archive** — Persists work outcomes and handoff-able items across sessions. Focus on "what was done" instead of scrolling through sessions.
+- 🔍 **Call-chain tracing** — A dense trace view that walks back through the messages, reasoning turns, and tool calls of a single conversation.
+- 💰 **Cursor billing sync** — Integrates the Cursor Usage API and reconciles it against local telemetry for an official billing perspective.
+- 🤖 **Configurable agents** — Custom triggers (throttle on new conversations, scheduled CRON) run background jobs like summary and archiving automatically.
+- 🚀 **One-command deploy** — `setup.sh` handles service install, auth, and client configuration; the Dashboard ships a built-in help center.
 
 <table align="center" width="100%">
   <tr>
     <td width="25%" align="center" valign="top">
-      <img src="docs/images/preview-overview.jpg" alt="Runmark 总览" width="100%" />
-      <br /><sub>总览</sub>
+      <img src="docs/images/preview-overview.jpg" alt="Overview" width="100%" />
+      <br /><sub>Overview</sub>
     </td>
     <td width="25%" align="center" valign="top">
-      <img src="docs/images/preview-session-list.jpg" alt="Runmark 会话记录" width="100%" />
-      <br /><sub>会话记录</sub>
+      <img src="docs/images/preview-session-list.jpg" alt="Session list" width="100%" />
+      <br /><sub>Session list</sub>
     </td>
     <td width="25%" align="center" valign="top">
-      <img src="docs/images/preview-session-summary.jpg" alt="Runmark 会话总结" width="100%" />
-      <br /><sub>会话总结</sub>
+      <img src="docs/images/preview-session-summary.jpg" alt="Session summary" width="100%" />
+      <br /><sub>Session summary</sub>
     </td>
     <td width="25%" align="center" valign="top">
-      <img src="docs/images/preview-matter.jpg" alt="Runmark 事项归档" width="100%" />
-      <br /><sub>跨会话事项归档</sub>
+      <img src="docs/images/preview-matter.jpg" alt="Matter archive" width="100%" />
+      <br /><sub>Matter archive</sub>
     </td>
   </tr>
 </table>
 
-## 架构
+## Architecture
 
 ```text
 [Cursor Hook]        ─┐
@@ -49,67 +55,67 @@
 [Grok Build Hooks]   ─┘
 ```
 
-## 快速开始
+## Quick Start
 
-分两步：**先部署服务端**，再在本机安装客户端插件。分产品说明与排障见 Dashboard 帮助中心：`http://<服务地址>:3456/#/help`。
+Two steps: **deploy the server first**, then **install the client plugins** on each machine. Per-product instructions and troubleshooting live in the Dashboard help center: `http://<server-address>:3456/#/help`.
 
-### 1. 部署服务端
+### 1. Deploy the server
 
-#### 推荐：让 AI 帮你部署
+#### Recommended: let an AI do it for you
 
-把下面提示词发给 Cursor / OpenCode / Codex 等 Agent，并把 SSH 命令或本机路径替换进去：
+Paste the prompt below into Cursor / OpenCode / Codex (or any agent), filling in your SSH command or local path:
 
 ```text
-请帮我部署 Runmark。
+Please deploy Runmark for me.
 
-目标环境：
-- 本机 / 远程服务器（若远程，请给出 SSH 连接命令）
+Target environment:
+- This machine / remote server (if remote, give the SSH connection command)
 
-请严格参考仓库内 skills/agent-tracker-setup/SKILL.md 完成：
-1. 若远程则先 SSH 连上目标机
-2. 按 Skill「服务端部署」章节执行 ./setup.sh --server
-3. 用 curl 验证 /health
-4. 把 Dashboard 地址、API Key、帮助中心地址回给我
+Strictly follow skills/agent-tracker-setup/SKILL.md in this repo:
+1. If remote, SSH into the target machine first
+2. Run ./setup.sh --server per the "Server deployment" section
+3. Verify /health with curl
+4. Report back the Dashboard URL, API Key, and help center URL
 
-不要在本机配置客户端插件；部署完成后告诉我去 Dashboard 帮助中心或按 README「本机安装客户端」继续接入。
+Do not install client plugins on this machine; after deployment point me to the Dashboard help center or the README "Install clients" section.
 ```
 
-Skill 路径：[skills/agent-tracker-setup/SKILL.md](skills/agent-tracker-setup/SKILL.md)
+Skill: [skills/agent-tracker-setup/SKILL.md](skills/agent-tracker-setup/SKILL.md)
 
-也可用 Docker 部署。镜像构建、数据卷、环境变量和升级流程见 [Docker 部署指南](docs/docker.md)。
+Docker deployment is also supported. Image build, volumes, env vars, and upgrade flow: see [Docker deployment guide](docs/docker.md).
 
 <details>
-<summary><strong>人工部署服务端（展开）</strong></summary>
+<summary><strong>Manual server deployment (expand)</strong></summary>
 
-#### 部署服务
+#### Deploy the service
 
-在目标机上执行：
+On the target machine:
 
 ```bash
-git clone https://github.com/runmark/runmark.git /opt/agent-tracker
+git clone https://github.com/yee94/runmark.git /opt/agent-tracker
 cd /opt/agent-tracker
 ./setup.sh --server
 ```
 
-`--server` 会完成：前置检查 → 安装依赖 → 初始化 SQLite → 生成 `.env` → 注册 systemd → 启动服务。
+`--server` performs: preflight checks → install dependencies → init SQLite → generate `.env` → register systemd → start the service.
 
-终端会打印 **Dashboard 地址** 和 **API Key**（同时是登录密码）。验证：
+The terminal prints the **Dashboard URL** and **API Key** (which also acts as the login password). Verify:
 
 ```bash
-curl http://<服务器地址>:3456/health
+curl http://<server-address>:3456/health
 ```
 
-返回 `{"status":"ok",...}` 即表示可用。
+A `{"status":"ok",...}` response means it works.
 
-#### 本地开发
+#### Local development
 
 ```bash
-git clone https://github.com/runmark/runmark.git
+git clone https://github.com/yee94/runmark.git
 cd runmark
 ./setup.sh
 ```
 
-或手动：
+Or manually:
 
 ```bash
 bun install
@@ -117,95 +123,95 @@ cd packages/server
 bun dev
 ```
 
-Dashboard：`http://localhost:3456/`。脚本幂等，重复执行不会覆盖已有配置。
+Dashboard: `http://localhost:3456/`. The script is idempotent — rerunning never overwrites existing config.
 
 </details>
 
-### 2. 本机安装客户端
+### 2. Install clients
 
-服务端就绪后，在本机安装 Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build 等插件。统一入口是品牌包 `@runmark/runmark`。
+Once the server is up, install the plugins on each machine: Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build. The unified entry point is the `@runmark/runmark` package.
 
-#### 方式 A：让 AI 读 Skill 安装（推荐）
+#### Option A: let an AI read the Skill (recommended)
 
-把下面提示词发给本机 Agent（Cursor / OpenCode / Codex 等），并填入你的 Dashboard 地址与 API Key：
+Paste this prompt into your local agent (Cursor / OpenCode / Codex etc.), filling in your Dashboard address and API Key:
 
 ```text
-请帮我在本机安装 Runmark 客户端插件。
+Please install the Runmark client plugins on this machine.
 
-服务端：
-- Dashboard / endpoint：http://<服务地址>:3456
-- API Key：<服务端 API Key>
+Server:
+- Dashboard / endpoint: http://<server-address>:3456
+- API Key: <server API key>
 
-请严格参考仓库内 skills/agent-tracker-clients/SKILL.md：
-1. 先列出可选 Client（Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build）让我勾选，不要默认 all
-2. 写入或核对 ~/.config/agent-tracker/env（endpoint + apiKey）
-3. 用统一入口安装：npx @runmark/runmark --clients <我选的列表>
-4. 装完告诉我需要重启哪些客户端，并给出 Dashboard 验证方式
+Strictly follow skills/agent-tracker-clients/SKILL.md in this repo:
+1. List the available clients (Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build) and let me pick; do not default to all
+2. Write or verify ~/.config/agent-tracker/env (endpoint + apiKey)
+3. Install via the unified entry: npx @runmark/runmark --clients <my selection>
+4. Tell me which clients need a restart and how to verify on the Dashboard
 ```
 
-Skill 路径：[skills/agent-tracker-clients/SKILL.md](skills/agent-tracker-clients/SKILL.md)
+Skill: [skills/agent-tracker-clients/SKILL.md](skills/agent-tracker-clients/SKILL.md)
 
-#### 方式 B：手动安装
+#### Option B: manual install
 
-1. 写入统一配置（新装必做；已有文件则核对，勿盲目覆盖）：
+1. Write the unified config (required for new installs; if the file exists, verify — don't blindly overwrite):
 
 ```bash
 mkdir -p ~/.config/agent-tracker
 cat > ~/.config/agent-tracker/env << 'EOF'
-export AGENT_TRACKER_ENDPOINT="http://<服务地址>:3456"
-export AGENT_TRACKER_API_KEY="<服务端 API Key>"
+export AGENT_TRACKER_ENDPOINT="http://<server-address>:3456"
+export AGENT_TRACKER_API_KEY="<server API key>"
 EOF
 ```
 
-2. 用品牌包安装：
+2. Install with the brand package:
 
 ```bash
-# 交互安装（推荐）：自动探测；已装用户再次运行会预选已装项并更新
+# Interactive install (recommended): auto-detects; rerunning preselects and updates installed clients
 npx @runmark/runmark
 
-# 只更新已装 Runmark 的客户端（无交互）
+# Update only installed Runmark clients (non-interactive)
 npx @runmark/runmark --clients installed
-# 或：npx @runmark/runmark --yes
+# or: npx @runmark/runmark --yes
 
-# 一键装齐 / 按需
+# Install everything / on demand
 npx @runmark/runmark --clients all
 npx @runmark/runmark --clients cursor,codex,workbuddy
 
-# 卸载示例
+# Uninstall example
 npx @runmark/runmark --clients codebuddy --uninstall
 ```
 
-若本机 `npx @runmark/runmark` 报 `command not found`，改用：
+If `npx @runmark/runmark` reports `command not found`, use:
 
 ```bash
 npx -p @runmark/runmark runmark
-# 或：bunx @runmark/runmark
+# or: bunx @runmark/runmark
 ```
 
-3. **重启**已安装的客户端（Claude / CodeBuddy / WorkBuddy 可用 `/reload-plugins`；Grok Build 新开会话即可）。Codex / Claude 系若提示未信任，在 App 内审查并信任 Runmark plugin hooks。
+3. **Restart** the installed clients (Claude / CodeBuddy / WorkBuddy support `/reload-plugins`; Grok Build just needs a new session). If Codex / Claude-family prompts for trust, review and trust the Runmark plugin hooks in the app.
 
-4. 打开 Dashboard 会话页，确认对应 `agent=cursor|opencode|codex|claude|codebuddy|workbuddy|grok`。
+4. Open the Dashboard sessions page and confirm `agent=cursor|opencode|codex|claude|codebuddy|workbuddy|grok`.
 
-可选客户端：`cursor` · `opencode` · `codex` · `claude` · `codebuddy` · `workbuddy` · `grok` · `all` · `installed` · `detected`。无参数时默认探测并交互勾选（有已装则预选已装并更新）。
+Available clients: `cursor` · `opencode` · `codex` · `claude` · `codebuddy` · `workbuddy` · `grok` · `all` · `installed` · `detected`. With no arguments it auto-detects and prompts interactively (preselecting and updating what's already installed).
 
-## 开发
+## Development
 
 ```bash
 bun install
 bun test
 ```
 
-常用入口：
+Key packages:
 
-- `packages/runmark`：品牌统一安装入口 `@runmark/runmark`
-- `packages/server`：Bun + Hono + SQLite 服务端和 Dashboard
-- `packages/plugin-opencode`：OpenCode 插件
-- `packages/plugin-codex`：Codex Hook 插件
-- `packages/plugin-claude-compat`：Claude Code / CodeBuddy / WorkBuddy 的 Plugin Marketplace 安装包（按 `--runtime` 分产品；`npx` 幂等升级）
-- `packages/plugin-grok`：Grok Build 用户级 Hooks 插件（`~/.grok/hooks`，Stop 读本地 session）
-- `packages/hook-cursor`：Cursor Hook
-- `shared`：共享类型、定价和工具函数
-- `skills/agent-tracker-setup` / `skills/agent-tracker-clients`：服务端部署 / 本机客户端安装 Skill
+- `packages/runmark` — unified install entry point `@runmark/runmark`
+- `packages/server` — Bun + Hono + SQLite server and Dashboard
+- `packages/plugin-opencode` — OpenCode plugin
+- `packages/plugin-codex` — Codex hook plugin
+- `packages/plugin-claude-compat` — Plugin Marketplace package for Claude Code / CodeBuddy / WorkBuddy (product selected via `--runtime`; idempotent `npx` upgrades)
+- `packages/plugin-grok` — Grok Build user-level hooks plugin (`~/.grok/hooks`, reads local sessions on Stop)
+- `packages/hook-cursor` — Cursor hook
+- `shared` — shared types, pricing, and utilities
+- `skills/agent-tracker-setup` / `skills/agent-tracker-clients` — server deploy / client install skills
 
 ## License
 
