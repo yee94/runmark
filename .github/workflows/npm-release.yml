@@ -42,6 +42,9 @@ jobs:
       - name: Install
         run: bun install --frozen-lockfile
 
+      - name: Install pnpm (for changesets)
+        run: npm install --global pnpm@8.15.9
+
       - name: Build publishable packages
         run: |
           bun run --filter @runmarks/opencode-plugin build
