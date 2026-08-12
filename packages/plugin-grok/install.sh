@@ -12,12 +12,103 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="0.1.0"
+VERSION="0.1.2"
 HOOK_NAME="runmark-tracker.json"
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 HOOKS_DIR="${AGENT_TRACKER_GROK_HOOKS_DIR:-$GROK_HOME/hooks}"
 INSTALL_ROOT="${AGENT_TRACKER_GROK_INSTALL_DIR:-$HOME/.config/agent-tracker/grok-plugin}"
 DO_UNINSTALL=0
+
+# 解析 hook 运行时绝对路径（bun → ~/.bun/bin/bun → node → nvm/fnm/volta/asdf）
+resolve_hook_runtime() {
+  if command -v bun >/dev/null 2>&1; then
+    command -v bun
+    return 0
+  fi
+  if [ -x "${HOME}/.bun/bin/bun" ]; then
+    echo "${HOME}/.bun/bin/bun"
+    return 0
+  fi
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return 0
+  fi
+  local candidate=""
+  if [ -d "${HOME}/.nvm/versions/node" ]; then
+    candidate="$(ls -1d "${HOME}/.nvm/versions/node"/v*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  fi
+  if [ -d "${HOME}/.local/share/fnm/node-versions" ]; then
+    candidate="$(ls -1d "${HOME}/.local/share/fnm/node-versions"/*/installation/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  fi
+  if [ -x "${HOME}/.volta/bin/node" ]; then
+    echo "${HOME}/.volta/bin/node"
+    return 0
+  fi
+  if [ -x "${HOME}/.asdf/shims/node" ]; then
+    echo "${HOME}/.asdf/shims/node"
+    return 0
+  fi
+  return 1
+}
+
+write_hook_launcher() {
+  local out="$1"
+  local baked="$2"
+  {
+    cat <<'HEADER'
+#!/usr/bin/env bash
+set -eu
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+HEADER
+    printf 'BAKED_RUNTIME=%q\n' "$baked"
+    cat <<'BODY'
+
+resolve_runtime() {
+  if [ -n "${BAKED_RUNTIME}" ] && [ -x "${BAKED_RUNTIME}" ]; then
+    echo "${BAKED_RUNTIME}"
+    return 0
+  fi
+  command -v bun >/dev/null 2>&1 && { command -v bun; return 0; }
+  [ -x "${HOME}/.bun/bin/bun" ] && { echo "${HOME}/.bun/bin/bun"; return 0; }
+  command -v node >/dev/null 2>&1 && { command -v node; return 0; }
+  local candidate=""
+  if [ -d "${HOME}/.nvm/versions/node" ]; then
+    candidate="$(ls -1d "${HOME}/.nvm/versions/node"/v*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    [ -n "$candidate" ] && [ -x "$candidate" ] && { echo "$candidate"; return 0; }
+  fi
+  if [ -d "${HOME}/.local/share/fnm/node-versions" ]; then
+    candidate="$(ls -1d "${HOME}/.local/share/fnm/node-versions"/*/installation/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    [ -n "$candidate" ] && [ -x "$candidate" ] && { echo "$candidate"; return 0; }
+  fi
+  [ -x "${HOME}/.volta/bin/node" ] && { echo "${HOME}/.volta/bin/node"; return 0; }
+  [ -x "${HOME}/.asdf/shims/node" ] && { echo "${HOME}/.asdf/shims/node"; return 0; }
+  return 1
+}
+
+if RUNTIME="$(resolve_runtime)"; then
+  exec "$RUNTIME" "$SCRIPT_DIR/index.mjs" "$@"
+fi
+
+LOG="${AGENT_TRACKER_LOG_FILE:-${HOME}/.config/agent-tracker/plugin.log}"
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+printf '{"ts":"%s","level":"error","component":"tracker-hook","message":"no bun/node runtime; telemetry disabled"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG" 2>/dev/null || true
+# fail-open：读掉 stdin，输出 {}
+cat >/dev/null 2>&1 || true
+printf '%s\n' '{}'
+exit 0
+BODY
+  } > "$out"
+  chmod +x "$out"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -94,23 +185,14 @@ echo "[2/4] 安装到 ${INSTALL_ROOT} ..."
 mkdir -p "$INSTALL_ROOT"
 cp "$SCRIPT_DIR/dist/index.mjs" "$INSTALL_ROOT/index.mjs"
 
-cat > "$INSTALL_ROOT/grok-tracker-hook" << 'HOOKEOF'
-#!/usr/bin/env bash
-set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-if command -v bun >/dev/null 2>&1; then
-  exec bun run "$SCRIPT_DIR/index.mjs" "$@"
-elif command -v node >/dev/null 2>&1; then
-  exec node "$SCRIPT_DIR/index.mjs" "$@"
-else
-  echo "[agent-tracker-grok] ERROR: need bun or node" >&2
-  # fail-open：读掉 stdin，输出 {}
-  cat >/dev/null 2>&1 || true
-  printf '%s\n' '{}'
-  exit 0
+BAKED_RUNTIME=""
+if ! BAKED_RUNTIME="$(resolve_hook_runtime)"; then
+  echo "ERROR: 未检测到 bun 或 node，插件装上后无法上报任何数据。" >&2
+  echo "       请先安装其一再重试：curl -fsSL https://bun.sh/install | bash" >&2
+  exit 1
 fi
-HOOKEOF
-chmod +x "$INSTALL_ROOT/grok-tracker-hook"
+echo "  hook runtime: $BAKED_RUNTIME"
+write_hook_launcher "$INSTALL_ROOT/grok-tracker-hook" "$BAKED_RUNTIME"
 
 HOOK_SCRIPT="$INSTALL_ROOT/grok-tracker-hook"
 

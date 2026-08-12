@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="0.2.18"
+VERSION="0.2.19"
 RUNTIME_ARG="all"
 DO_UNINSTALL=0
 # 归属：plugin@marketplace → runmark-tracker@runmark
@@ -24,6 +24,102 @@ PLUGIN_REF="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
 LEGACY_MARKETPLACE_NAME="agent-tracker"
 LEGACY_PLUGIN_NAME="agent-tracker"
 MARKETPLACE_DIR="${AGENT_TRACKER_CLAUDE_COMPAT_MARKETPLACE_DIR:-$HOME/.config/agent-tracker/claude-compat-marketplace}"
+
+# 解析 hook 运行时绝对路径（bun → ~/.bun/bin/bun → node → nvm/fnm/volta/asdf）
+# 安装期烘焙进启动器，避免宿主 GUI 启动时 PATH 不含登录 shell 的 node。
+resolve_hook_runtime() {
+  if command -v bun >/dev/null 2>&1; then
+    command -v bun
+    return 0
+  fi
+  if [ -x "${HOME}/.bun/bin/bun" ]; then
+    echo "${HOME}/.bun/bin/bun"
+    return 0
+  fi
+  if command -v node >/dev/null 2>&1; then
+    command -v node
+    return 0
+  fi
+  local candidate=""
+  if [ -d "${HOME}/.nvm/versions/node" ]; then
+    candidate="$(ls -1d "${HOME}/.nvm/versions/node"/v*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  fi
+  if [ -d "${HOME}/.local/share/fnm/node-versions" ]; then
+    candidate="$(ls -1d "${HOME}/.local/share/fnm/node-versions"/*/installation/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    if [ -n "$candidate" ] && [ -x "$candidate" ]; then
+      echo "$candidate"
+      return 0
+    fi
+  fi
+  if [ -x "${HOME}/.volta/bin/node" ]; then
+    echo "${HOME}/.volta/bin/node"
+    return 0
+  fi
+  if [ -x "${HOME}/.asdf/shims/node" ]; then
+    echo "${HOME}/.asdf/shims/node"
+    return 0
+  fi
+  return 1
+}
+
+write_hook_launcher() {
+  local out="$1"
+  local baked="$2"
+  {
+    cat <<'HEADER'
+#!/usr/bin/env bash
+# 前台只入队并拉起真正 detached 的单飞 worker，然后立刻 exit。
+# 宿主若等的是 hook 进程 exit，不能在本进程里 sleep / Debounce；也不能只靠 print {}。
+set -eu
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# CodeBuddy 优先展开 CODEBUDDY_PLUGIN_ROOT；Claude / TClaude 用 CLAUDE_PLUGIN_ROOT。
+# hooks.json 使用 ${CLAUDE_PLUGIN_ROOT}（三端兼容）。
+HEADER
+    printf 'BAKED_RUNTIME=%q\n' "$baked"
+    cat <<'BODY'
+
+resolve_runtime() {
+  if [ -n "${BAKED_RUNTIME}" ] && [ -x "${BAKED_RUNTIME}" ]; then
+    echo "${BAKED_RUNTIME}"
+    return 0
+  fi
+  command -v bun >/dev/null 2>&1 && { command -v bun; return 0; }
+  [ -x "${HOME}/.bun/bin/bun" ] && { echo "${HOME}/.bun/bin/bun"; return 0; }
+  command -v node >/dev/null 2>&1 && { command -v node; return 0; }
+  local candidate=""
+  if [ -d "${HOME}/.nvm/versions/node" ]; then
+    candidate="$(ls -1d "${HOME}/.nvm/versions/node"/v*/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    [ -n "$candidate" ] && [ -x "$candidate" ] && { echo "$candidate"; return 0; }
+  fi
+  if [ -d "${HOME}/.local/share/fnm/node-versions" ]; then
+    candidate="$(ls -1d "${HOME}/.local/share/fnm/node-versions"/*/installation/bin/node 2>/dev/null | sort -V | tail -1 || true)"
+    [ -n "$candidate" ] && [ -x "$candidate" ] && { echo "$candidate"; return 0; }
+  fi
+  [ -x "${HOME}/.volta/bin/node" ] && { echo "${HOME}/.volta/bin/node"; return 0; }
+  [ -x "${HOME}/.asdf/shims/node" ] && { echo "${HOME}/.asdf/shims/node"; return 0; }
+  return 1
+}
+
+if RUNTIME="$(resolve_runtime)"; then
+  # bun / node 均可直接执行 .mjs；无需 `bun run` 分支
+  exec "$RUNTIME" "$SCRIPT_DIR/index.mjs" "$@"
+fi
+
+# fail-open 保留，但必须留痕，避免「装了却静默不上报」
+LOG="${AGENT_TRACKER_LOG_FILE:-${HOME}/.config/agent-tracker/plugin.log}"
+mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
+printf '{"ts":"%s","level":"error","component":"tracker-hook","message":"no bun/node runtime; telemetry disabled"}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG" 2>/dev/null || true
+printf '%s\n' '{}'
+exit 0
+BODY
+  } > "$out"
+  chmod +x "$out"
+}
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -285,29 +381,14 @@ if [ ! -f "$PLUGIN_DIR/hooks/hooks.json" ] && [ -f "$SOURCE_MARKETPLACE_DIR/plug
   cp "$SOURCE_MARKETPLACE_DIR/plugins/$PLUGIN_NAME/hooks/hooks.json" "$PLUGIN_DIR/hooks/hooks.json"
 fi
 
-cat > "$PLUGIN_DIR/dist/claude-compat-tracker-hook" << 'HOOKEOF'
-#!/usr/bin/env bash
-# 前台只入队并拉起真正 detached 的单飞 worker，然后立刻 exit。
-# 宿主若等的是 hook 进程 exit，不能在本进程里 sleep / Debounce；也不能只靠 print {}。
-set -eu
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-# CodeBuddy 优先展开 CODEBUDDY_PLUGIN_ROOT；Claude / TClaude 用 CLAUDE_PLUGIN_ROOT。
-# hooks.json 使用 ${CLAUDE_PLUGIN_ROOT}（三端兼容）。
-
-if command -v bun >/dev/null 2>&1; then
-  BUN_BIN="$(command -v bun)"
-elif [ -x "${HOME}/.bun/bin/bun" ]; then
-  BUN_BIN="${HOME}/.bun/bin/bun"
-else
-  # 无 bun：仍应答，避免宿主 Pending
-  printf '%s\n' '{}'
-  exit 0
+BAKED_RUNTIME=""
+if ! BAKED_RUNTIME="$(resolve_hook_runtime)"; then
+  echo "ERROR: 未检测到 bun 或 node，插件装上后无法上报任何数据。" >&2
+  echo "       请先安装其一再重试：curl -fsSL https://bun.sh/install | bash" >&2
+  exit 1
 fi
-
-# exec 替换 shell：hook 生命周期 = 入队 + spawn(detached) + 回 {}，不含上报
-exec "$BUN_BIN" run "$SCRIPT_DIR/index.mjs" "$@"
-HOOKEOF
-chmod +x "$PLUGIN_DIR/dist/claude-compat-tracker-hook"
+echo "  hook runtime: $BAKED_RUNTIME"
+write_hook_launcher "$PLUGIN_DIR/dist/claude-compat-tracker-hook" "$BAKED_RUNTIME"
 
 # 同步兼容 manifest（CodeBuddy / WorkBuddy 优先读自家目录）
 for manifest_dir in .claude-plugin .codebuddy-plugin .workbuddy-plugin; do

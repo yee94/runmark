@@ -2,6 +2,8 @@
 
 ## Unreleased
 
+- Client plugins (grok / codex / claude-compat / runmark): resolve hook runtime with a node/bun fallback (bun → ~/.bun/bin/bun → node → nvm/fnm/volta/asdf), baking the absolute path into the hook launcher so host GUIs without a login-shell PATH still report telemetry.
+
 ## 0.2.27 (Server) - 2026-08-08
 
 - Public Session Share defaults to summary-first, with on-demand search/JSONL detail resources.

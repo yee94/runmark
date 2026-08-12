@@ -1,5 +1,11 @@
 # @runmarks/grok-plugin
 
+## 0.1.2
+
+### Patch Changes
+
+- Resolve hook runtime with node/bun fallback (bun → ~/.bun/bin/bun → node → nvm/fnm/volta/asdf), baking the absolute path into the launcher so host GUIs without a login-shell PATH still report telemetry.
+
 ## 0.1.1
 
 ### Patch Changes
