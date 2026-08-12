@@ -67,7 +67,7 @@ bash install.sh
 从零安装：
 
 ```bash
-git clone https://github.com/runmark/runmark.git /tmp/agent-tracker-codex && \
+git clone https://github.com/yee94/runmark.git /tmp/agent-tracker-codex && \
   cd /tmp/agent-tracker-codex && bun install && \
   cd packages/plugin-codex && bash install.sh && \
   rm -rf /tmp/agent-tracker-codex

@@ -46,7 +46,7 @@ http://<服务地址>:3456/#/help
 在目标开发机上执行（路径可按环境调整，默认 `/opt/agent-tracker`）：
 
 ```bash
-git clone https://github.com/runmark/runmark.git /opt/agent-tracker
+git clone https://github.com/yee94/runmark.git /opt/agent-tracker
 cd /opt/agent-tracker
 ./setup.sh --server
 ```
@@ -66,7 +66,7 @@ cd /opt/agent-tracker
 本机试用时执行：
 
 ```bash
-git clone https://github.com/runmark/runmark.git
+git clone https://github.com/yee94/runmark.git
 cd runmark
 ./setup.sh
 ```
