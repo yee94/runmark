@@ -6,20 +6,35 @@ Runmark Server 以 Bun 多阶段镜像构建。运行镜像只包含编译后的
 
 ### GHCR（推荐）
 
-`server-vX.Y.Z` 标签触发 GitHub Actions，推送：
+`server-vX.Y.Z` 标签触发 GitHub Actions，构建并推送：
 
 ```text
 ghcr.io/yee94/runmark/runmark-server:X.Y.Z
 ghcr.io/yee94/runmark/runmark-server:latest
 ```
 
+#### 认证（私有仓库）
+
+GHCR 包可见性与仓库一致。**仓库当前是 private**，包也是私有，拉取需要登录：
+
 ```bash
-# 私有包需登录；仓库 / 包设为 public 后可免登录
-echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
-docker pull ghcr.io/yee94/runmark/runmark-server:0.2.27
+# 1. 创建 classic PAT（scope: read:packages），或 fine-grained token（只读该仓库的 Packages）
+# 2. 用任意 GitHub 用户名 + PAT 登录
+echo <PAT> | docker login ghcr.io -u yee94 --password-stdin
+docker pull ghcr.io/yee94/runmark/runmark-server:latest
 ```
 
-### 本地构建
+> 注意：Actions 内置的 `GITHUB_TOKEN` 只存在于 CI 运行时，**不能**用于日常 `docker login`。服务器/本机拉取请用带 `read:packages` 的 PAT。
+
+#### 公开化后免认证
+
+把仓库改为 public，并在 **Packages → runmark-server → Package settings** 里把包可见性设为 public 后，可免登录拉取：
+
+```bash
+docker pull ghcr.io/yee94/runmark/runmark-server:latest
+```
+
+### 本地构建（调试）
 
 ```bash
 docker build -t runmark-server:X.Y.Z .
@@ -65,13 +80,16 @@ AGENT_TRACKER_UPDATE_STATE_PATH=/app/data/update-state.json
 ```bash
 docker volume create runmark-data
 
+# 私有仓库：先按上文认证；公开后免登录
+docker pull ghcr.io/yee94/runmark/runmark-server:0.2.27
+
 docker run -d \
   --name runmark \
   --restart unless-stopped \
   -p 3456:3456 \
   -v runmark-data:/app/data \
   --env-file ./runmark.env \
-  runmark-server:0.2.12
+  ghcr.io/yee94/runmark/runmark-server:0.2.27
 ```
 
 镜像会拒绝空 API Key 和开发默认值 `dev-key-change-me`。验证服务：
@@ -95,7 +113,7 @@ docker run -d \
   -p 3456:3456 \
   -v "$(pwd)/runmark-data:/app/data" \
   --env-file ./runmark.env \
-  runmark-server:0.2.12
+  ghcr.io/yee94/runmark/runmark-server:0.2.27
 ```
 
 ## Docker Compose
@@ -103,7 +121,7 @@ docker run -d \
 ```yaml
 services:
   runmark:
-    image: runmark-server:0.2.12
+    image: ghcr.io/yee94/runmark/runmark-server:0.2.27
     container_name: runmark
     restart: unless-stopped
     ports:
@@ -178,7 +196,7 @@ docker start runmark
 ## 升级
 
 ```bash
-docker build -t runmark-server:0.2.13 .
+docker pull ghcr.io/yee94/runmark/runmark-server:0.2.28
 docker rm -f runmark
 docker run -d \
   --name runmark \
@@ -186,7 +204,7 @@ docker run -d \
   -p 3456:3456 \
   -v runmark-data:/app/data \
   --env-file ./runmark.env \
-  runmark-server:0.2.13
+  ghcr.io/yee94/runmark/runmark-server:0.2.28
 ```
 
 Compose 部署更新镜像版本后执行：
@@ -194,15 +212,4 @@ Compose 部署更新镜像版本后执行：
 ```bash
 docker compose pull
 docker compose up -d
-```
-
-## 本地构建
-
-```bash
-docker build -t runmark-server:dev .
-docker run --rm \
-  -p 3456:3456 \
-  -v runmark-data:/app/data \
-  --env-file ./runmark.env \
-  runmark-server:dev
 ```

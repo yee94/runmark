@@ -13,11 +13,12 @@ cd runmark
 或使用 Docker（见 [docs/docker.md](docs/docker.md)）：
 
 ```bash
-docker build -t runmark-server:dev .
+# 私有仓库需先 docker login ghcr.io（PAT read:packages）；公开后免登录
+docker pull ghcr.io/yee94/runmark/runmark-server:latest
 docker run -d --name runmark -p 3456:3456 \
   -v runmark-data:/app/data \
   -e AGENT_TRACKER_API_KEY='your-strong-secret' \
-  runmark-server:dev
+  ghcr.io/yee94/runmark/runmark-server:latest
 ```
 
 生产环境也可通过 `deploy/deploy.sh` + `deploy/setup-remote.sh` 同步代码并注册 systemd。
@@ -73,10 +74,11 @@ git push origin "server-v${VERSION}"
 
 **需要配置的 Secret：** 无额外 secret。`GITHUB_TOKEN` 由 Actions 自动注入（`contents: write` + `packages: write`）。
 
-首次从 GHCR 拉取私有镜像时，需登录：
+首次从 GHCR 拉取私有镜像时，需登录（注意 `GITHUB_TOKEN` 是 CI 内置、不能用于日常拉取）：
 
 ```bash
-echo $GITHUB_TOKEN | docker login ghcr.io -u USERNAME --password-stdin
+# 用带 read:packages 的 PAT
+echo <PAT> | docker login ghcr.io -u yee94 --password-stdin
 docker pull ghcr.io/yee94/runmark/runmark-server:latest
 ```
 
