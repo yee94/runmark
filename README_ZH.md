@@ -3,6 +3,15 @@
 </p>
 
 <p align="center">
+  <a href="https://www.typescriptlang.org/"><img src="https://img.shields.io/badge/%3C/%3E-TypeScript-0072C4.svg" alt="TypeScript" /></a>
+  <a href="#license"><img src="https://img.shields.io/npm/l/@runmarks/runmark.svg" alt="MIT License" /></a>
+  <a href="https://www.npmjs.com/package/@runmarks/runmark"><img src="https://img.shields.io/npm/v/@runmarks/runmark.svg?logo=npm" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@runmarks/runmark"><img src="https://img.shields.io/npm/dm/@runmarks/runmark.svg" alt="npm downloads" /></a>
+  <a href="https://github.com/yee94/runmark/actions/workflows/ci.yml"><img src="https://img.shields.io/github/actions/workflow/status/yee94/runmark/ci.yml?branch=main&label=CI" alt="CI" /></a>
+  <a href="https://bun.sh"><img src="https://img.shields.io/badge/runtime-Bun-fbf0df?logo=bun&logoColor=000" alt="Bun" /></a>
+</p>
+
+<p align="center">
   <strong>Runmark</strong> — 把你在 A 电脑与 CodeX、B 电脑与 Claude Code 等所有 AI 编码对话集中上报到一处，统一分析与搜索。
 </p>
 
