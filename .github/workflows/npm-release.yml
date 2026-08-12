@@ -64,7 +64,7 @@ jobs:
           # Prefer changesets when available (skips already-published versions)
           if [ -x node_modules/.bin/changeset ]; then
             echo "==> changeset publish"
-            npx changeset publish --access public || {
+            npx changeset publish || {
               echo "changeset publish failed or nothing to publish; falling back to per-package npm publish"
             }
           fi
@@ -81,17 +81,17 @@ jobs:
           for dir in "${pkgs[@]}"; do
             name=$(node -p "require('./${dir}/package.json').name")
             ver=$(node -p "require('./${dir}/package.json').version")
-            if npm view "${name}@${ver}" version >/dev/null 2>&1; then
+            if npm view "${name}@${ver}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
               echo "==> skip ${name}@${ver} (already on npm)"
               continue
             fi
             echo "==> npm publish ${name}@${ver}"
             # --ignore-scripts: dist already built; avoid re-running workspace builds on CI
-            npm publish "./${dir}" --access public --ignore-scripts
+            npm publish "./${dir}" --access public --ignore-scripts --registry=https://registry.npmjs.org/
           done
 
           echo "==> published versions:"
           for dir in "${pkgs[@]}"; do
             name=$(node -p "require('./${dir}/package.json').name")
-            npm view "${name}" version 2>/dev/null || echo "${name}: (not found)"
+            npm view "${name}" version --registry=https://registry.npmjs.org/ 2>/dev/null || echo "${name}: (not found)"
           done
