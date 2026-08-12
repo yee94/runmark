@@ -1,20 +1,20 @@
 name: npm release
 
 # Publish client packages to npmjs when an npm-v* tag is pushed.
-# Tag is for trigger/tracking only; published versions come from package.json (Changesets).
-# Example: git tag -a npm-v0.2.6 -m "npm clients" && git push origin npm-v0.2.6
+# Tag is for trigger/tracking only; published versions come from package.json.
+# Example: git tag -a npm-v0.1.0 -m "npm clients first release" && git push origin npm-v0.1.0
 on:
   push:
     tags:
       - "npm-v*"
+  workflow_dispatch:
 
 permissions:
   contents: read
-  id-token: write
 
 jobs:
   publish:
-    name: changeset publish
+    name: publish @runmarks/*
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -28,7 +28,18 @@ jobs:
           node-version: "22"
           registry-url: "https://registry.npmjs.org"
 
-      - name: Install (bun workspaces)
+      - name: Require NPM_TOKEN
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+        run: |
+          if [ -z "${NPM_TOKEN:-}" ]; then
+            echo "ERROR: repository secret NPM_TOKEN is missing."
+            echo "Set it at: Settings → Secrets and variables → Actions → Repository secrets"
+            echo "Or: gh secret set NPM_TOKEN --repo yee94/runmark"
+            exit 1
+          fi
+
+      - name: Install
         run: bun install --frozen-lockfile
 
       - name: Build publishable packages
@@ -39,17 +50,48 @@ jobs:
           bun run --filter @runmarks/claude-compat-plugin build
           bun run --filter @runmarks/cursor-hooks build
 
-      - name: Install pnpm (for changesets)
-        run: npm install --global pnpm@8.15.9
-
-      - name: Publish to npmjs
+      - name: Publish packages to npmjs
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
           NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
-          if [ -z "${NPM_TOKEN:-}" ]; then
-            echo "ERROR: repository secret NPM_TOKEN is required"
-            exit 1
+          set -euo pipefail
+          # Explicit auth for npm CLI (setup-node also writes .npmrc)
+          printf '%s\n' "//registry.npmjs.org/:_authToken=${NPM_TOKEN}" >> "$HOME/.npmrc"
+          printf '%s\n' "registry=https://registry.npmjs.org/" >> "$HOME/.npmrc"
+          printf '%s\n' "always-auth=true" >> "$HOME/.npmrc"
+
+          # Prefer changesets when available (skips already-published versions)
+          if [ -x node_modules/.bin/changeset ]; then
+            echo "==> changeset publish"
+            npx changeset publish --access public || {
+              echo "changeset publish failed or nothing to publish; falling back to per-package npm publish"
+            }
           fi
-          # changesets uses npm; auth via NODE_AUTH_TOKEN + setup-node registry-url
-          pnpm exec changeset publish
+
+          # First-time / fallback: publish each public package if its version is not on the registry
+          pkgs=(
+            packages/runmark
+            packages/plugin-opencode
+            packages/plugin-codex
+            packages/plugin-grok
+            packages/plugin-claude-compat
+            packages/hook-cursor
+          )
+          for dir in "${pkgs[@]}"; do
+            name=$(node -p "require('./${dir}/package.json').name")
+            ver=$(node -p "require('./${dir}/package.json').version")
+            if npm view "${name}@${ver}" version >/dev/null 2>&1; then
+              echo "==> skip ${name}@${ver} (already on npm)"
+              continue
+            fi
+            echo "==> npm publish ${name}@${ver}"
+            # --ignore-scripts: dist already built; avoid re-running workspace builds on CI
+            npm publish "./${dir}" --access public --ignore-scripts
+          done
+
+          echo "==> published versions:"
+          for dir in "${pkgs[@]}"; do
+            name=$(node -p "require('./${dir}/package.json').name")
+            npm view "${name}" version 2>/dev/null || echo "${name}: (not found)"
+          done
