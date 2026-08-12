@@ -1,0 +1,27 @@
+{
+  "name": "runmark",
+  "description": "Runmark 本地插件市场：Claude Code / CodeBuddy / WorkBuddy 遥测上报",
+  "owner": {
+    "name": "Runmark"
+  },
+  "plugins": [
+    {
+      "name": "runmark-tracker",
+      "description": "将 Claude Code / CodeBuddy / WorkBuddy 会话遥测上报到 Runmark",
+      "version": "0.2.18",
+      "source": "./plugins/runmark-tracker",
+      "category": "telemetry",
+      "author": {
+        "name": "Runmark"
+      },
+      "homepage": "https://github.com/runmark/runmark",
+      "keywords": [
+        "telemetry",
+        "tracking",
+        "analytics",
+        "cost",
+        "tokens"
+      ]
+    }
+  ]
+}

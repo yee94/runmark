@@ -1,0 +1,28 @@
+{
+  "name": "@runmark/opencode-plugin",
+  "version": "0.2.6",
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "types": "./dist/index.d.mts",
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "clean": "rm -rf dist",
+    "test": "bun test",
+    "typecheck": "tsc -b ../shared && tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@opencode-ai/plugin": ">=0.1.0"
+  },
+  "devDependencies": {
+    "@agent-tracker/shared": "workspace:*",
+    "@opencode-ai/plugin": "latest",
+    "@types/bun": "latest",
+    "tsdown": "^0.17.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT"
+}

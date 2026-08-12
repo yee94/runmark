@@ -1,0 +1,22 @@
+{
+  "name": "@agent-tracker/server",
+  "version": "0.2.27",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "bun --watch src/index.ts",
+    "start": "bun src/index.ts",
+    "build": "bun build ./src/index.ts --outdir dist --target bun",
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@agent-tracker/shared": "workspace:*",
+    "hono": "^4.5.0",
+    "zod": "^3.23.0"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "typescript": "^5.5.0"
+  }
+}

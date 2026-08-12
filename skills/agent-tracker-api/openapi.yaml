@@ -1,0 +1,1262 @@
+openapi: 3.0.3
+info:
+  title: Runmark API
+  description: |
+    中心化 AI 编码 Agent 遥测服务只读/上报 API。
+    默认需 Cookie 登录或 X-API-Key；密码与服务端访问密码一致。
+  version: 0.2.2
+
+servers:
+  - url: http://localhost:3456
+    description: 本地开发
+
+
+tags:
+  - name: auth
+  - name: health
+  - name: sessions
+  - name: session-shares
+  - name: turns
+  - name: stats
+  - name: pricing
+  - name: ingest
+  - name: cursor
+  - name: agents
+  - name: matters
+  - name: system-config
+  - name: help
+
+paths:
+  /auth/session:
+    get:
+      tags: [auth]
+      summary: 当前 Dashboard 是否已认证
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  authenticated: { type: boolean }
+                  public: { type: boolean }
+
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Dashboard 登录（password = 服务端访问密码，Set-Cookie at_session）
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [password]
+              properties:
+                password: { type: string }
+      responses:
+        "200":
+          description: ok, Set-Cookie
+        "401":
+          description: Invalid password
+
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: 退出登录，清除 Cookie
+      responses:
+        "200":
+          description: ok
+
+  /health:
+    get:
+      tags: [health]
+      summary: 健康检查
+      responses:
+        "200":
+          description: ok
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string, example: "0.2.2" }
+
+  /v1/sessions:
+    get:
+      tags: [sessions]
+      summary: 会话列表（按 started_at 倒序）
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: user_email
+          in: query
+          schema: { type: string }
+          description: 按用户邮箱过滤
+      responses:
+        "200":
+          description: Session 数组
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Session" }
+
+  /v1/sessions/{id}:
+    get:
+      tags: [sessions]
+      summary: 单个会话元数据
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Session" }
+        "404":
+          description: Session not found
+
+  /v1/sessions/{id}/messages:
+    get:
+      tags: [sessions]
+      summary: 会话消息（时间正序，含 user/assistant 正文）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, default: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Message" }
+
+  /v1/sessions/{id}/turns:
+    get:
+      tags: [sessions]
+      summary: 会话 LLM Turn（含 token 分项与 cost）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Turn" }
+
+  /v1/sessions/{id}/tool-calls:
+    get:
+      tags: [sessions]
+      summary: 会话工具调用记录
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ToolCall" }
+
+  /v1/sessions/{id}/children:
+    get:
+      tags: [sessions]
+      summary: 子会话列表（OpenCode subagent / fork 关系）
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Session" }
+
+  /v1/turns:
+    get:
+      tags: [turns]
+      summary: 全局 Turn 列表（created_at 倒序）
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: provider
+          in: query
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Turn" }
+
+  /v1/stats/summary:
+    get:
+      tags: [stats]
+      summary: 时间范围内聚合统计
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [today, 24h, 7d, month, all]
+            default: all
+          description: 基于 turns.created_at / sessions.started_at 过滤
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/StatsSummary" }
+
+  /v1/stats/by-model:
+    get:
+      tags: [stats]
+      summary: 按模型聚合
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [today, 24h, 7d, month, all]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [cost, tokens]
+            default: cost
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ModelStats" }
+
+  /v1/stats/daily:
+    get:
+      tags: [stats]
+      summary: 近 30 天每日会话汇总
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/DailyStats" }
+
+  /v1/stats/by-tool:
+    get:
+      tags: [stats]
+      summary: 按工具名聚合（全量，无时间过滤）
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/ToolStats" }
+
+  /v1/stats/by-agent:
+    get:
+      tags: [stats]
+      summary: 按客户端 Agent 聚合
+      parameters:
+        - name: range
+          in: query
+          schema:
+            type: string
+            enum: [today, 24h, 7d, month, all]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [cost, tokens]
+            default: cost
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentStats" }
+
+  /v1/pricing:
+    get:
+      tags: [pricing]
+      summary: 模型单价表
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Pricing" }
+
+  /v1/ingest:
+    post:
+      tags: [ingest]
+      summary: 批量上报事件（需 API Key）
+      security:
+        - ApiKeyAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [events]
+              properties:
+                events:
+                  type: array
+                  items: { type: object }
+      responses:
+        "200":
+          description: ingested count
+
+  /v1/cursor/status:
+    get:
+      tags: [cursor]
+      summary: Cursor Usage API 对账状态
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CursorStatus" }
+
+  /v1/cursor/cookies:
+    post:
+      tags: [cursor]
+      summary: 写入 Cursor Session Token 或 Cookie 并触发同步
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                sessionToken: { type: string }
+                cookies:
+                  type: array
+                  items: { type: object }
+                source: { type: string }
+      responses:
+        "200":
+          description: ok
+    delete:
+      tags: [cursor]
+      summary: 清除 Cursor Cookie
+      responses:
+        "200":
+          description: ok
+
+  /v1/cursor/sync:
+    post:
+      tags: [cursor]
+      summary: 立即触发 Cursor Usage API 同步
+      responses:
+        "200":
+          description: ok
+
+  /v1/agents:
+    get:
+      tags: [agents]
+      summary: 智能体配置列表
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentConfig" }
+
+  /v1/agents/{id}/config:
+    get:
+      tags: [agents]
+      summary: 单个智能体配置
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentConfig" }
+    put:
+      tags: [agents]
+      summary: 更新智能体配置
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          description: updated
+
+  /v1/agents/{id}/runs:
+    post:
+      tags: [agents]
+      summary: 创建智能体运行
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRun" }
+
+  /v1/agent-runs:
+    get:
+      tags: [agents]
+      summary: 智能体调用记录
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, default: 50 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentRun" }
+
+  /v1/matters:
+    get:
+      tags: [matters]
+      summary: 事项归档列表
+      parameters:
+        - name: tab
+          in: query
+          schema:
+            type: string
+            enum: [summary, archive]
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/Matter" }
+
+  /v1/matters/{id}:
+    get:
+      tags: [matters]
+      summary: 事项详情
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Matter" }
+
+  /v1/matters/{id}/resummarize:
+    post:
+      tags: [matters]
+      summary: 重新总结当前事项
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                session_ids:
+                  type: array
+                  items: { type: string }
+                append_matters: { type: boolean }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRun" }
+
+  /v1/matters/{id}/archive:
+    post:
+      tags: [matters]
+      summary: 标记事项为归档
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Matter" }
+
+  /v1/system-config:
+    get:
+      tags: [system-config]
+      summary: Provider 与 Model List
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/SystemConfig" }
+
+  /v1/system-config/providers/test:
+    post:
+      tags: [system-config]
+      summary: 测试 OpenAI Compatible Provider 连通性
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [base_url, api_key, model]
+              properties:
+                base_url: { type: string }
+                api_key: { type: string }
+                model: { type: string }
+      responses:
+        "200":
+          description: connected
+        "400":
+          description: failed
+
+  /v1/system-config/providers:
+    post:
+      tags: [system-config]
+      summary: 新增 Provider 并创建默认模型
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: created
+
+  /v1/system-config/models:
+    post:
+      tags: [system-config]
+      summary: 在已有 Provider 下新增模型
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        "201":
+          description: created
+
+  /v1/system-config/models/{id}:
+    delete:
+      tags: [system-config]
+      summary: 删除未被智能体使用的模型
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: deleted
+        "409":
+          description: model is in use
+
+  /v1/help/context:
+    get:
+      tags: [help]
+      summary: 帮助中心上下文（当前 endpoint 与 API Key）
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  endpoint: { type: string }
+                  apiKey: { type: string }
+                  apiKeyVisible: { type: boolean }
+                  publicDashboard: { type: boolean }
+
+  # ---------------------------------------------------------------------------
+  # Public Session Share（免登录；credential 即能力凭证）
+  # 事实来源：packages/server/src/routes/session-shares.ts
+  # ---------------------------------------------------------------------------
+
+  /v1/public/session-shares/{credential}:
+    get:
+      tags: [session-shares]
+      summary: 公开 Session 摘要（优先入口；默认不拉全量 messages/turns/tool_calls）
+      description: |
+        持有 share credential 即可免登录读取。**先读本接口摘要**，需要详情时再按响应
+        `resources` 中的链接按需拉取（建议 `curl -o <file>` 落盘后再分析）。
+
+        ## Credential 两种形态（path 参数）
+
+        | 形态 | 格式 | 说明 |
+        |------|------|------|
+        | **raw token** | 创建分享时返回的 `token`（base64url） | 入库为 SHA-256 hex；创建响应的 `api_url` / `agent_prompt` 使用此形态 |
+        | **HMAC alias** | `{token_hash}.{signature}` | `token_hash` 为 64 位 hex；`signature` = HMAC-SHA256(apiKey, `"agent-tracker-session-share-link-v1:" + token_hash)` 的 base64url。人类可复制 Dashboard 链接 `#/share/{alias}` 使用此形态；不入库，可按 token_hash 重算 |
+
+        两种 credential 访问同一分享；alias 签名校验失败视为无效 → **404**。
+
+        ## 浏览器 vs curl
+
+        - `Accept` 优先 `text/html`（浏览器导航）：**302** 到 `/#/share/{credential}`（raw 保留 raw，禁止改成 alias）
+        - curl / 显式 `application/json`：返回 JSON 摘要
+
+        ## 错误
+
+        - **404** `{ "error": "Not found" }`：credential 无效、分享不存在、或 session 已删
+        - **410** `{ "error": "Share expired" }`：`expires_at` 已过期
+      parameters:
+        - $ref: "#/components/parameters/ShareCredential"
+      responses:
+        "200":
+          description: 摘要 JSON（非 HTML 请求）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicShareSummary" }
+        "302":
+          description: 浏览器 HTML 导航时重定向到 Dashboard 分享页
+        "404":
+          description: Not found（无效 credential / 无分享 / session 缺失）
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+        "410":
+          description: Share expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+
+  /v1/public/session-shares/{credential}/search:
+    get:
+      tags: [session-shares]
+      summary: 在分享 session 的 messages / tool_calls 中搜索片段
+      description: |
+        返回匹配片段（snippet 最长约 500 字符），按 `created_at` 升序，最多 `limit` 条。
+        kind=all 时先填 messages 再补 tool，总数不超过 limit。
+      parameters:
+        - $ref: "#/components/parameters/ShareCredential"
+        - name: q
+          in: query
+          required: true
+          schema: { type: string, minLength: 2 }
+          description: 搜索词，至少 2 字符；LIKE 通配符按字面量转义
+        - name: kind
+          in: query
+          schema:
+            type: string
+            enum: [all, message, tool]
+            default: all
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 50, default: 20 }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: "#/components/schemas/PublicShareSearchItem" }
+        "400":
+          description: Invalid q / kind / limit
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+        "410":
+          description: Share expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+
+  /v1/public/session-shares/{credential}/messages:
+    get:
+      tags: [session-shares]
+      summary: 分页拉取分享 session 的消息（JSON 或 JSONL）
+      description: |
+        时间正序。`content` 最长约 16KB，超出时 `truncated=true`。
+        - `format=json`（默认）：`{ "items": [...], "next_offset": number|null }`
+        - `format=jsonl`：NDJSON（`application/x-ndjson`），每行一条消息；无 next_offset 包装，用 limit/offset 翻页
+      parameters:
+        - $ref: "#/components/parameters/ShareCredential"
+        - $ref: "#/components/parameters/ShareListFormat"
+        - $ref: "#/components/parameters/ShareListLimit"
+        - $ref: "#/components/parameters/ShareListOffset"
+        - name: role
+          in: query
+          schema:
+            type: string
+            enum: [user, assistant]
+          description: 可选；仅返回指定 role
+      responses:
+        "200":
+          description: JSON 分页或 JSONL 流
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicShareMessagePage" }
+            application/x-ndjson:
+              schema:
+                type: string
+                description: 每行一个 PublicShareMessage JSON 对象
+        "400":
+          description: Invalid format / limit / offset / role
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+        "410":
+          description: Share expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+
+  /v1/public/session-shares/{credential}/turns:
+    get:
+      tags: [session-shares]
+      summary: 分页拉取分享 session 的 LLM Turn（JSON 或 JSONL）
+      description: |
+        时间正序；含 token 分项、cost_usd / cost_cny、finish_reason、error。
+        format 行为同 messages。
+      parameters:
+        - $ref: "#/components/parameters/ShareCredential"
+        - $ref: "#/components/parameters/ShareListFormat"
+        - $ref: "#/components/parameters/ShareListLimit"
+        - $ref: "#/components/parameters/ShareListOffset"
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicShareTurnPage" }
+            application/x-ndjson:
+              schema:
+                type: string
+                description: 每行一个 PublicShareTurn JSON 对象
+        "400":
+          description: Invalid format / limit / offset
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+        "410":
+          description: Share expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+
+  /v1/public/session-shares/{credential}/tool-calls:
+    get:
+      tags: [session-shares]
+      summary: 分页拉取分享 session 的工具调用（JSON 或 JSONL）
+      description: |
+        时间正序。`args` 最长约 8KB，`output_text` 最长约 16KB；超出时分别有
+        `args_truncated` / `output_text_truncated`。format 行为同 messages。
+      parameters:
+        - $ref: "#/components/parameters/ShareCredential"
+        - $ref: "#/components/parameters/ShareListFormat"
+        - $ref: "#/components/parameters/ShareListLimit"
+        - $ref: "#/components/parameters/ShareListOffset"
+        - name: tool_name
+          in: query
+          schema: { type: string }
+          description: 可选；精确匹配工具名
+      responses:
+        "200":
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PublicShareToolCallPage" }
+            application/x-ndjson:
+              schema:
+                type: string
+                description: 每行一个 PublicShareToolCall JSON 对象
+        "400":
+          description: Invalid format / limit / offset
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+        "410":
+          description: Share expired
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ShareError" }
+
+components:
+  securitySchemes:
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: X-API-Key
+
+  parameters:
+    ShareCredential:
+      name: credential
+      in: path
+      required: true
+      schema: { type: string }
+      description: |
+        分享凭证：raw token（创建时返回）或 HMAC alias（`token_hash.signature`）。
+        无需 API Key；持有 credential 即可访问该分享下全部公开资源。
+    ShareListFormat:
+      name: format
+      in: query
+      schema:
+        type: string
+        enum: [json, jsonl]
+        default: json
+      description: json → `{items, next_offset}`；jsonl → NDJSON 行流
+    ShareListLimit:
+      name: limit
+      in: query
+      schema: { type: integer, minimum: 1, maximum: 100, default: 50 }
+    ShareListOffset:
+      name: offset
+      in: query
+      schema: { type: integer, minimum: 0, default: 0 }
+
+  schemas:
+    Session:
+      type: object
+      properties:
+        id: { type: string }
+        agent: { type: string }
+        provider: { type: string }
+        model: { type: string }
+        repo_url: { type: string }
+        branch: { type: string }
+        user_email: { type: string }
+        hostname: { type: string }
+        worktree: { type: string }
+        directory: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        request_count: { type: integer }
+        total_input_tokens: { type: integer }
+        total_output_tokens: { type: integer }
+        total_tokens: { type: integer }
+        total_cost_usd: { type: number }
+        AISummary: { type: string, nullable: true }
+
+    Message:
+      type: object
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        role: { type: string, enum: [user, assistant, system, tool] }
+        content: { type: string }
+        model: { type: string }
+        provider: { type: string }
+        created_at: { type: string, format: date-time }
+
+    Turn:
+      type: object
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        message_id: { type: string }
+        model: { type: string }
+        provider: { type: string }
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        cache_read_tokens: { type: integer }
+        cache_write_tokens: { type: integer }
+        reasoning_tokens: { type: integer }
+        total_tokens: { type: integer }
+        duration_ms: { type: integer }
+        cost_usd: { type: number }
+        finish_reason: { type: string }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    ToolCall:
+      type: object
+      properties:
+        id: { type: string }
+        session_id: { type: string }
+        turn_id: { type: string }
+        tool_name: { type: string }
+        call_id: { type: string }
+        args: { type: string }
+        output_text: { type: string }
+        file_path: { type: string }
+        additions: { type: integer }
+        deletions: { type: integer }
+        duration_ms: { type: integer }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    StatsSummary:
+      type: object
+      properties:
+        sessions: { type: integer }
+        turns: { type: integer }
+        tokens:
+          type: object
+          properties:
+            total: { type: integer }
+            input: { type: integer }
+            output: { type: integer }
+            cache_read: { type: integer }
+            cache_write: { type: integer }
+            reasoning: { type: integer }
+        cost_usd: { type: number }
+        range: { type: string }
+
+    ModelStats:
+      type: object
+      properties:
+        model: { type: string }
+        provider: { type: string }
+        turn_count: { type: integer }
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        cache_read_tokens: { type: integer }
+        cache_write_tokens: { type: integer }
+        reasoning_tokens: { type: integer }
+        total_tokens: { type: integer }
+        total_cost_usd: { type: number }
+        avg_duration_ms: { type: number }
+
+    DailyStats:
+      type: object
+      properties:
+        date: { type: string }
+        session_count: { type: integer }
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        total_tokens: { type: integer }
+        total_cost_usd: { type: number }
+
+    ToolStats:
+      type: object
+      properties:
+        tool_name: { type: string }
+        call_count: { type: integer }
+        total_additions: { type: integer }
+        total_deletions: { type: integer }
+        avg_duration_ms: { type: number }
+
+    AgentStats:
+      type: object
+      properties:
+        agent: { type: string }
+        session_count: { type: integer }
+        turn_count: { type: integer }
+        total_tokens: { type: integer }
+        total_cost_usd: { type: number }
+
+    CursorStatus:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        hasCryptoKey: { type: boolean }
+        hasCookies: { type: boolean }
+        available: { type: boolean }
+        syncing: { type: boolean }
+        authExpired: { type: boolean }
+        lastSuccessAt: { type: string, nullable: true }
+        lastError: { type: string, nullable: true }
+        nextRetryAt: { type: string, nullable: true }
+        totalEvents: { type: integer }
+        pendingEnrich: { type: integer }
+        pendingQueue: { type: integer }
+
+    AgentConfig:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string }
+        label: { type: string }
+        enabled: { type: boolean }
+        model_id: { type: string }
+        mode: { type: string }
+        tools:
+          type: array
+          items: { type: string }
+        triggers:
+          type: array
+          items: { type: object }
+        system_prompt: { type: string }
+        task_brief: { type: string }
+
+    AgentRun:
+      type: object
+      properties:
+        id: { type: string }
+        agent_id: { type: string }
+        status: { type: string }
+        trigger: { type: string }
+        run_reason: { type: string, nullable: true }
+        target_session_id: { type: string, nullable: true }
+        matter_id: { type: string, nullable: true }
+        started_at: { type: string, format: date-time }
+        finished_at: { type: string, format: date-time, nullable: true }
+        summary: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        tools:
+          type: array
+          items: { type: object }
+
+    Matter:
+      type: object
+      properties:
+        id: { type: string }
+        no: { type: string }
+        type: { type: string }
+        status: { type: string }
+        title: { type: string }
+        topic: { type: string, nullable: true }
+        summary: { type: string, nullable: true }
+        result: { type: string, nullable: true }
+        markdown: { type: string }
+        effort_level: { type: string, nullable: true }
+        word_target: { type: integer }
+        source_session_count: { type: integer }
+        dependency_refs:
+          type: array
+          items: { type: string }
+        timeline_points:
+          type: array
+          items: { type: string }
+        relatedSessionIds:
+          type: array
+          items: { type: string }
+
+    SystemConfig:
+      type: object
+      properties:
+        providers:
+          type: array
+          items: { type: object }
+        models:
+          type: array
+          items: { type: object }
+
+    Pricing:
+      type: object
+      properties:
+        provider: { type: string }
+        model: { type: string }
+        input_price: { type: number }
+        output_price: { type: number }
+        cache_read_price: { type: number }
+        cache_write_price: { type: number }
+        reasoning_price: { type: number }
+
+    ShareError:
+      type: object
+      properties:
+        error: { type: string, example: "Not found" }
+
+    PublicShareSummary:
+      type: object
+      description: |
+        根接口默认仅返回摘要 + 计数 + 资源链接，不内嵌全量 messages/turns/tool_calls。
+      properties:
+        share:
+          type: object
+          properties:
+            expires_at: { type: string, format: date-time }
+        session: { $ref: "#/components/schemas/PublicShareSession" }
+        summary_markdown:
+          type: string
+          nullable: true
+          description: 来自 session.AISummary；空则 null
+        counts:
+          type: object
+          properties:
+            messages: { type: integer }
+            turns: { type: integer }
+            tool_calls: { type: integer }
+        resources:
+          type: object
+          description: 详情子资源绝对 URL（可直接 curl）
+          properties:
+            search:
+              type: string
+              example: "http://localhost:3456/v1/public/session-shares/{credential}/search"
+            messages:
+              type: string
+              example: "http://localhost:3456/v1/public/session-shares/{credential}/messages?format=jsonl&limit=50"
+            turns:
+              type: string
+              example: "http://localhost:3456/v1/public/session-shares/{credential}/turns?format=jsonl&limit=50"
+            tool_calls:
+              type: string
+              example: "http://localhost:3456/v1/public/session-shares/{credential}/tool-calls?format=jsonl&limit=50"
+        agent_prompt:
+          type: string
+          description: 给 Agent 的提示：先读摘要，再按 resources 用 curl -o 落盘
+
+    PublicShareSession:
+      type: object
+      description: 公开白名单字段（不含环境/身份/导航类敏感字段）
+      properties:
+        id: { type: string }
+        title: { type: string, nullable: true }
+        AISummary: { type: string, nullable: true }
+        summary: { type: string, description: "title 或 id 的展示用短摘要" }
+        agent: { type: string, nullable: true }
+        provider: { type: string, nullable: true }
+        model: { type: string, nullable: true }
+        models:
+          type: array
+          items: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: string, format: date-time, nullable: true }
+        last_activity_at: { type: string, format: date-time }
+        duration_ms: { type: integer }
+        request_count: { type: integer }
+        total_input_tokens: { type: integer }
+        total_output_tokens: { type: integer }
+        total_tokens: { type: integer }
+        total_cost_usd: { type: number }
+        total_cost_cny: { type: number }
+        message_count: { type: integer }
+        turn_count: { type: integer }
+
+    PublicShareSearchItem:
+      type: object
+      properties:
+        kind: { type: string, enum: [message, tool] }
+        id: { type: string }
+        created_at: { type: string, format: date-time }
+        role: { type: string, description: "kind=message 时" }
+        tool_name: { type: string, description: "kind=tool 时" }
+        snippet: { type: string }
+
+    PublicShareMessage:
+      type: object
+      properties:
+        id: { type: string }
+        role: { type: string }
+        content: { type: string }
+        truncated: { type: boolean }
+        model: { type: string, nullable: true }
+        provider: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    PublicShareMessagePage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PublicShareMessage" }
+        next_offset:
+          type: integer
+          nullable: true
+          description: 有下一页时为 offset+limit，否则 null
+
+    PublicShareTurn:
+      type: object
+      properties:
+        id: { type: string }
+        message_id: { type: string, nullable: true }
+        model: { type: string }
+        provider: { type: string }
+        input_tokens: { type: integer }
+        output_tokens: { type: integer }
+        cache_read_tokens: { type: integer }
+        cache_write_tokens: { type: integer }
+        reasoning_tokens: { type: integer }
+        total_tokens: { type: integer }
+        duration_ms: { type: integer }
+        cost_usd: { type: number }
+        cost_cny: { type: number }
+        finish_reason: { type: string, nullable: true }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+
+    PublicShareTurnPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PublicShareTurn" }
+        next_offset: { type: integer, nullable: true }
+
+    PublicShareToolCall:
+      type: object
+      properties:
+        id: { type: string }
+        tool_name: { type: string }
+        call_id: { type: string, nullable: true }
+        output_title: { type: string, nullable: true }
+        file_path: { type: string, nullable: true }
+        duration_ms: { type: integer }
+        error: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        args: { type: string }
+        args_truncated: { type: boolean }
+        output_text: { type: string }
+        output_text_truncated: { type: boolean }
+
+    PublicShareToolCallPage:
+      type: object
+      properties:
+        items:
+          type: array
+          items: { $ref: "#/components/schemas/PublicShareToolCall" }
+        next_offset: { type: integer, nullable: true }

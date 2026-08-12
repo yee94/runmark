@@ -1,0 +1,59 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT session-start",
+            "timeout": 10
+          }
+        ]
+      },
+      {
+        "matcher": "resume|clear|compact",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT user-prompt",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT post-tool-use",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

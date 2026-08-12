@@ -1,0 +1,32 @@
+{
+  "name": "@runmark/codex-plugin",
+  "version": "0.2.5",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "bin": {
+    "agent-tracker-codex-plugin": "./bin/agent-tracker-codex-install.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "install.sh",
+    "marketplace",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "clean": "rm -rf dist",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@agent-tracker/shared": "workspace:*",
+    "@types/bun": "latest",
+    "tsdown": "^0.17.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT"
+}

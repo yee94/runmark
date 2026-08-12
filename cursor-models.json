@@ -1,0 +1,1541 @@
+{
+  "models": [
+    {
+      "id": "default",
+      "displayName": "Auto",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "cursor-grok-4.5-low",
+      "displayName": "Cursor Grok 4.5 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "cursor-grok-4.5-low-fast",
+      "displayName": "Cursor Grok 4.5 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "cursor-grok-4.5-medium",
+      "displayName": "Cursor Grok 4.5 Medium",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "cursor-grok-4.5-medium-fast",
+      "displayName": "Cursor Grok 4.5 Medium Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "cursor-grok-4.5-high",
+      "displayName": "Cursor Grok 4.5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "cursor-grok-4.5-high-fast",
+      "displayName": "Cursor Grok 4.5 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "composer-2.5-fast",
+      "displayName": "Composer 2.5 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "composer-2.5",
+      "displayName": "Composer 2.5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-low",
+      "displayName": "Opus 4.8 Low",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-low-fast",
+      "displayName": "Opus 4.8 Low Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-medium",
+      "displayName": "Opus 4.8 Medium",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-medium-fast",
+      "displayName": "Opus 4.8 Medium Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-high",
+      "displayName": "Opus 4.8",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-high-fast",
+      "displayName": "Opus 4.8 Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-xhigh",
+      "displayName": "Opus 4.8 Extra High",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-xhigh-fast",
+      "displayName": "Opus 4.8 Extra High Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-max",
+      "displayName": "Opus 4.8 Max",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-max-fast",
+      "displayName": "Opus 4.8 Max Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-low",
+      "displayName": "Opus 4.8 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-low-fast",
+      "displayName": "Opus 4.8 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-medium",
+      "displayName": "Opus 4.8 Medium",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-medium-fast",
+      "displayName": "Opus 4.8 Medium Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-high",
+      "displayName": "Opus 4.8",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-high-fast",
+      "displayName": "Opus 4.8 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-xhigh",
+      "displayName": "Opus 4.8 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-xhigh-fast",
+      "displayName": "Opus 4.8 Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-max",
+      "displayName": "Opus 4.8 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-8-thinking-max-fast",
+      "displayName": "Opus 4.8 Max Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-none",
+      "displayName": "GPT-5.6 Sol None",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-none-fast",
+      "displayName": "GPT-5.6 Sol None Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-low",
+      "displayName": "GPT-5.6 Sol Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-low-fast",
+      "displayName": "GPT-5.6 Sol Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-medium",
+      "displayName": "GPT-5.6 Sol",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-medium-fast",
+      "displayName": "GPT-5.6 Sol Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-high",
+      "displayName": "GPT-5.6 Sol High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-high-fast",
+      "displayName": "GPT-5.6 Sol High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-xhigh",
+      "displayName": "GPT-5.6 Sol Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-xhigh-fast",
+      "displayName": "GPT-5.6 Sol Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-max",
+      "displayName": "GPT-5.6 Sol Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-sol-max-fast",
+      "displayName": "GPT-5.6 Sol Max Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-none",
+      "displayName": "GPT-5.5 None",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-none-fast",
+      "displayName": "GPT-5.5 None Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-low",
+      "displayName": "GPT-5.5 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-low-fast",
+      "displayName": "GPT-5.5 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-medium",
+      "displayName": "GPT-5.5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-medium-fast",
+      "displayName": "GPT-5.5 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-high",
+      "displayName": "GPT-5.5 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-high-fast",
+      "displayName": "GPT-5.5 High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-extra-high",
+      "displayName": "GPT-5.5 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.5-extra-high-fast",
+      "displayName": "GPT-5.5 Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-low",
+      "displayName": "Fable 5 Low",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-medium",
+      "displayName": "Fable 5 Medium",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-high",
+      "displayName": "Fable 5",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-xhigh",
+      "displayName": "Fable 5 Extra High",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-max",
+      "displayName": "Fable 5 Max",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-thinking-low",
+      "displayName": "Fable 5 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-thinking-medium",
+      "displayName": "Fable 5 Medium",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-thinking-high",
+      "displayName": "Fable 5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-thinking-xhigh",
+      "displayName": "Fable 5 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-fable-5-thinking-max",
+      "displayName": "Fable 5 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-low",
+      "displayName": "Sonnet 5 Low",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-medium",
+      "displayName": "Sonnet 5 Medium",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-high",
+      "displayName": "Sonnet 5",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-xhigh",
+      "displayName": "Sonnet 5 Extra High",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-max",
+      "displayName": "Sonnet 5 Max",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-thinking-low",
+      "displayName": "Sonnet 5 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-thinking-medium",
+      "displayName": "Sonnet 5 Medium",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-thinking-high",
+      "displayName": "Sonnet 5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-thinking-xhigh",
+      "displayName": "Sonnet 5 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-sonnet-5-thinking-max",
+      "displayName": "Sonnet 5 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-none",
+      "displayName": "GPT-5.6 Terra None",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-none-fast",
+      "displayName": "GPT-5.6 Terra None Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-low",
+      "displayName": "GPT-5.6 Terra Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-low-fast",
+      "displayName": "GPT-5.6 Terra Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-medium",
+      "displayName": "GPT-5.6 Terra",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-medium-fast",
+      "displayName": "GPT-5.6 Terra Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-high",
+      "displayName": "GPT-5.6 Terra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-high-fast",
+      "displayName": "GPT-5.6 Terra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-xhigh",
+      "displayName": "GPT-5.6 Terra Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-xhigh-fast",
+      "displayName": "GPT-5.6 Terra Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-max",
+      "displayName": "GPT-5.6 Terra Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-terra-max-fast",
+      "displayName": "GPT-5.6 Terra Max Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.6-sonnet-medium",
+      "displayName": "Sonnet 4.6",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.6-sonnet-medium-thinking",
+      "displayName": "Sonnet 4.6",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-low",
+      "displayName": "Codex 5.3 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-low-fast",
+      "displayName": "Codex 5.3 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex",
+      "displayName": "Codex 5.3",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-fast",
+      "displayName": "Codex 5.3 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-high",
+      "displayName": "Codex 5.3 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-high-fast",
+      "displayName": "Codex 5.3 High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-xhigh",
+      "displayName": "Codex 5.3 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.3-codex-xhigh-fast",
+      "displayName": "Codex 5.3 Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-low",
+      "displayName": "Opus 4.7 Low",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-low-fast",
+      "displayName": "Opus 4.7 Low Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-medium",
+      "displayName": "Opus 4.7 Medium",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-medium-fast",
+      "displayName": "Opus 4.7 Medium Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-high",
+      "displayName": "Opus 4.7 High",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-high-fast",
+      "displayName": "Opus 4.7 High Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-xhigh",
+      "displayName": "Opus 4.7",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-xhigh-fast",
+      "displayName": "Opus 4.7 Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-max",
+      "displayName": "Opus 4.7 Max",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-max-fast",
+      "displayName": "Opus 4.7 Max Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-low",
+      "displayName": "Opus 4.7 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-low-fast",
+      "displayName": "Opus 4.7 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-medium",
+      "displayName": "Opus 4.7 Medium",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-medium-fast",
+      "displayName": "Opus 4.7 Medium Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-high",
+      "displayName": "Opus 4.7 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-high-fast",
+      "displayName": "Opus 4.7 High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-xhigh",
+      "displayName": "Opus 4.7",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-xhigh-fast",
+      "displayName": "Opus 4.7 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-max",
+      "displayName": "Opus 4.7 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-opus-4-7-thinking-max-fast",
+      "displayName": "Opus 4.7 Max Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-low",
+      "displayName": "GPT-5.4 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-medium",
+      "displayName": "GPT-5.4",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-medium-fast",
+      "displayName": "GPT-5.4 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-high",
+      "displayName": "GPT-5.4 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-high-fast",
+      "displayName": "GPT-5.4 High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-xhigh",
+      "displayName": "GPT-5.4 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-xhigh-fast",
+      "displayName": "GPT-5.4 Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.6-opus-high",
+      "displayName": "Opus 4.6",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.6-opus-max",
+      "displayName": "Opus 4.6 Max",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.6-opus-high-thinking",
+      "displayName": "Opus 4.6",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.6-opus-max-thinking",
+      "displayName": "Opus 4.6 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.5-opus-high",
+      "displayName": "Opus 4.5",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.5-opus-high-thinking",
+      "displayName": "Opus 4.5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-low",
+      "displayName": "GPT-5.2 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-low-fast",
+      "displayName": "GPT-5.2 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2",
+      "displayName": "GPT-5.2",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-fast",
+      "displayName": "GPT-5.2 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-high",
+      "displayName": "GPT-5.2 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-high-fast",
+      "displayName": "GPT-5.2 High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-xhigh",
+      "displayName": "GPT-5.2 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-xhigh-fast",
+      "displayName": "GPT-5.2 Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-none",
+      "displayName": "GPT-5.6 Luna None",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-none-fast",
+      "displayName": "GPT-5.6 Luna None Fast",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-low",
+      "displayName": "GPT-5.6 Luna Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-low-fast",
+      "displayName": "GPT-5.6 Luna Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-medium",
+      "displayName": "GPT-5.6 Luna",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-medium-fast",
+      "displayName": "GPT-5.6 Luna Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-high",
+      "displayName": "GPT-5.6 Luna High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-high-fast",
+      "displayName": "GPT-5.6 Luna High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-xhigh",
+      "displayName": "GPT-5.6 Luna Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-xhigh-fast",
+      "displayName": "GPT-5.6 Luna Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-max",
+      "displayName": "GPT-5.6 Luna Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.6-luna-max-fast",
+      "displayName": "GPT-5.6 Luna Max Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gemini-3.1-pro",
+      "displayName": "Gemini 3.1 Pro",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-mini-none",
+      "displayName": "GPT-5.4 Mini None",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-mini-low",
+      "displayName": "GPT-5.4 Mini Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-mini-medium",
+      "displayName": "GPT-5.4 Mini",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-mini-high",
+      "displayName": "GPT-5.4 Mini High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-mini-xhigh",
+      "displayName": "GPT-5.4 Mini Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-nano-none",
+      "displayName": "GPT-5.4 Nano None",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-nano-low",
+      "displayName": "GPT-5.4 Nano Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-nano-medium",
+      "displayName": "GPT-5.4 Nano",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-nano-high",
+      "displayName": "GPT-5.4 Nano High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.4-nano-xhigh",
+      "displayName": "GPT-5.4 Nano Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.5-haiku",
+      "displayName": "Haiku 4.5",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.5-haiku-thinking",
+      "displayName": "Haiku 4.5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.5-sonnet",
+      "displayName": "Sonnet 4.5",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4.5-sonnet-thinking",
+      "displayName": "Sonnet 4.5",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-low",
+      "displayName": "Codex 5.2 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-low-fast",
+      "displayName": "Codex 5.2 Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex",
+      "displayName": "Codex 5.2",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-fast",
+      "displayName": "Codex 5.2 Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-high",
+      "displayName": "Codex 5.2 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-high-fast",
+      "displayName": "Codex 5.2 High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-xhigh",
+      "displayName": "Codex 5.2 Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.2-codex-xhigh-fast",
+      "displayName": "Codex 5.2 Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-low",
+      "displayName": "Codex 5.1 Max Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-low-fast",
+      "displayName": "Codex 5.1 Max Low Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-medium",
+      "displayName": "Codex 5.1 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-medium-fast",
+      "displayName": "Codex 5.1 Max Medium Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-high",
+      "displayName": "Codex 5.1 Max High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-high-fast",
+      "displayName": "Codex 5.1 Max High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-xhigh",
+      "displayName": "Codex 5.1 Max Extra High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-max-xhigh-fast",
+      "displayName": "Codex 5.1 Max Extra High Fast",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-low",
+      "displayName": "GPT-5.1 Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1",
+      "displayName": "GPT-5.1",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-high",
+      "displayName": "GPT-5.1 High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gemini-3-flash",
+      "displayName": "Gemini 3 Flash",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gemini-3.5-flash",
+      "displayName": "Gemini 3.5 Flash",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-mini-low",
+      "displayName": "Codex 5.1 Mini Low",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-mini",
+      "displayName": "Codex 5.1 Mini",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5.1-codex-mini-high",
+      "displayName": "Codex 5.1 Mini High",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4-sonnet",
+      "displayName": "Sonnet 4",
+      "supportsThinking": false,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "claude-4-sonnet-thinking",
+      "displayName": "Sonnet 4",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gpt-5-mini",
+      "displayName": "GPT-5 Mini",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "gemini-2.5-flash",
+      "displayName": "Gemini 2.5 Flash",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "kimi-k2.7-code",
+      "displayName": "Kimi K2.7 Code",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "glm-5.2-high",
+      "displayName": "GLM 5.2",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    },
+    {
+      "id": "glm-5.2-max",
+      "displayName": "GLM 5.2 Max",
+      "supportsThinking": true,
+      "supportsAgent": true,
+      "supportsMaxMode": true,
+      "variants": []
+    }
+  ],
+  "fetchedAt": 1783951224479
+}

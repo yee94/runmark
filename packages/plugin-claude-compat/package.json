@@ -1,0 +1,33 @@
+{
+  "name": "@runmark/claude-compat-plugin",
+  "version": "0.2.18",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "bin": {
+    "agent-tracker-claude-compat-plugin": "./bin/agent-tracker-claude-compat-install.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "install.sh",
+    "hooks",
+    "README.md",
+    "marketplace"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "clean": "rm -rf dist",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@agent-tracker/shared": "workspace:*",
+    "@types/bun": "latest",
+    "tsdown": "^0.17.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT"
+}

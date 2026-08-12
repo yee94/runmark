@@ -1,0 +1,18 @@
+{
+  "name": "runmark-tracker",
+  "version": "0.2.18",
+  "description": "Tracks AI coding session telemetry (sessions, messages, tools, cost) to a centralized Runmark server.",
+  "author": {
+    "name": "Runmark"
+  },
+  "homepage": "https://github.com/runmark/runmark",
+  "repository": "https://github.com/runmark/runmark",
+  "license": "MIT",
+  "keywords": [
+    "telemetry",
+    "tracking",
+    "analytics",
+    "cost",
+    "tokens"
+  ]
+}

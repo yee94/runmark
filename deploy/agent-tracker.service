@@ -1,0 +1,15 @@
+[Unit]
+Description=Agent Tracker telemetry server
+After=network.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/agent-tracker/packages/server
+EnvironmentFile=/opt/agent-tracker/.env
+ExecStart=/root/.bun/bin/bun src/index.ts
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target

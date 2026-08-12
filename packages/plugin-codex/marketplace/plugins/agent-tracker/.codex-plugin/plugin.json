@@ -1,0 +1,28 @@
+{
+  "name": "agent-tracker",
+  "version": "0.2.5",
+  "description": "Tracks AI coding session telemetry (sessions, messages, tools, cost) to a centralized Runmark server.",
+  "author": {
+    "name": "Runmark"
+  },
+  "homepage": "https://github.com/runmark/runmark",
+  "keywords": [
+    "telemetry",
+    "tracking",
+    "analytics",
+    "cost",
+    "tokens"
+  ],
+  "hooks": "./hooks/hooks.json",
+  "interface": {
+    "displayName": "Runmark",
+    "shortDescription": "Track coding sessions, token usage and cost",
+    "longDescription": "Runmark collates session telemetry from Codex—sessions, messages, tool calls—and sends them to a centralized dashboard. Monitor token usage, costs, and coding patterns across all your AI coding tools.",
+    "developerName": "Runmark",
+    "category": "Developer Tools",
+    "capabilities": [
+      "Read"
+    ],
+    "brandColor": "#6366F1"
+  }
+}

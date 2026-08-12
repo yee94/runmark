@@ -1,0 +1,40 @@
+{
+  "name": "@runmark/grok-plugin",
+  "version": "0.1.1",
+  "private": false,
+  "type": "module",
+  "main": "./dist/index.mjs",
+  "bin": {
+    "agent-tracker-grok-plugin": "./bin/agent-tracker-grok-install.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "install.sh",
+    "hooks",
+    "README.md"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "clean": "rm -rf dist",
+    "test": "bun test",
+    "prepack": "bun run build",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@agent-tracker/shared": "workspace:*",
+    "@types/bun": "latest",
+    "tsdown": "^0.17.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT",
+  "keywords": [
+    "runmark",
+    "agent-tracker",
+    "grok",
+    "grok-build",
+    "telemetry",
+    "hooks"
+  ]
+}

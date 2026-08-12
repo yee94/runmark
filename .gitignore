@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+*.log
+.env
+.env.local
+.DS_Store
+coverage/
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite-journal
+.omo/
+.slim/deepwork/

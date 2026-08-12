@@ -1,0 +1,33 @@
+{
+  "name": "@runmark/runmark",
+  "version": "0.1.7",
+  "private": false,
+  "description": "Runmark 统一客户端安装入口：Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build",
+  "type": "commonjs",
+  "bin": {
+    "runmark": "./bin/runmark"
+  },
+  "files": [
+    "bin",
+    "lib",
+    "install.sh",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "bash -n install.sh && python3 lib/patch_opencode_config_test.py"
+  },
+  "license": "MIT",
+  "keywords": [
+    "runmark",
+    "agent-tracker",
+    "telemetry",
+    "cursor",
+    "opencode",
+    "codex",
+    "claude",
+    "codebuddy",
+    "workbuddy",
+    "grok",
+    "grok-build"
+  ]
+}

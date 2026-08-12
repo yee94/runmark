@@ -1,0 +1,83 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT session-start",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT user-prompt",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT post-tool-use",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "PostToolUseFailure": [
+      {
+        "matcher": ".*",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT post-tool-use-failure",
+            "timeout": 10
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT stop",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "StopFailure": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT stop-failure",
+            "timeout": 15
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "PLACEHOLDER_HOOK_SCRIPT session-end",
+            "timeout": 15
+          }
+        ]
+      }
+    ]
+  }
+}

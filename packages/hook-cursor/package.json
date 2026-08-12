@@ -1,0 +1,27 @@
+{
+  "name": "@runmark/cursor-hooks",
+  "version": "0.2.6",
+  "description": "Cursor IDE hooks for Runmark telemetry (session / message / turn / tool → /v1/ingest)",
+  "type": "module",
+  "bin": {
+    "agent-tracker-cursor": "./dist/cli.mjs"
+  },
+  "files": [
+    "dist",
+    "scripts/run.sh"
+  ],
+  "scripts": {
+    "build": "tsdown",
+    "dev": "tsdown --watch",
+    "clean": "rm -rf dist",
+    "test": "bun test",
+    "typecheck": "tsc -b ../shared && tsc --noEmit"
+  },
+  "devDependencies": {
+    "@agent-tracker/shared": "workspace:*",
+    "@types/bun": "latest",
+    "tsdown": "^0.17.0",
+    "typescript": "^5.5.0"
+  },
+  "license": "MIT"
+}

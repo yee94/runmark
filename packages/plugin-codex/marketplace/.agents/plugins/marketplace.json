@@ -1,0 +1,20 @@
+{
+  "name": "agent-tracker",
+  "interface": {
+    "displayName": "Runmark"
+  },
+  "plugins": [
+    {
+      "name": "agent-tracker",
+      "source": {
+        "source": "local",
+        "path": "./plugins/agent-tracker"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Developer Tools"
+    }
+  ]
+}

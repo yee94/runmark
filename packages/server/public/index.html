@@ -1,0 +1,2092 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="dark" />
+  <title>Runmark</title>
+  <link rel="stylesheet" href="https://unpkg.com/@eficy/shadcn-ui@1.1.3/dist/index.css" />
+  <link rel="stylesheet" href="./style.css?v=runmark-20260717-1" />
+</head>
+<body>
+  <div class="ambient">
+    <div class="glow-blue"></div>
+    <div class="glow-green"></div>
+    <div class="glow-orange"></div>
+  </div>
+  <div id="app"></div>
+
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "shadcn": "https://unpkg.com/@eficy/shadcn-ui@1.1.3/dist/index.js",
+      "marked": "https://cdnjs.cloudflare.com/ajax/libs/marked/16.3.0/lib/marked.esm.min.js",
+      "moment": "https://cdn.jsdelivr.net/npm/moment@2.30.1/+esm",
+      "dompurify": "https://cdn.jsdelivr.net/npm/dompurify@3.4.13/+esm"
+    }
+  }
+  </script>
+
+  <script type="module" src="https://unpkg.com/@eficy/browser@1.2.4/dist/standalone.js"></script>
+  <script type="text/eficy">
+    import { initEficy, render, signal, computed, effect, component, bind, peek, batch, loadModule } from 'eficy'
+    import * as shadcnUi from 'shadcn'
+    import { marked } from 'marked'
+    import DOMPurify from 'dompurify'
+
+    // ─── Destructure shadcn components ───
+    const {
+      Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter,
+      Table, TableHeader, TableBody, TableHead, TableRow, TableCell,
+      Tabs, TabsList, TabsTrigger, TabsContent,
+      Button, Badge, Separator, ScrollArea,
+      Tooltip, TooltipProvider, TooltipTrigger, TooltipContent,
+      Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+      Input, Textarea, Label,
+    } = shadcnUi
+
+    // ─── Signals ───
+    const summary = signal(null)
+    const byModel = signal([])
+    const byAgent = signal([])
+    const dailyStats = signal([])
+    const sessions = signal([])
+    const sessionLimit = 50
+    const sessionOffset = signal(0)
+    const sessionHasMore = signal(false)
+    const sessionQuery = signal('')
+    const sessionSearchInput = signal('')
+    const sessionsLoading = signal(false)
+    const sessionAiSearchLoading = signal(false)
+    const sessionAiResultsMode = signal(false)
+    const sessionAiResultsQuery = signal('')
+    const sessionAiResultIds = signal([])
+    const sessionAiMatchedCount = signal(0)
+    let sessionAiSearchVersion = 0
+    const loading = signal(true)
+    const refreshing = signal(false)
+    const activeTab = signal('summary')
+    const routeSessionId = signal(null)
+    const routeAgentRunId = signal(null)
+    const selectedTraceKey = signal(null)
+    const traceAutoFocusKey = signal(null)
+    const sessionDetails = signal({})
+    const expandedSubagents = signal({})
+    const shareMode = signal(false)
+    const routeShareToken = signal(null)
+    const publicShareLoading = signal(false)
+    const publicShareError = signal('')
+    const publicShareErrorTitle = signal('')
+    const publicShareExpiresAt = signal(null)
+    const publicShareAgentPrompt = signal('')
+    const publicShareSession = signal(null)
+    const publicShareSummaryMarkdown = signal('')
+    const publicShareCounts = signal({ messages: 0, turns: 0, tool_calls: 0 })
+    const publicAgentCopyState = signal('idle')
+    let publicAgentCopyTimer = null
+    const lastRefreshed = signal(null)
+    const statsRange = signal('month')
+    const modelSort = signal('cost')
+    const authenticated = signal(false)
+    const authChecking = signal(true)
+    const authError = signal('')
+    const loginPassword = signal('')
+    const loginSubmitting = signal(false)
+    const isPublicDashboard = signal(false)
+    const cursorStatus = signal(null)
+    const cursorDialogOpen = signal(false)
+    const providerDialogOpen = signal(false)
+    const cursorTokenInput = signal('')
+    const cursorSaving = signal(false)
+    const cursorSyncing = signal(false)
+    const cursorError = signal('')
+    const cursorMessage = signal('')
+    const hoveredDailyRow = signal(null)
+    const dailyChartMetric = signal('cost')
+    const selectedMatterId = signal('matter-pi-plan')
+    const selectedMatterTab = signal('summary')
+    const selectedArchiveId = signal('archive-041')
+    const selectedAgentId = signal('agent-matter-archive')
+    const selectedAgentRunId = signal('run-20260708-1432')
+    const selectedProviderId = signal('provider-openai-prod')
+    const selectedHelpArticleId = signal('quickstart')
+
+    /** 带 Cookie 的 API 请求（Dashboard 登录态） */
+    function apiFetch(url, options) {
+      return fetch(url, { credentials: 'include', ...options })
+    }
+
+    function publicCopyShortcutLabel() {
+      const platform = navigator.userAgentData?.platform || navigator.platform || navigator.userAgent || ''
+      return /Mac|iPhone|iPad|iPod/i.test(platform) ? '⌘C' : 'Ctrl+C'
+    }
+
+    function resetPublicAgentCopyState() {
+      if (publicAgentCopyTimer) clearTimeout(publicAgentCopyTimer)
+      publicAgentCopyTimer = null
+      publicAgentCopyState.value = 'idle'
+    }
+
+    async function tryCopyPublicText(text) {
+      const value = String(text || '')
+      if (!value) return false
+      if (navigator.clipboard?.writeText) {
+        try {
+          await navigator.clipboard.writeText(value)
+          return true
+        } catch (err) {}
+      }
+      let textarea = null
+      try {
+        textarea = document.createElement('textarea')
+        textarea.value = value
+        textarea.setAttribute('readonly', '')
+        textarea.style.position = 'fixed'
+        textarea.style.top = '-9999px'
+        document.body.appendChild(textarea)
+        textarea.select()
+        return document.execCommand('copy') === true
+      } catch (err) {
+        return false
+      } finally {
+        if (textarea?.isConnected) document.body.removeChild(textarea)
+      }
+    }
+
+    async function copyPublicAgentPrompt() {
+      resetPublicAgentCopyState()
+      const copied = await tryCopyPublicText(publicShareAgentPrompt.value)
+      publicAgentCopyState.value = copied ? 'copied' : 'selected'
+      publicAgentCopyTimer = setTimeout(() => { publicAgentCopyState.value = 'idle' }, copied ? 1200 : 3000)
+      if (!copied) {
+        setTimeout(() => {
+          const textarea = document.querySelector('[data-public-agent-prompt]')
+          if (!textarea) {
+            publicAgentCopyState.value = 'limited'
+            return
+          }
+          textarea.focus()
+          textarea.select()
+          textarea.setSelectionRange(0, textarea.value.length)
+        }, 80)
+      }
+    }
+
+    async function checkAuth() {
+      authChecking.value = true
+      try {
+        const res = await apiFetch('/auth/session')
+        const data = await res.json()
+        isPublicDashboard.value = !!data.public
+        authenticated.value = !!data.authenticated
+        if (data.authenticated) {
+          syncRouteFromHash()
+          await Promise.all([fetchData(false), fetchCursorStatus()])
+          startAutoRefresh()
+          loadSystemUpdate()
+        }
+      } catch {
+        authenticated.value = false
+      } finally {
+        authChecking.value = false
+      }
+    }
+
+    async function login() {
+      authError.value = ''
+      loginSubmitting.value = true
+      try {
+        const res = await apiFetch('/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ password: loginPassword.value }),
+        })
+        if (!res.ok) {
+          authError.value = '密码错误。请使用当前服务（' + location.host + '）配置的访问密码，不是其他环境的密码'
+          return
+        }
+        authenticated.value = true
+        loginPassword.value = ''
+        syncRouteFromHash()
+        await Promise.all([fetchData(false), fetchCursorStatus()])
+        startAutoRefresh()
+        loadSystemUpdate()
+      } catch {
+        authError.value = '登录失败，请稍后重试'
+      } finally {
+        loginSubmitting.value = false
+      }
+    }
+
+    async function logout() {
+      try {
+        await apiFetch('/auth/logout', { method: 'POST' })
+      } catch {}
+      if (refreshTimer) clearInterval(refreshTimer)
+      batch(() => {
+        authenticated.value = false
+        loading.value = true
+        summary.value = null
+        byModel.value = []
+        byAgent.value = []
+        dailyStats.value = []
+        sessions.value = []
+        sessionOffset.value = 0
+        sessionHasMore.value = false
+        sessionQuery.value = ''
+        sessionSearchInput.value = ''
+        sessionsLoading.value = false
+        sessionAiSearchVersion += 1
+        sessionAiSearchLoading.value = false
+        sessionAiResultsMode.value = false
+        sessionAiResultsQuery.value = ''
+        sessionAiResultIds.value = []
+        sessionAiMatchedCount.value = 0
+      })
+    }
+
+    const RANGE_OPTIONS = [
+      { k: 'today', label: '今天' },
+      { k: '24h', label: '过去 24 小时' },
+      { k: '7d', label: '过去一周' },
+      { k: 'month', label: '本月' },
+      { k: 'all', label: '全部' },
+    ]
+
+    const VALID_TABS = ['summary', 'models', 'sessions', 'agent-config', 'agent-runs', 'matters', 'system-config', 'help']
+
+    function statsQueryString() {
+      return '?range=' + encodeURIComponent(statsRange.value) + '&sort=' + encodeURIComponent(modelSort.value)
+    }
+
+    function sessionsQueryString(offset = sessionOffset.value) {
+      const params = new URLSearchParams()
+      params.set('limit', String(sessionLimit))
+      params.set('offset', String(Math.max(0, Number(offset) || 0)))
+      const q = String(sessionQuery.value || '').trim()
+      if (q) params.set('q', q)
+      return '?' + params.toString()
+    }
+
+    function applySessionsResult(rows) {
+      const list = Array.isArray(rows) ? rows : []
+      sessions.value = list
+      sessionHasMore.value = list.length >= sessionLimit
+    }
+
+    function restoreNormalSessionListMode() {
+      sessionAiSearchVersion += 1
+      sessionAiSearchLoading.value = false
+      sessionAiResultsMode.value = false
+      sessionAiResultsQuery.value = ''
+      sessionAiResultIds.value = []
+      sessionAiMatchedCount.value = 0
+    }
+
+    function sleep(ms) {
+      return new Promise((resolve) => setTimeout(resolve, ms))
+    }
+
+    function parseSessionSearchOutput(data) {
+      let output = data?.output_json ?? data?.output ?? data
+      if (typeof output === 'string') {
+        try {
+          output = JSON.parse(output)
+        } catch (err) {
+          return null
+        }
+      }
+      return output && Array.isArray(output.session_ids) ? output : null
+    }
+
+    async function fetchAiSessionRows(ids) {
+      const rows = await Promise.all(ids.map(async (id) => {
+        const res = await apiFetch('/v1/sessions/' + encodeURIComponent(id)).catch(() => null)
+        if (!res?.ok) return null
+        return res.json().catch(() => null)
+      }))
+      return rows.filter(Boolean)
+    }
+
+    async function showAiSessionSearchResults(output, query, searchVersion) {
+      const ids = output.session_ids.map((id) => String(id)).filter(Boolean)
+      const rows = await fetchAiSessionRows(ids)
+      if (searchVersion !== sessionAiSearchVersion) return false
+      if (ids.length && !rows.length) throw new Error('AI 搜索已完成，会话详情加载失败')
+      sessionOffset.value = 0
+      sessionHasMore.value = false
+      sessionQuery.value = ''
+      sessionAiResultIds.value = ids
+      sessionAiMatchedCount.value = Number.isFinite(Number(output.matched_count)) ? Number(output.matched_count) : ids.length
+      sessionAiResultsQuery.value = String(output.query || query)
+      sessionAiResultsMode.value = true
+      sessions.value = rows
+      return true
+    }
+
+    async function pollAiSessionSearchJob(jobId, query, searchVersion) {
+      for (let i = 0; i < 90; i++) {
+        if (searchVersion !== sessionAiSearchVersion) return false
+        const res = await apiFetch('/v1/agent-runs/' + encodeURIComponent(jobId)).catch(() => null)
+        const run = res?.ok ? await res.json().catch(() => null) : null
+        if (searchVersion !== sessionAiSearchVersion) return false
+        if (run?.status === 'success') {
+          const output = parseSessionSearchOutput(run)
+          if (!output) throw new Error('AI 搜索结果格式异常')
+          return showAiSessionSearchResults(output, query, searchVersion)
+        }
+        if (run?.status === 'failed') throw new Error(run.error || 'AI 搜索失败')
+        await sleep(2000)
+      }
+      return false
+    }
+
+    async function fetchSessions(showSpinner = false) {
+      if (sessionAiResultsMode.value) return
+      if (showSpinner) sessionsLoading.value = true
+      try {
+        const rows = await apiFetch('/v1/sessions' + sessionsQueryString())
+          .then((r) => r.json())
+          .catch(() => [])
+        if (sessionAiResultsMode.value) return
+        batch(() => {
+          applySessionsResult(rows)
+          sessionsLoading.value = false
+        })
+      } catch {
+        sessionsLoading.value = false
+      }
+    }
+
+    function runSessionSearch() {
+      restoreNormalSessionListMode()
+      sessionQuery.value = String(sessionSearchInput.value || '').trim()
+      sessionOffset.value = 0
+      fetchSessions(true)
+    }
+
+    async function runAiSessionSearch() {
+      const query = String(sessionSearchInput.value || '').trim()
+      if (!query) return
+      restoreNormalSessionListMode()
+      const searchVersion = sessionAiSearchVersion
+      sessionsLoading.value = false
+      sessionAiSearchLoading.value = true
+      try {
+        const res = await apiFetch('/v1/sessions/agent-search', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (searchVersion !== sessionAiSearchVersion) return
+        if (!res.ok) throw new Error(data.error || data.summary || 'AI 搜索启动失败')
+        if (res.status === 202) {
+          if (!data.id) throw new Error('AI 搜索任务缺少任务 ID')
+          await pollAiSessionSearchJob(data.id, query, searchVersion)
+          return
+        }
+        const output = parseSessionSearchOutput(data)
+        if (!output) throw new Error('AI 搜索结果格式异常')
+        await showAiSessionSearchResults(output, query, searchVersion)
+      } catch (err) {
+        if (searchVersion === sessionAiSearchVersion) {
+          sessions.value = []
+          sessionHasMore.value = false
+          sessionAiResultsMode.value = true
+          sessionAiResultsQuery.value = query
+          sessionAiMatchedCount.value = 0
+          sessionAiResultIds.value = []
+        }
+      } finally {
+        if (searchVersion === sessionAiSearchVersion) sessionAiSearchLoading.value = false
+      }
+    }
+
+    function clearSessionSearch() {
+      restoreNormalSessionListMode()
+      sessionSearchInput.value = ''
+      sessionQuery.value = ''
+      sessionOffset.value = 0
+      fetchSessions(true)
+    }
+
+    function prevSessionPage() {
+      if (sessionAiResultsMode.value || sessionOffset.value <= 0 || sessionsLoading.value) return
+      sessionOffset.value = Math.max(0, sessionOffset.value - sessionLimit)
+      fetchSessions(true)
+    }
+
+    function nextSessionPage() {
+      if (sessionAiResultsMode.value || !sessionHasMore.value || sessionsLoading.value) return
+      sessionOffset.value = sessionOffset.value + sessionLimit
+      fetchSessions(true)
+    }
+
+    function setStatsRange(range) {
+      statsRange.value = range
+      fetchData(false)
+    }
+
+    function setModelSort(sort) {
+      modelSort.value = sort
+      fetchData(false)
+    }
+
+    function parseRoute() {
+      const raw = (location.hash || '#/summary').replace(/^#/, '')
+      const [path, query = ''] = raw.split('?')
+      const params = new URLSearchParams(query)
+      const parts = path.split('/').filter(Boolean)
+      if (parts[0] === 'share' && parts[1]) {
+        return { tab: 'share', sessionId: null, agentRunId: null, shareToken: decodeURIComponent(parts[1]) }
+      }
+      if (parts[0] === 'sessions' && parts[1]) {
+        return { tab: 'sessions', sessionId: decodeURIComponent(parts[1]), agentRunId: null }
+      }
+      if (parts[0] === 'agent-runs' && parts[1]) {
+        return { tab: 'agent-runs', sessionId: null, agentRunId: decodeURIComponent(parts[1]) }
+      }
+      const tab = parts[0] || 'summary'
+      return {
+        tab: VALID_TABS.includes(tab) ? tab : 'summary',
+        sessionId: null,
+        agentRunId: null,
+        matterId: params.get('matter') || null,
+        matterTab: params.get('tab') || null,
+        archiveId: params.get('archive') || null,
+        helpArticleId: params.get('article') || null,
+      }
+    }
+
+    function syncRouteFromHash() {
+      const r = parseRoute()
+      if (r.shareToken) return
+      const wasInDetail = routeSessionId.value != null
+      batch(() => {
+        activeTab.value = r.tab
+        routeSessionId.value = r.sessionId
+        routeAgentRunId.value = r.agentRunId
+        if (r.agentRunId) selectedAgentRunId.value = r.agentRunId
+        if (r.tab === 'matters') {
+          if (r.matterId) selectedMatterId.value = r.matterId
+          selectedMatterTab.value = r.matterTab === 'archive' ? 'archive' : 'summary'
+          if (r.archiveId) selectedArchiveId.value = r.archiveId
+        }
+        if (r.tab === 'help' && r.helpArticleId) {
+          selectedHelpArticleId.value = r.helpArticleId
+        }
+        if (!r.sessionId) {
+          selectedTraceKey.value = null
+          traceAutoFocusKey.value = null
+        }
+      })
+      if (r.sessionId) {
+        fetchSessionDetail(r.sessionId)
+      } else if (wasInDetail && r.tab === 'sessions') {
+        fetchData(false)
+      }
+    }
+
+    let publicShareRequestVersion = 0
+    async function fetchPublicShare(token) {
+      const requestVersion = ++publicShareRequestVersion
+      batch(() => {
+        shareMode.value = true
+        routeShareToken.value = token
+        routeSessionId.value = null
+        publicShareLoading.value = true
+        publicShareError.value = ''
+        publicShareErrorTitle.value = ''
+        publicShareExpiresAt.value = null
+        publicShareAgentPrompt.value = ''
+        publicShareSession.value = null
+        publicShareSummaryMarkdown.value = ''
+        publicShareCounts.value = { messages: 0, turns: 0, tool_calls: 0 }
+        authChecking.value = false
+      })
+      resetPublicAgentCopyState()
+      try {
+        const res = await fetch('/v1/public/session-shares/' + encodeURIComponent(token))
+        const data = await res.json().catch(() => ({}))
+        if (requestVersion !== publicShareRequestVersion) return
+        if (!res.ok || !data.session) {
+          if (res.status === 410) {
+            publicShareErrorTitle.value = '分享已过期'
+            publicShareError.value = '此会话分享已超过有效期。'
+          } else if (res.status === 404) {
+            publicShareErrorTitle.value = '分享链接无效或已撤回'
+            publicShareError.value = '请检查链接，或联系分享者重新创建。'
+          } else {
+            publicShareErrorTitle.value = '分享内容加载失败'
+            publicShareError.value = '服务暂时无法加载此分享，请稍后重试。'
+          }
+          return
+        }
+        const session = data.session
+        batch(() => {
+          publicShareSession.value = session
+          publicShareSummaryMarkdown.value = typeof data.summary_markdown === 'string'
+            ? data.summary_markdown
+            : String(session.AISummary || session.ai_summary || '')
+          publicShareCounts.value = {
+            messages: Number(data.counts?.messages) || 0,
+            turns: Number(data.counts?.turns) || 0,
+            tool_calls: Number(data.counts?.tool_calls) || 0,
+          }
+          publicShareExpiresAt.value = data.share?.expires_at || null
+          publicShareAgentPrompt.value = typeof data.agent_prompt === 'string' ? data.agent_prompt : ''
+        })
+      } catch (err) {
+        if (requestVersion === publicShareRequestVersion) {
+          publicShareErrorTitle.value = '分享内容加载失败'
+          publicShareError.value = '服务暂时无法加载此分享，请稍后重试。'
+        }
+      } finally {
+        if (requestVersion === publicShareRequestVersion) publicShareLoading.value = false
+      }
+    }
+
+    function handleHashChange() {
+      const route = parseRoute()
+      if (route.shareToken) {
+        fetchPublicShare(route.shareToken)
+        return
+      }
+      publicShareRequestVersion += 1
+      shareMode.value = false
+      routeShareToken.value = null
+      publicShareAgentPrompt.value = ''
+      publicShareSession.value = null
+      publicShareSummaryMarkdown.value = ''
+      publicShareCounts.value = { messages: 0, turns: 0, tool_calls: 0 }
+      resetPublicAgentCopyState()
+      if (authenticated.value) {
+        syncRouteFromHash()
+      } else {
+        checkAuth()
+      }
+    }
+
+    function bootstrapRoute() {
+      const route = parseRoute()
+      if (route.shareToken) {
+        fetchPublicShare(route.shareToken)
+        return
+      }
+      checkAuth()
+    }
+
+    function navigate(tab, sessionId) {
+      if (sessionId) {
+        location.hash = '#/sessions/' + encodeURIComponent(sessionId)
+      } else {
+        location.hash = '#/' + tab
+      }
+    }
+
+    function openAgentRun(runId) {
+      location.hash = '#/agent-runs/' + encodeURIComponent(runId)
+    }
+
+    function focusMatterRoute(matterId, options = {}) {
+      if (activeTab.value !== 'matters') return
+      const tab = options.tab || selectedMatterTab.value || 'summary'
+      const archive = options.archive || selectedArchiveId.value
+      const params = new URLSearchParams()
+      params.set('tab', tab)
+      params.set('matter', matterId)
+      if (tab === 'archive' && archive) params.set('archive', archive)
+      const hash = '#/matters?' + params.toString()
+      if (location.hash !== hash) {
+        history.replaceState(null, '', hash)
+      }
+    }
+
+    function focusHelpArticleRoute(articleId) {
+      const params = new URLSearchParams()
+      params.set('article', articleId)
+      const hash = '#/help?' + params.toString()
+      if (location.hash !== hash) {
+        history.replaceState(null, '', hash)
+      }
+    }
+
+    window.addEventListener('hashchange', handleHashChange)
+
+    function formatPct(n) {
+      if (n == null || !Number.isFinite(n)) return '0%'
+      return (n * 100).toFixed(1) + '%'
+    }
+
+    function pctPart(part, total) {
+      if (!total) return 0
+      return part / total
+    }
+
+    const TOKEN_SEGMENTS = [
+      { key: 'input', label: 'Input', color: 'var(--brand-blue)' },
+      { key: 'cache_read', label: 'Cache 读', color: 'var(--brand-orange)' },
+      { key: 'cache_write', label: 'Cache 写', color: 'var(--progress-warn)' },
+      { key: 'output', label: 'Output', color: 'var(--brand-green)' },
+      { key: 'reasoning', label: 'Reasoning', color: 'var(--brand-purple)' },
+    ]
+
+    // 模型叠加柱配色（暗色背景友好，避免全蓝）
+    const MODEL_COLORS = [
+      '#4ade80', '#ff9a4d', '#b86dff', '#f87171',
+      '#38bdf8', '#fbbf24', '#a78bfa', '#2dd4bf',
+      '#fb923c', '#818cf8', '#f472b6', '#34d399',
+    ]
+    const _modelColorMap = {}
+    let _modelColorIdx = 0
+    function colorForModel(label) {
+      if (!label) return MODEL_COLORS[0]
+      if (_modelColorMap[label]) return _modelColorMap[label]
+      _modelColorMap[label] = MODEL_COLORS[_modelColorIdx % MODEL_COLORS.length]
+      _modelColorIdx++
+      return _modelColorMap[label]
+    }
+
+    function formatDateShort(iso) {
+      if (!iso) return '—'
+      const d = new Date(iso + 'T00:00:00')
+      if (Number.isNaN(d.getTime())) return String(iso).slice(5)
+      return (d.getMonth() + 1) + '/' + d.getDate()
+    }
+
+    // ─── Formatters ───
+    function formatTokens(n) {
+      if (n == null) return '0'
+      if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
+      if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
+      return String(n)
+    }
+
+    function formatCost(cny) {
+      if (cny == null) return '¥0.00'
+      if (cny >= 1000) return '¥' + cny.toFixed(2)
+      if (cny >= 1) return '¥' + cny.toFixed(2)
+      return '¥' + cny.toFixed(4)
+    }
+
+    function formatDuration(ms) {
+      if (ms == null) return '—'
+      if (ms >= 60000) return (ms / 60000).toFixed(1) + ' min'
+      if (ms >= 1000) return (ms / 1000).toFixed(1) + 's'
+      return ms + 'ms'
+    }
+
+    /** 会话持续时间（缩写）：started → 最后一条消息或 ended_at */
+    function formatSessionDuration(ms) {
+      if (ms == null || ms < 0) return '—'
+      if (ms < 60000) return Math.max(1, Math.round(ms / 1000)) + 's'
+      if (ms < 3600000) return Math.round(ms / 60000) + 'm'
+      if (ms < 86400000) {
+        const h = Math.floor(ms / 3600000)
+        const m = Math.round((ms % 3600000) / 60000)
+        return m > 0 ? h + 'h ' + m + 'm' : h + 'h'
+      }
+      const d = Math.floor(ms / 86400000)
+      const h = Math.round((ms % 86400000) / 3600000)
+      return h > 0 ? d + 'd ' + h + 'h' : d + 'd'
+    }
+
+    const BEIJING_TIME_FORMAT = new Intl.DateTimeFormat('zh-CN', {
+      timeZone: 'Asia/Shanghai',
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      hour: '2-digit',
+      minute: '2-digit',
+      second: '2-digit',
+      hourCycle: 'h23',
+    })
+
+    function formatDateTime(iso) {
+      if (!iso) return '—'
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return '—'
+      const parts = BEIJING_TIME_FORMAT.formatToParts(d).reduce((acc, part) => {
+        acc[part.type] = part.value
+        return acc
+      }, {})
+      return parts.year + '-' + parts.month + '-' + parts.day + ' ' + parts.hour + ':' + parts.minute + ':' + parts.second
+    }
+
+    /** 北京时区日历日 YYYY-MM-DD，用于「今天/昨天」口语化 */
+    function beijingYmd(date) {
+      const parts = new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+      }).formatToParts(date).reduce((acc, part) => {
+        acc[part.type] = part.value
+        return acc
+      }, {})
+      return parts.year + '-' + parts.month + '-' + parts.day
+    }
+
+    function beijingHm(date) {
+      const parts = new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      }).formatToParts(date).reduce((acc, part) => {
+        acc[part.type] = part.value
+        return acc
+      }, {})
+      return parts.hour + ':' + parts.minute
+    }
+
+    /** 口语化相对时间：今天 3 分钟前 / 昨天 2 小时前 / 前天 15:32 */
+    function formatRelativeTime(iso) {
+      if (!iso) return '—'
+      const d = new Date(iso)
+      if (Number.isNaN(d.getTime())) return '—'
+
+      const now = Date.now()
+      let diff = now - d.getTime()
+      if (diff < 0) diff = 0
+
+      const sec = Math.floor(diff / 1000)
+      if (sec < 45) return '刚刚'
+
+      const min = Math.floor(sec / 60)
+      const hour = Math.floor(min / 60)
+
+      const targetDay = beijingYmd(d)
+      const today = beijingYmd(new Date(now))
+      const yesterday = beijingYmd(new Date(now - 86400000))
+      const dayBefore = beijingYmd(new Date(now - 2 * 86400000))
+
+      if (targetDay === today) {
+        if (min < 60) return '今天 ' + min + ' 分钟前'
+        return '今天 ' + hour + ' 小时前'
+      }
+      if (targetDay === yesterday) {
+        if (min < 60) return '昨天 ' + min + ' 分钟前'
+        if (hour < 24) return '昨天 ' + hour + ' 小时前'
+        return '昨天 ' + beijingHm(d)
+      }
+      if (targetDay === dayBefore) return '前天 ' + beijingHm(d)
+
+      const days = Math.floor(hour / 24)
+      if (days < 7) return days + ' 天前'
+
+      const parts = BEIJING_TIME_FORMAT.formatToParts(d).reduce((acc, part) => {
+        acc[part.type] = part.value
+        return acc
+      }, {})
+      const sameYear = parts.year === today.slice(0, 4)
+      if (sameYear) return Number(parts.month) + '月' + Number(parts.day) + '日 ' + parts.hour + ':' + parts.minute
+      return parts.year + '-' + parts.month + '-' + parts.day + ' ' + parts.hour + ':' + parts.minute
+    }
+
+    /** 模型图标匹配逻辑（对齐 shared/model-id canonicalize，长名优先） */
+    const MODEL_ICON_BASE = [
+      'codebuddy', 'geminicli',
+      'claude', 'composer', 'cursor', 'deepseek', 'doubao', 'gemini', 'gemma',
+      'glm', 'gpt', 'grok', 'hunyuan', 'hy', 'kimi', 'knot', 'longcat',
+      'minimax', 'qwen', 'seed', 'with', 'yuanbao', 'claw', 'echo'
+    ];
+    const MODEL_ICON_NAMES = MODEL_ICON_BASE.slice().sort((a, b) => b.length - a.length);
+    const MODEL_ICON_EXT = {}
+    MODEL_ICON_BASE.forEach((name) => {
+      MODEL_ICON_EXT[name] = name === 'knot' || name === 'cursor' ? 'png' : 'svg'
+    })
+    MODEL_ICON_EXT.unknown = 'svg'
+    /** 品牌别名 → 已有图标文件（对齐 model-id / 定价族） */
+    const MODEL_ICON_ALIASES = {
+      hy3: 'hy',
+      hunyuan3: 'hy',
+      hunyuan: 'hy',
+      moonshot: 'kimi',
+      anthropic: 'claude',
+      openai: 'gpt',
+      xai: 'grok',
+      google: 'gemini',
+      aliyun: 'qwen',
+      zhipu: 'glm',
+    }
+    const MODEL_CHANNEL_SUFFIXES = [
+      '-volc-ioa', '-ioa', '-official', '-external', '-internal', '-preview',
+    ]
+
+    function normalizeModelKey(name) {
+      return String(name || '').trim().toLowerCase()
+    }
+
+    function stripModelName(name) {
+      return normalizeModelKey(name).replace(/[^a-z0-9]/g, '')
+    }
+
+    /** 对齐 shared canonicalizeModelId：剥渠道后缀后再匹配品牌图标 */
+    function canonicalizeModelForIcon(model) {
+      let current = normalizeModelKey(model).replace(/[._]/g, '-').replace(/-+/g, '-').replace(/^-|-$/g, '')
+      let changed = true
+      while (changed) {
+        changed = false
+        for (const suffix of MODEL_CHANNEL_SUFFIXES) {
+          if (current.endsWith(suffix) && current.length > suffix.length) {
+            current = current.slice(0, -suffix.length)
+            changed = true
+            break
+          }
+        }
+      }
+      if (/(^|-)\d+m$/.test(current)) current = current.replace(/-\d+m$/, '')
+      if (MODEL_ICON_ALIASES[current]) return MODEL_ICON_ALIASES[current]
+      // hy3 / hunyuan-3 等短别名
+      if (current === 'hy3' || current === 'hunyuan-3' || current === 'hunyuan3') return 'hy'
+      return current
+    }
+
+    function modelIconFile(icon) {
+      const mapped = MODEL_ICON_ALIASES[icon] || icon
+      const ext = MODEL_ICON_EXT[mapped] || 'svg'
+      return '/model-icons/' + mapped + '.' + ext
+    }
+
+    function matchIconFromStripped(stripped) {
+      if (!stripped) return null
+      const key = stripped.toLowerCase()
+      for (const icon of MODEL_ICON_NAMES) {
+        const iconKey = icon.toLowerCase()
+        if (key.includes(iconKey)) return icon
+      }
+      if (key.length >= 3) {
+        for (const icon of MODEL_ICON_NAMES) {
+          const iconKey = icon.toLowerCase()
+          if (iconKey.includes(key)) return icon
+        }
+      }
+      let best = null
+      let bestLen = 0
+      for (const icon of MODEL_ICON_NAMES) {
+        const iconKey = icon.toLowerCase()
+        let prefixLen = 0
+        const minLen = Math.min(key.length, iconKey.length)
+        for (let i = 0; i < minLen; i++) {
+          if (key[i] !== iconKey[i]) break
+          prefixLen++
+        }
+        if (prefixLen >= 3 && prefixLen > bestLen) {
+          bestLen = prefixLen
+          best = icon
+        }
+      }
+      return best
+    }
+
+    function resolveModelIconUrl(modelName, providerName) {
+      const keys = []
+      const canonical = canonicalizeModelForIcon(modelName)
+      const modelKey = stripModelName(canonical)
+      const rawKey = stripModelName(modelName)
+      const providerKey = stripModelName(providerName)
+      if (modelKey) keys.push(modelKey)
+      if (rawKey && rawKey !== modelKey) keys.push(rawKey)
+      if (providerKey) keys.push(providerKey)
+      if (modelKey && providerKey) keys.push(providerKey + modelKey, modelKey + providerKey)
+      for (const stripped of keys) {
+        const icon = matchIconFromStripped(stripped)
+        if (icon) return modelIconFile(icon)
+      }
+      // o 系列（o3 / o4-mini）归到 gpt
+      if (/(^|-)o\d/.test(canonical) || /^o\d/.test(modelKey)) return modelIconFile('gpt')
+      return modelIconFile('unknown')
+    }
+
+    /** Agent 客户端图标（会话列表 / 总览 Agent 列） */
+    const AGENT_ICON_NAMES = ['opencode', 'cursor', 'codebuddy', 'workbuddy', 'claude', 'codex', 'grok']
+    const AGENT_LABELS = {
+      opencode: 'OpenCode',
+      cursor: 'Cursor',
+      codebuddy: 'CodeBuddy',
+      workbuddy: 'WorkBuddy',
+      claude: 'Claude',
+      tclaude: 'Claude',
+      claudecode: 'Claude',
+      codex: 'Codex',
+      grok: 'Grok',
+    }
+    function resolveAgentIconUrl(agentName) {
+      const key = normalizeModelKey(agentName)
+      if (!key || key === '—') return null
+      if (AGENT_ICON_NAMES.includes(key)) return '/agent-icons/' + key + '.svg'
+      // 兼容别名：tclaude → claude
+      if (key === 'tclaude' || key === 'claudecode') return '/agent-icons/claude.svg'
+      return null
+    }
+    /** Agent 展示名：按品牌大小写（OpenCode / CodeBuddy 等） */
+    function formatAgentLabel(agentName) {
+      const raw = String(agentName || '').trim()
+      if (!raw || raw === '—') return '—'
+      const key = normalizeModelKey(raw)
+      return AGENT_LABELS[key] || raw
+    }
+
+    /** 将消息内容渲染为可读文本，兼容历史 JSON 脏数据 */
+    function formatMessageContent(content) {
+      if (content == null) return ''
+      if (typeof content !== 'string') return String(content)
+      const trimmed = content.trim()
+      if (!trimmed) return ''
+      if (!trimmed.startsWith('{') && !trimmed.startsWith('[')) return trimmed
+      try {
+        const parsed = JSON.parse(trimmed)
+        if (typeof parsed === 'string') return parsed
+        if (parsed.summary?.body) return parsed.summary.body
+        if (parsed.summary?.title) return parsed.summary.title
+        if (typeof parsed.text === 'string') return parsed.text
+        if (typeof parsed.prompt === 'string') return parsed.prompt
+        if (Array.isArray(parsed)) {
+          return parsed
+            .filter(p => p && p.type === 'text' && p.text)
+            .map(p => p.text)
+            .join('\n')
+            .trim() || trimmed
+        }
+        return trimmed
+      } catch {
+        return trimmed
+      }
+    }
+
+    /** 过滤 OpenCode 元数据 JSON 等垃圾消息 */
+    function isGarbageMessage(content) {
+      if (content == null) return true
+      const trimmed = String(content).trim()
+      if (!trimmed) return true
+      if (!trimmed.startsWith('{')) return false
+      try {
+        const p = JSON.parse(trimmed)
+        if (p.role && p.sessionID && p.agent && !p.summary?.body && !p.summary?.title) return true
+      } catch {}
+      return false
+    }
+
+    /** 解析 session metadata JSON */
+    function parseSessionMetadata(raw) {
+      if (!raw) return {}
+      if (typeof raw === 'object') return raw
+      try { return JSON.parse(raw) } catch { return {} }
+    }
+
+    // ─── System update module（懒加载，checkAuth/login 后触发） ───
+    let systemUpdateMod = null
+    const systemUpdateReady = signal(false)
+    async function loadSystemUpdate() {
+      if (systemUpdateMod) return
+      const mod = await loadModule('./modules/system-update.eficy.js')
+      systemUpdateMod = mod.createSystemUpdateModule({
+        apiFetch,
+        shadcnUi: {
+          Dialog, DialogClose, DialogContent, DialogDescription,
+          DialogFooter, DialogHeader, DialogTitle, Button,
+        },
+      })
+      systemUpdateReady.value = true
+      systemUpdateMod.initialCheck()
+    }
+
+    const SidebarUpdateButtonWrapper = component(() => {
+      if (!systemUpdateReady.value || !systemUpdateMod) return null
+      const { SidebarUpdateButton } = systemUpdateMod
+      return <SidebarUpdateButton />
+    })
+
+    const UpdateDialogWrapper = component(() => {
+      if (!systemUpdateReady.value || !systemUpdateMod) return null
+      const { UpdateDialog } = systemUpdateMod
+      return <UpdateDialog />
+    })
+
+    const traceMod = await loadModule('./modules/trace.eficy.js')
+    const { isForkSession, forkParentSessionId, mergeForkTraceItems } = traceMod.createTraceHelpers({
+      formatMessageContent,
+      isGarbageMessage,
+      parseSessionMetadata,
+      formatTokens,
+      formatCost,
+      formatDuration,
+      formatSessionDuration,
+      expandedSubagents,
+    })
+
+    // ─── Data loading ───
+    async function fetchCursorStatus() {
+      try {
+        const res = await apiFetch('/v1/cursor/status')
+        if (res.ok) {
+          cursorStatus.value = await res.json()
+        }
+      } catch {
+        // silent
+      }
+    }
+
+    async function saveCursorToken() {
+      cursorError.value = ''
+      cursorMessage.value = ''
+      const token = cursorTokenInput.value.trim()
+      if (!token) {
+        cursorError.value = '请粘贴 WorkosCursorSessionToken'
+        return
+      }
+      cursorSaving.value = true
+      try {
+        const res = await apiFetch('/v1/cursor/cookies', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionToken: token, source: 'dashboard' }),
+        })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          cursorError.value = data.error || '保存失败'
+          return
+        }
+        cursorStatus.value = data.status || cursorStatus.value
+        cursorTokenInput.value = ''
+        cursorMessage.value = '已保存，后台将自动拉取 Cursor 账单并对账到会话'
+        await fetchData(true)
+      } catch {
+        cursorError.value = '保存失败，请稍后重试'
+      } finally {
+        cursorSaving.value = false
+      }
+    }
+
+    async function syncCursorNow() {
+      cursorError.value = ''
+      cursorMessage.value = ''
+      cursorSyncing.value = true
+      try {
+        const res = await apiFetch('/v1/cursor/sync', { method: 'POST' })
+        const data = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          cursorError.value = data.error || '同步失败'
+          return
+        }
+        cursorStatus.value = data.status || cursorStatus.value
+        cursorMessage.value = '同步完成'
+        await fetchData(true)
+      } catch {
+        cursorError.value = '同步失败，请稍后重试'
+      } finally {
+        cursorSyncing.value = false
+      }
+    }
+
+    async function clearCursorToken() {
+      cursorError.value = ''
+      cursorMessage.value = ''
+      try {
+        const res = await apiFetch('/v1/cursor/cookies', { method: 'DELETE' })
+        if (res.ok) {
+          const data = await res.json()
+          cursorStatus.value = data.status || null
+          cursorMessage.value = '已清除 Cursor Session Token'
+        }
+      } catch {
+        cursorError.value = '清除失败'
+      }
+    }
+
+    async function fetchData(showRefreshSpinner = false) {
+      if (showRefreshSpinner) {
+        refreshing.value = true
+      } else {
+        loading.value = true
+      }
+      try {
+        const qs = statsQueryString()
+        const [summaryRes, modelRes, agentRes, dailyRes, sessionsRes] = await Promise.all([
+          apiFetch('/v1/stats/summary' + qs).then(r => r.json()).catch(() => null),
+          apiFetch('/v1/stats/by-model' + qs).then(r => r.json()).catch(() => []),
+          apiFetch('/v1/stats/by-agent' + qs).then(r => r.json()).catch(() => []),
+          apiFetch('/v1/stats/daily' + qs).then(r => r.json()).catch(() => []),
+          sessionAiResultsMode.value
+            ? Promise.resolve(null)
+            : apiFetch('/v1/sessions' + sessionsQueryString()).then(r => r.json()).catch(() => []),
+        ])
+        batch(() => {
+          summary.value = summaryRes
+          byModel.value = modelRes
+          byAgent.value = agentRes
+          dailyStats.value = dailyRes
+          if (!sessionAiResultsMode.value) applySessionsResult(sessionsRes)
+          loading.value = false
+          refreshing.value = false
+          if (!sessionAiResultsMode.value) sessionsLoading.value = false
+          lastRefreshed.value = new Date().toISOString()
+        })
+      } catch (e) {
+        batch(() => {
+          loading.value = false
+          refreshing.value = false
+        })
+      }
+    }
+
+    async function fetchChildDetail(rootSessionId, childSessionId) {
+      const root = sessionDetails.value[rootSessionId]
+      if (!root) return
+      if (root.childDetails && root.childDetails[childSessionId]) return
+      try {
+        const [msgs, turns, tools, children] = await Promise.all([
+          apiFetch('/v1/sessions/' + childSessionId + '/messages').then(r => r.json()).catch(() => []),
+          apiFetch('/v1/sessions/' + childSessionId + '/turns').then(r => r.json()).catch(() => []),
+          apiFetch('/v1/sessions/' + childSessionId + '/tool-calls').then(r => r.json()).catch(() => []),
+          apiFetch('/v1/sessions/' + childSessionId + '/children').then(r => r.json()).catch(() => []),
+        ])
+        const prev = sessionDetails.value[rootSessionId] || {}
+        batch(() => {
+          sessionDetails.value = {
+            ...sessionDetails.value,
+            [rootSessionId]: {
+              ...prev,
+              childDetails: {
+                ...(prev.childDetails || {}),
+                [childSessionId]: { messages: msgs, turns, tools, children },
+              },
+            },
+          }
+        })
+      } catch {
+        // silent
+      }
+    }
+
+    async function toggleSubagent(rootSessionId, childSessionId) {
+      const expanded = { ...expandedSubagents.value }
+      const next = !expanded[childSessionId]
+      expanded[childSessionId] = next
+      expandedSubagents.value = expanded
+      if (next) await fetchChildDetail(rootSessionId, childSessionId)
+    }
+
+    /** 进入调用链时默认聚焦最后一条助手回复，否则取时间线末项 */
+    function pickDefaultTraceKey(items) {
+      if (!items.length) return null
+      for (let i = items.length - 1; i >= 0; i--) {
+        const it = items[i]
+        if (it.kind === 'message' && it.role === 'assistant') return it.key
+      }
+      return items[items.length - 1].key
+    }
+
+    async function fetchSessionDetail(sessionId) {
+      const ensureSelection = (detail, session) => {
+        const items = mergeForkTraceItems(session, detail)
+        const key = pickDefaultTraceKey(items)
+        if (key) {
+          selectedTraceKey.value = key
+          traceAutoFocusKey.value = key
+        }
+      }
+      const cached = sessionDetails.value[sessionId]
+      const cachedSession = sessions.value.find(s => s.id === sessionId) || cached?.session || null
+      if (cached && (!isForkSession(cachedSession) || cached.forkParent)) {
+        ensureSelection(cached, cachedSession)
+        return
+      }
+      try {
+        const sessionRes = await apiFetch('/v1/sessions/' + sessionId).then(r => r.json()).catch(() => null)
+        const forkParentId = sessionRes?.fork_parent_session_id || null
+        const fetches = [
+          apiFetch('/v1/sessions/' + sessionId + '/messages').then(r => r.json()).catch(() => []),
+          apiFetch('/v1/sessions/' + sessionId + '/turns').then(r => r.json()).catch(() => []),
+          apiFetch('/v1/sessions/' + sessionId + '/tool-calls').then(r => r.json()).catch(() => []),
+          apiFetch('/v1/sessions/' + sessionId + '/children').then(r => r.json()).catch(() => []),
+        ]
+        if (forkParentId) {
+          fetches.push(apiFetch('/v1/sessions/' + forkParentId).then(r => r.json()).catch(() => null))
+          fetches.push(apiFetch('/v1/sessions/' + forkParentId + '/messages?limit=1').then(r => r.json()).catch(() => []))
+        }
+        const results = await Promise.all(fetches)
+        const msgs = results[0]
+        const turns = results[1]
+        const tools = results[2]
+        const children = results[3]
+        const forkParent = forkParentId ? results[4] : null
+        const forkParentMsgs = forkParentId ? results[5] : null
+        const detail = {
+          messages: msgs,
+          turns,
+          tools,
+          children,
+          childDetails: {},
+          session: sessionRes,
+          forkParent,
+          forkParentFirstMessage: Array.isArray(forkParentMsgs) ? forkParentMsgs[0] : null,
+        }
+        batch(() => {
+          sessionDetails.value = { ...sessionDetails.value, [sessionId]: detail }
+        })
+        ensureSelection(detail, sessionRes)
+      } catch {
+        // silent
+      }
+    }
+
+    function openSession(sessionId) {
+      selectedTraceKey.value = null
+      traceAutoFocusKey.value = null
+      expandedSubagents.value = {}
+      navigate('sessions', sessionId)
+    }
+
+    // ─── Auto-refresh every 30s ───
+    let refreshTimer = null
+    function startAutoRefresh() {
+      refreshTimer = setInterval(() => fetchData(false), 30000)
+    }
+
+    // ─── Initial load ───
+    bootstrapRoute()
+
+    // ─── Computed KPI values ───
+    const kpiSessions = computed(() => summary.value?.sessions ?? 0)
+    const kpiTurns = computed(() => summary.value?.turns ?? 0)
+    const kpiTokens = computed(() => formatTokens(summary.value?.tokens?.total ?? 0))
+    const kpiCost = computed(() => formatCost(summary.value?.cost_cny ?? 0))
+
+    const summaryEfficiency = computed(() => {
+      const s = summary.value
+      if (!s) return null
+      const sessions = s.sessions || 0
+      const turns = s.turns || 0
+      const tokens = s.tokens?.total || 0
+      const cost = s.cost_cny || 0
+      const cacheRead = s.tokens?.cache_read || 0
+      const input = s.tokens?.input || 0
+      const cacheDenom = input + cacheRead
+      return {
+        avgTokensPerTurn: turns ? Math.round(tokens / turns) : 0,
+        avgCostPerSession: sessions ? cost / sessions : 0,
+        avgCostPerTurn: turns ? cost / turns : 0,
+        cacheHitRatio: cacheDenom ? cacheRead / cacheDenom : 0,
+      }
+    })
+
+    const topModels = computed(() => byModel.value.slice(0, 5))
+    const topModelMax = computed(() => {
+      const rows = topModels.value
+      if (!rows.length) return 0
+      return Math.max(...rows.map(r => r.total_cost_cny || 0))
+    })
+
+    const topAgents = computed(() => byAgent.value.slice(0, 6))
+    const topAgentMax = computed(() => {
+      const rows = topAgents.value
+      if (!rows.length) return 0
+      return Math.max(...rows.map(r => r.total_cost_cny || 0))
+    })
+
+    const dailyChart = computed(() => {
+      const rows = dailyStats.value || []
+      if (!rows.length) return { rows: [], maxTokens: 0, maxCost: 0 }
+      const maxTokens = Math.max(...rows.map(r => r.total_tokens || 0), 1)
+      const maxCost = Math.max(...rows.map(r => r.total_cost_cny || 0), 0.0001)
+      return { rows, maxTokens, maxCost }
+    })
+
+    // 全部日行模型 label → 按 dailyChartMetric 聚合，取 Top 8 作为图例
+    const dailyModelLegend = computed(() => {
+      const rows = dailyStats.value || []
+      const metric = dailyChartMetric.value
+      const agg = {}
+      for (const row of rows) {
+        for (const m of (row.models || [])) {
+          const lbl = m.label || m.model || 'unknown'
+          const val = metric === 'cost' ? (m.total_cost_cny || 0) : (m.total_tokens || 0)
+          agg[lbl] = (agg[lbl] || 0) + val
+        }
+      }
+      return Object.entries(agg)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 8)
+        .map(([label]) => ({ label, color: colorForModel(label) }))
+    })
+
+    const topCostSessions = computed(() => {
+      return [...(sessions.value || [])]
+        .sort((a, b) => (b.total_cost_cny || 0) - (a.total_cost_cny || 0))
+        .slice(0, 5)
+    })
+
+    // 加载图标模块（JSX 浏览器端编译）
+    const icons = await loadModule("./modules/icons.eficy.js?v=help-20260708-1")
+    const { ActivityIcon, ChevronIcon, SessionsIcon, TurnsIcon, TokensIcon, CostIcon, LayoutIcon, CpuIcon, ListIcon, InboxIcon, BotIcon, ArchiveIcon, SettingsIcon, HelpIcon } = icons
+
+    // RefreshIcon 在内联定义（依赖 refreshing signal）
+    const RefreshIcon = component(() => (
+      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={refreshing.value ? "refresh-spin" : ""}>
+        <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8" />
+        <path d="M21 3v5h-5" />
+        <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16" />
+        <path d="M3 21v-5h5" />
+      </svg>
+    ))
+
+    const tabLabels = { summary: '总览', models: '模型', sessions: '会话', 'agent-config': '智能体配置', 'agent-runs': '调用记录', matters: '事项归档', 'system-config': '系统配置', help: '帮助中心' }
+
+    // ─── Stats filter toolbar ───
+    const StatsToolbar = component(() => (
+      <div className="stats-toolbar">
+        <div className="stats-filter-group">
+          <span className="stats-filter-label">时间</span>
+          {RANGE_OPTIONS.map((opt) => (
+            <span
+              key={opt.k}
+              className={'filter-chip' + (statsRange.value === opt.k ? ' filter-chip--active' : '')}
+              onClick={() => setStatsRange(opt.k)}
+            >{opt.label}</span>
+          ))}
+        </div>
+        {activeTab.value !== 'summary' ? (
+          <div className="stats-filter-group">
+            <span className="stats-filter-label">排序</span>
+            <span
+              className={'filter-chip' + (modelSort.value === 'tokens' ? ' filter-chip--active' : '')}
+              onClick={() => setModelSort('tokens')}
+            >Token ↓</span>
+            <span
+              className={'filter-chip' + (modelSort.value === 'cost' ? ' filter-chip--active' : '')}
+              onClick={() => setModelSort('cost')}
+            >Cost ↓</span>
+          </div>
+        ) : null}
+      </div>
+    ))
+
+    // ─── Section Title ───
+    const SectionTitle = component(({ title, subtitle, actions }) => (
+      <div className="section-title-block">
+        {actions ? (
+          <div className="section-title-row">
+            <p className="section-title-main">{title}</p>
+            <div className="section-title-actions">{actions}</div>
+          </div>
+        ) : (
+          <p className="section-title-main">{title}</p>
+        )}
+        {subtitle ? <p className="section-title-sub">{subtitle}</p> : null}
+      </div>
+    ))
+
+    // ─── KPI Card Component ───
+    const KpiCard = component(({ label, value, sub, variant, icon }) => (
+      <div className={'kpi-card kpi-card--' + variant + ' fade-up'}>
+        <div className="kpi-card-top">
+          <span className="kpi-label">{label}</span>
+          <div className={'kpi-icon kpi-icon--' + variant}>{icon}</div>
+        </div>
+        <p className="kpi-value digits">{value}</p>
+        {sub ? <p className="kpi-sub digits">{sub}</p> : null}
+      </div>
+    ))
+
+    // ─── Empty State Component ───
+    const EmptyState = component(({ message }) => (
+      <div className="empty-state">
+        <div className="empty-icon"><InboxIcon /></div>
+        <p>{message}</p>
+        <p style={{ fontSize: '11px', opacity: 0.65 }}>
+          还没有上报数据？先打开{' '}
+          <span className="panel-link" onClick={() => navigate('help')}>帮助中心</span>
+          {' '}完成客户端接入
+        </p>
+      </div>
+    ))
+
+    // ─── 首次空数据欢迎条：引导去帮助中心 ───
+    const WelcomeSetupBanner = component(() => {
+      if ((summary.value?.sessions ?? 0) > 0) return null
+      return (
+        <div className="welcome-setup-banner fade-up fade-up-d2">
+          <div className="welcome-setup-copy">
+            <div className="welcome-setup-kicker">欢迎使用 Runmark</div>
+            <div className="welcome-setup-title">服务已就绪，下一步去帮助中心接入客户端</div>
+            <p className="welcome-setup-desc">
+              Cursor / OpenCode / Codex 的统一配置、插件安装与验证步骤都在帮助中心。
+              完成接入后，会话与费用会自动出现在总览。
+            </p>
+          </div>
+          <button className="login-btn welcome-setup-btn" onClick={() => navigate('help')}>
+            打开帮助中心
+          </button>
+        </div>
+      )
+    })
+
+    // ─── Summary panels loaded from modules/summary.eficy.js ───
+
+    // ─── ModelRow loaded from modules/models.eficy.js ───
+
+    // ─── SessionRow loaded from modules/sessions-list.eficy.js ───
+
+    // ══════════════════════════════════════════════════════════
+    // Page module lazy loading（按需加载各 tab 页面模块）
+    // ══════════════════════════════════════════════════════════
+
+    const loadedSummary = signal(false)
+    const loadedModels = signal(false)
+    const loadedSessionsList = signal(false)
+    const loadedAgentConfig = signal(false)
+    const loadedAgentRuns = signal(false)
+    const loadedSystemConfig = signal(false)
+    const loadedMatters = signal(false)
+    const loadedHelpCenter = signal(false)
+
+    // ─── Summary panels ───
+    let SummaryPanels = null
+    async function loadSummaryPanels() {
+      if (SummaryPanels) return
+      const mod = await loadModule('./modules/summary.eficy.js')
+      SummaryPanels = mod.createSummaryPanels({
+        summary, summaryEfficiency, dailyChart, dailyModelLegend, hoveredDailyRow, dailyChartMetric, topAgents, topAgentMax, topModels, topModelMax, topCostSessions,
+        statsRange, modelSort, activeTab,
+        formatPct, pctPart, formatTokens, formatCost, formatDateShort, resolveModelIconUrl, resolveAgentIconUrl, formatAgentLabel, colorForModel,
+        TOKEN_SEGMENTS, RANGE_OPTIONS,
+        setStatsRange, setModelSort, openSession, navigate,
+        SectionTitle, EmptyState,
+      })
+      loadedSummary.value = true
+    }
+
+    const SummaryPanelsWrapper = component(() => {
+      if (!loadedSummary.value) return null
+      const { TokenBreakdownPanel, EfficiencyPanel, DailyTrendPanel, AgentBreakdownPanel, TopModelsPanel, TopSessionsPanel } = SummaryPanels
+      return (
+        <div className="summary-stack fade-up fade-up-d3">
+          <div className="content-grid">
+            <div className="panel-card">
+              <SectionTitle title="Token 组成" subtitle="五类 Token 占比分布" />
+              <TokenBreakdownPanel />
+            </div>
+            <div className="panel-card">
+              <SectionTitle title="效率指标" subtitle="均值与缓存利用" />
+              <EfficiencyPanel />
+            </div>
+          </div>
+          <div className="panel-card panel-card--chart">
+            <SectionTitle
+              title="每日趋势"
+              subtitle={dailyChartMetric.value === 'cost' ? '按日模型费用' : '按日模型用量'}
+              actions={(
+                <div className="stats-filter-group" style={{ marginBottom: 0 }}>
+                  <span
+                    className={'filter-chip' + (dailyChartMetric.value === 'cost' ? ' filter-chip--active' : '')}
+                    onClick={() => { dailyChartMetric.value = 'cost' }}
+                  >费用</span>
+                  <span
+                    className={'filter-chip' + (dailyChartMetric.value === 'tokens' ? ' filter-chip--active' : '')}
+                    onClick={() => { dailyChartMetric.value = 'tokens' }}
+                  >Token</span>
+                </div>
+              )}
+            />
+            <DailyTrendPanel />
+          </div>
+          <div className="content-grid">
+            <div className="panel-card">
+              <SectionTitle title="Agent 分布" subtitle="按 Agent 聚合费用" />
+              <AgentBreakdownPanel />
+            </div>
+            <div className="panel-card">
+              <div className="flex items-center justify-between" style={{ marginBottom: '14px' }}>
+                <SectionTitle title="Top 模型" subtitle="费用 Top 5" />
+                <span className="panel-link" onClick={() => navigate('models')}>查看全部 →</span>
+              </div>
+              <TopModelsPanel />
+            </div>
+          </div>
+          <div className="session-table-panel session-table-panel--bleed panel-card">
+            <div className="session-table-head">
+              <SectionTitle title="高消耗会话" subtitle="最近会话费用 Top 5" />
+              <span className="panel-link" onClick={() => navigate('sessions')}>查看全部 →</span>
+            </div>
+            <TopSessionsPanel />
+          </div>
+        </div>
+      )
+    })
+
+    // ─── Models page ───
+    let ModelsPage = null
+    async function loadModelsPage() {
+      if (ModelsPage) return
+      const mod = await loadModule('./modules/models.eficy.js')
+      const _ModelRow = mod.createModelRow({ formatTokens, formatCost, formatDuration, resolveModelIconUrl })
+      ModelsPage = mod.createModelsPage({ byModel, StatsToolbar, SectionTitle, EmptyState, signal, ModelRow: _ModelRow })
+      loadedModels.value = true
+    }
+
+    const ModelsPageWrapper = component(() => {
+      if (!loadedModels.value) return null
+      return <ModelsPage />
+    })
+
+    // ─── Sessions list page ───
+    let SessionsListPage = null
+    async function loadSessionsListPage() {
+      if (SessionsListPage) return
+      const mod = await loadModule('./modules/sessions-list.eficy.js?v=sessions-ai-search-20260718-1')
+      const _SessionRow = mod.createSessionRow({ formatTokens, formatCost, formatDateTime, formatRelativeTime, formatSessionDuration, routeSessionId, openSession, peek, ChevronIcon, resolveAgentIconUrl, formatAgentLabel, resolveModelIconUrl })
+      SessionsListPage = mod.createSessionsListPage({
+        sessions,
+        sessionLimit,
+        sessionOffset,
+        sessionHasMore,
+        sessionQuery,
+        sessionSearchInput,
+        sessionsLoading,
+        sessionAiSearchLoading,
+        sessionAiResultsMode,
+        sessionAiResultsQuery,
+        sessionAiMatchedCount,
+        runSessionSearch,
+        runAiSessionSearch,
+        clearSessionSearch,
+        prevSessionPage,
+        nextSessionPage,
+        SectionTitle,
+        EmptyState,
+        signal,
+        SessionRow: _SessionRow,
+      })
+      loadedSessionsList.value = true
+    }
+
+    const SessionsListPageWrapper = component(() => {
+      if (!loadedSessionsList.value) return null
+      return <SessionsListPage />
+    })
+
+    // ─── Agent config page ───
+    let AgentConfigPage = null
+    async function loadAgentConfigPage() {
+      if (AgentConfigPage) return
+      const mod = await loadModule('./modules/agent-config.eficy.js?v=agent-schedule-20260714-1')
+      AgentConfigPage = mod.createAgentConfigPage({
+        apiFetch,
+        selectedAgentId,
+        activeTab,
+        navigate,
+        SectionTitle,
+        Button, Input, Textarea, Label,
+      })
+      loadedAgentConfig.value = true
+    }
+
+    const AgentConfigPageWrapper = component(() => {
+      if (!loadedAgentConfig.value) return null
+      return <AgentConfigPage />
+    })
+
+    // ─── Agent runs page ───
+    let AgentRunsPage = null
+    async function loadAgentRunsPage() {
+      if (AgentRunsPage) return
+      const mod = await loadModule('./modules/agent-runs.eficy.js?v=agent-run-tool-summary-20260718-1')
+      AgentRunsPage = mod.createAgentRunsPage({
+        apiFetch,
+        selectedAgentRunId,
+        routeAgentRunId,
+        activeTab,
+        navigate,
+        openAgentRun,
+        openSession,
+        formatDateTime,
+        SectionTitle,
+      })
+      loadedAgentRuns.value = true
+    }
+
+    const AgentRunsPageWrapper = component(() => {
+      if (!loadedAgentRuns.value) return null
+      return <AgentRunsPage />
+    })
+
+    // ─── System config page ───
+    let SystemConfigPage = null
+    async function loadSystemConfigPage() {
+      if (SystemConfigPage) return
+      const mod = await loadModule('./modules/system-config.eficy.js?v=agent-api-20260708-4')
+      SystemConfigPage = mod.createSystemConfigPage({
+        apiFetch,
+        selectedProviderId,
+        activeTab,
+        cursorStatus,
+        cursorDialogOpen,
+        providerDialogOpen,
+        fetchCursorStatus,
+        SectionTitle,
+        Button, Input, Label,
+        Dialog, DialogClose, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle,
+      })
+      loadedSystemConfig.value = true
+    }
+
+    const SystemConfigPageWrapper = component(() => {
+      if (!loadedSystemConfig.value) return null
+      return <SystemConfigPage />
+    })
+
+    // ─── Matters archive page ───
+    let MattersPage = null
+    async function loadMattersPage() {
+      if (MattersPage) return
+      const mod = await loadModule('./modules/matters.eficy.js?v=agent-api-20260708-14')
+      MattersPage = mod.createMattersPage({
+        apiFetch,
+        selectedMatterId,
+        selectedMatterTab,
+        selectedArchiveId,
+        activeTab,
+        focusMatterRoute,
+        SectionTitle,
+        Button,
+        Dialog,
+        DialogClose,
+        DialogContent,
+        DialogDescription,
+        DialogFooter,
+        DialogHeader,
+        DialogTitle,
+      })
+      loadedMatters.value = true
+    }
+
+    const MattersPageWrapper = component(() => {
+      if (!loadedMatters.value) return null
+      return <MattersPage />
+    })
+
+    // ─── Help center page ───
+    let HelpCenterPage = null
+    async function loadHelpCenterPage() {
+      if (HelpCenterPage) return
+      const mod = await loadModule('./modules/help-center.eficy.js?v=help-20260708-9')
+      HelpCenterPage = mod.createHelpCenterPage({
+        apiFetch,
+        selectedHelpArticleId,
+        activeTab,
+        focusHelpArticleRoute,
+        SectionTitle,
+      })
+      loadedHelpCenter.value = true
+    }
+
+    const HelpCenterPageWrapper = component(() => {
+      if (!loadedHelpCenter.value) return null
+      return <HelpCenterPage />
+    })
+
+    // 启动模块加载
+    loadSummaryPanels()
+    loadModelsPage()
+    loadSessionsListPage()
+    loadAgentConfigPage()
+    loadAgentRunsPage()
+    loadSystemConfigPage()
+    loadMattersPage()
+    loadHelpCenterPage()
+
+    // ─── Session Detail（密集 trace 视图） ───
+
+    // 懒加载会话详情模块（仅在路由到会话详情时加载）
+    let SessionDetailView = null
+    async function ensureSessionDetailView() {
+      if (SessionDetailView) return
+      const mod = await loadModule("./modules/session-detail.eficy.js?v=session-share-20260806-7")
+      SessionDetailView = mod.createSessionDetailView({
+        apiFetch,
+        sessions, sessionDetails, routeSessionId, selectedTraceKey, traceAutoFocusKey, expandedSubagents,
+        navigate, openSession, toggleSubagent,
+        formatDateTime, formatSessionDuration, formatTokens, formatCost,
+        forkParentSessionId, mergeForkTraceItems, ChevronIcon,
+        Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Button,
+      })
+    }
+
+    const loadedSessionDetail = signal(false)
+    const SessionDetailWrapper = component(({ sessionId }) => {
+      effect(() => {
+        if (!SessionDetailView && routeSessionId.value) {
+          ensureSessionDetailView().then(() => { loadedSessionDetail.value = true })
+        } else {
+          loadedSessionDetail.value = true
+        }
+      })
+      if (!loadedSessionDetail.value) return <LoadingScreen />
+      return <SessionDetailView sessionId={sessionId} readOnly={shareMode.value} shareMode={shareMode.value} agentPrompt={shareMode.value ? publicShareAgentPrompt.value : ''} />
+    })
+
+    // ─── Sidebar Nav Item ───
+    const NavItem = component(({ tab, label, icon }) => (
+      <div
+        className={'sidebar-nav-item' + (activeTab.value === tab ? ' sidebar-nav-item--active' : '')}
+        onClick={() => navigate(tab)}
+      >
+        <span className="sidebar-nav-icon">{icon}</span>
+        <span className="sidebar-nav-text">{label}</span>
+      </div>
+    ))
+
+    // ─── Login Screen ───
+    const LoginScreen = component(() => (
+      <div className="login-shell fade-up">
+        <div className="login-card">
+          <img className="login-brand-logo" src="./brand/runmark-logo.png" alt="Runmark" />
+          {authError.value ? <div className="login-error">{authError.value}</div> : null}
+          <div className="login-field">
+            <label className="login-label">访问密码</label>
+            <input
+              className="login-input"
+              type="password"
+              placeholder="访问密码"
+              {...bind(loginPassword)}
+              onKeyDown={(e) => { if (e.key === 'Enter') login() }}
+            />
+          </div>
+          <button
+            className="login-btn"
+            onClick={() => login()}
+            disabled={loginSubmitting.value || !loginPassword.value.trim()}
+          >
+            {loginSubmitting.value ? '验证中…' : '登录'}
+          </button>
+          <div className="login-hint">
+            <div style={{ marginBottom: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>密码在哪里？</div>
+            访问密码与 <strong>当前正在访问的服务</strong> 的 API Key 一致（部署时 <code>setup.sh</code> 会打印）。
+            <br /><br />
+            你正在访问：<code>{location.host}</code>
+            <br /><br />
+            也可在本机配置文件中查看：
+            <br />
+            <code>~/.config/agent-tracker/env</code> 里的 <code>AGENT_TRACKER_API_KEY</code>（或短键 <code>apiKey</code>）
+            <br /><br />
+            <div style={{ marginBottom: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>登录后做什么？</div>
+            打开侧栏 <strong>帮助中心</strong>（<code>#/help</code>），按「统一接入配置」完成 Cursor / OpenCode / Codex 客户端上报。
+          </div>
+        </div>
+      </div>
+    ))
+
+    // ─── Loading Screen ───
+    const LoadingScreen = component(() => (
+      <div className="flex items-center justify-center min-h-screen app-shell">
+        <div className="text-center space-y-4">
+          <div className="spinner-lg mx-auto" />
+          <img className="loading-brand-logo" src="./brand/runmark-logo.png" alt="Runmark" />
+        </div>
+      </div>
+    ))
+
+    const PublicSharePage = component(() => {
+      if (publicShareLoading.value) {
+        return (
+          <div className="app-shell" style={{ alignItems: 'center', justifyContent: 'center', gap: '14px', padding: '24px' }}>
+            <div className="spinner-lg" />
+            <img className="loading-brand-logo" src="./brand/runmark-logo.png" alt="Runmark" />
+            <div style={{ color: 'var(--text-muted)', fontSize: '13px' }}>正在加载分享会话…</div>
+          </div>
+        )
+      }
+      if (publicShareError.value || !publicShareSession.value) {
+        return (
+          <div className="app-shell" style={{ alignItems: 'center', justifyContent: 'center', padding: '24px' }}>
+            <div className="panel-card fade-up" style={{ width: 'min(460px, 100%)', padding: '28px', textAlign: 'center' }}>
+              <img className="loading-brand-logo" src="./brand/runmark-logo.png" alt="Runmark" />
+              <h2 style={{ margin: '20px 0 8px', color: 'var(--text-primary)', fontSize: '18px' }}>{publicShareErrorTitle.value || '分享内容无法访问'}</h2>
+              <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.7 }}>{publicShareError.value || '分享链接无效或已过期'}</p>
+            </div>
+          </div>
+        )
+      }
+      const sharedSession = publicShareSession.value
+      const sharedSummary = publicShareSummaryMarkdown.value
+      const sharedCounts = publicShareCounts.value
+      const sharedTitle = sharedSession.title || sharedSession.summary || '共享会话'
+      const sharedSummaryHtml = sharedSummary
+        ? DOMPurify.sanitize(marked.parse(sharedSummary), { USE_PROFILES: { html: true } })
+        : ''
+      const agentCopyLabel = publicAgentCopyState.value === 'copied'
+        ? '已复制'
+        : publicAgentCopyState.value === 'selected'
+          ? '已选中，请按 ' + publicCopyShortcutLabel()
+          : publicAgentCopyState.value === 'limited' ? '复制受限' : '复制给 Agent'
+      return (
+        <div className="app-shell">
+          <div style={{ width: 'min(1040px, 100%)', margin: '0 auto', padding: '18px clamp(12px, 3vw, 32px) 40px', boxSizing: 'border-box' }}>
+            <header className="fade-up" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '16px', marginBottom: '18px', padding: '4px 2px' }}>
+              <img className="sidebar-brand-logo" src="./brand/runmark-logo.png" alt="Runmark" />
+              <div style={{ color: 'var(--text-muted)', fontSize: '12px', textAlign: 'right' }}>
+                只读分享 · 有效至 {formatDateTime(publicShareExpiresAt.value)}
+              </div>
+            </header>
+            <main style={{ display: 'grid', gap: '16px', minWidth: 0 }}>
+              <section className="panel-card fade-up" style={{ padding: 'clamp(18px, 3vw, 28px)' }}>
+                <div style={{ color: 'var(--brand-blue)', fontSize: '11px', fontWeight: 750, letterSpacing: '0.09em', textTransform: 'uppercase' }}>Shared session</div>
+                <h1 style={{ margin: '8px 0 18px', color: 'var(--text-primary)', fontSize: 'clamp(22px, 4vw, 34px)', lineHeight: 1.18, letterSpacing: '-0.025em' }}>{sharedTitle}</h1>
+                <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px 18px', color: 'var(--text-muted)', fontSize: '12px' }}>
+                  {sharedSession.model ? <span><strong style={{ color: 'var(--text-secondary)', fontWeight: 650 }}>模型</strong> · {sharedSession.model}</span> : null}
+                  {sharedSession.agent ? <span><strong style={{ color: 'var(--text-secondary)', fontWeight: 650 }}>Agent</strong> · {sharedSession.agent}</span> : null}
+                  <span><strong style={{ color: 'var(--text-secondary)', fontWeight: 650 }}>开始</strong> · {formatDateTime(sharedSession.started_at)}</span>
+                  <span><strong style={{ color: 'var(--text-secondary)', fontWeight: 650 }}>结束</strong> · {formatDateTime(sharedSession.ended_at || sharedSession.last_activity_at)}</span>
+                  <span><strong style={{ color: 'var(--text-secondary)', fontWeight: 650 }}>Tokens</strong> · {formatTokens(sharedSession.total_tokens)}</span>
+                  <span><strong style={{ color: 'var(--text-secondary)', fontWeight: 650 }}>费用</strong> · {formatCost(sharedSession.total_cost_cny)}</span>
+                </div>
+              </section>
+
+              <section className="session-summary-card panel-card fade-up" style={{ margin: 0 }}>
+                <div className="session-summary-head">
+                  <div>
+                    <div className="session-summary-kicker">Summary</div>
+                    <h3>AI Summary</h3>
+                  </div>
+                </div>
+                {sharedSummary ? (
+                  <div className="markdown-body session-summary-markdown" style={{ maxHeight: 'none' }} dangerouslySetInnerHTML={{ __html: sharedSummaryHtml }} />
+                ) : (
+                  <div style={{ marginTop: '14px', padding: '24px 16px', borderTop: '1px solid rgba(255,255,255,0.07)', color: 'var(--text-muted)', fontSize: '13px', textAlign: 'center' }}>此会话暂未生成 AI Summary</div>
+                )}
+              </section>
+
+              <section className="panel-card fade-up" style={{ padding: 'clamp(18px, 3vw, 24px)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '14px', marginBottom: '14px' }}>
+                  <div>
+                    <div style={{ color: 'var(--text-primary)', fontSize: '14px', fontWeight: 700 }}>记录规模</div>
+                    <div style={{ marginTop: '3px', color: 'var(--text-muted)', fontSize: '11px' }}>公开页面提供摘要与规模信息</div>
+                  </div>
+                </div>
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: '10px' }}>
+                  {[
+                    { label: 'Messages', value: sharedCounts.messages, color: 'var(--brand-blue)' },
+                    { label: 'Turns', value: sharedCounts.turns, color: 'var(--brand-green)' },
+                    { label: 'Tool calls', value: sharedCounts.tool_calls, color: 'var(--brand-orange)' },
+                  ].map((item) => (
+                    <div key={item.label} style={{ padding: '14px', borderRadius: '12px', border: '1px solid rgba(255,255,255,0.075)', background: 'rgba(255,255,255,0.025)' }}>
+                      <div style={{ color: 'var(--text-muted)', fontSize: '10px', fontWeight: 700, letterSpacing: '0.08em', textTransform: 'uppercase' }}>{item.label}</div>
+                      <div style={{ marginTop: '7px', color: item.color, fontFamily: 'var(--font-mono)', fontSize: '24px', fontWeight: 750 }}>{Number(item.value).toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+
+              <section className="panel-card fade-up" style={{ display: 'grid', gap: '14px', padding: 'clamp(18px, 3vw, 24px)', borderColor: 'rgba(139,92,246,0.24)', background: 'linear-gradient(135deg, rgba(139,92,246,0.09), rgba(59,130,246,0.035)), rgba(255,255,255,0.02)' }}>
+                <div>
+                  <div style={{ color: '#c4b5fd', fontSize: '11px', fontWeight: 750, letterSpacing: '0.08em', textTransform: 'uppercase' }}>Progressive retrieval</div>
+                  <h3 style={{ margin: '7px 0 6px', color: 'var(--text-primary)', fontSize: '16px' }}>让 Agent 按需读取详细记录</h3>
+                  <p style={{ margin: 0, color: 'var(--text-secondary)', fontSize: '13px', lineHeight: 1.7 }}>分享页默认保护上下文体积。详细消息、Turn 与工具记录由 Agent 按任务需要渐进检索，并落盘后完成分析与复盘。</p>
+                </div>
+                <textarea data-public-agent-prompt readOnly defaultValue={publicShareAgentPrompt.value} rows={5} style={{ width: '100%', maxHeight: '150px', resize: 'none', boxSizing: 'border-box', borderRadius: '10px', border: '1px solid rgba(255,255,255,0.1)', background: 'rgba(0,0,0,0.2)', padding: '11px 12px', color: 'var(--text-secondary)', fontFamily: 'var(--font-mono)', fontSize: '11px', lineHeight: 1.55 }} />
+                <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: '10px' }}>
+                  <button className="btn-ghost-sm" disabled={!publicShareAgentPrompt.value} onClick={() => copyPublicAgentPrompt()}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <rect width="18" height="10" x="3" y="11" rx="2" />
+                      <circle cx="8" cy="16" r="1" />
+                      <circle cx="16" cy="16" r="1" />
+                      <path d="M12 2v4" />
+                      <path d="M8 6h8" />
+                    </svg>
+                    {agentCopyLabel}
+                  </button>
+                  {publicAgentCopyState.value === 'selected' ? <span role="status" style={{ color: 'var(--text-muted)', fontSize: '11px' }}>Prompt 已选中，请按 {publicCopyShortcutLabel()} 完成复制。</span> : null}
+                </div>
+              </section>
+            </main>
+          </div>
+        </div>
+      )
+    })
+
+    const CursorCookieDialog = component(() => {
+      const st = cursorStatus.value || {}
+      const ready = st.hasCryptoKey !== false
+      const linked = !!st.hasCookies
+      return (
+        <Dialog open={cursorDialogOpen.value} onOpenChange={(v) => { cursorDialogOpen.value = v }}>
+          <DialogContent style={{ maxWidth: '520px' }}>
+            <DialogHeader>
+              <DialogTitle>Cursor 账单同步（可选）</DialogTitle>
+              <DialogDescription>
+                配置后可从 Cursor 官方 Usage API 拉取真实 token 与费用。会话归属以 Hook 上报的 session_id 为准，按入队顺序补充 cost，不会把时间窗内的账单错配到其他会话。
+              </DialogDescription>
+            </DialogHeader>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', fontSize: '13px', color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+              <div style={{ padding: '10px 12px', borderRadius: '8px', background: 'rgba(59,158,255,0.08)', border: '1px solid rgba(59,158,255,0.15)' }}>
+                <strong style={{ color: 'var(--text-primary)' }}>获取 Session Token</strong>
+                <ol style={{ margin: '8px 0 0', paddingLeft: '18px' }}>
+                  <li>登录 <a href="https://cursor.com/dashboard" target="_blank" rel="noreferrer" style={{ color: 'var(--accent-blue)' }}>cursor.com/dashboard</a></li>
+                  <li>DevTools → Application → Cookies → cursor.com</li>
+                  <li>复制 <code style={{ fontSize: '12px' }}>WorkosCursorSessionToken</code> 的值</li>
+                </ol>
+              </div>
+              {!ready ? (
+                <p style={{ color: 'var(--accent-orange)' }}>服务端未配置 AGENT_TRACKER_CURSOR_CRYPTO_KEY，无法加密存储 Token。请联系管理员在 .env 中配置。</p>
+              ) : null}
+              <div>
+                <Label htmlFor="cursor-token">WorkosCursorSessionToken</Label>
+                <Textarea
+                  id="cursor-token"
+                  className="cursor-token-input"
+                  placeholder="粘贴 Session Token（敏感信息，仅保存在本服务加密数据库）"
+                  value={cursorTokenInput.value}
+                  onInput={(e) => { cursorTokenInput.value = e.target.value }}
+                  rows={3}
+                  style={{ marginTop: '6px', fontFamily: 'ui-monospace, monospace', fontSize: '12px' }}
+                />
+              </div>
+              <div style={{ fontSize: '12px' }}>
+                <div>状态：{linked ? '已配置 Token' : '未配置'}{st.authExpired ? ' · 已过期，请重新粘贴' : ''}</div>
+                {st.lastSuccessAt ? <div>上次同步：{formatDateTime(st.lastSuccessAt)}</div> : null}
+                {st.pendingQueue > 0 ? <div>待对账会话：{st.pendingQueue}</div> : null}
+                {st.lastError ? <div style={{ color: 'var(--accent-orange)' }}>{st.lastError}</div> : null}
+                {cursorMessage.value ? <div style={{ color: 'var(--accent-green)' }}>{cursorMessage.value}</div> : null}
+                {cursorError.value ? <div style={{ color: '#f87171' }}>{cursorError.value}</div> : null}
+              </div>
+            </div>
+            <DialogFooter style={{ gap: '8px', flexWrap: 'wrap' }}>
+              {linked ? (
+                <Button variant="outline" onClick={() => clearCursorToken()} disabled={cursorSaving.value || cursorSyncing.value}>
+                  清除
+                </Button>
+              ) : null}
+              <Button variant="outline" onClick={() => syncCursorNow()} disabled={!linked || !st.available || cursorSyncing.value || cursorSaving.value}>
+                {cursorSyncing.value ? '同步中…' : '立即同步'}
+              </Button>
+              <Button onClick={() => saveCursorToken()} disabled={!ready || cursorSaving.value || cursorSyncing.value}>
+                {cursorSaving.value ? '保存中…' : '保存 Token'}
+              </Button>
+              <DialogClose asChild>
+                <Button variant="ghost">关闭</Button>
+              </DialogClose>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )
+    })
+
+    // ─── Dashboard App ───
+    const App = component(() => {
+      if (loading.value && !summary.value) {
+        return <LoadingScreen />
+      }
+
+      return (
+        <div className="app-shell">
+          <CursorCookieDialog />
+          <UpdateDialogWrapper />
+
+          <div className="dashboard-layout">
+            <aside className="sidebar fade-up fade-up-d1">
+              <div className="sidebar-brand">
+                <img className="sidebar-brand-logo" src="./brand/runmark-logo.png" alt="Runmark" />
+                <SidebarUpdateButtonWrapper />
+              </div>
+              <div className="sidebar-update-mobile"><SidebarUpdateButtonWrapper /></div>
+              <p className="sidebar-label">MAIN</p>
+              <NavItem tab="summary" label="总览" icon={<LayoutIcon />} />
+              <NavItem tab="models" label="模型" icon={<CpuIcon />} />
+              <NavItem tab="sessions" label="会话" icon={<ListIcon />} />
+              <NavItem tab="matters" label="事项归档" icon={<ArchiveIcon />} />
+              <div className="sidebar-spacer" />
+              <div className="sidebar-divider" />
+              <p className="sidebar-label">CONFIGURATION</p>
+              <NavItem tab="agent-config" label="智能体配置" icon={<BotIcon />} />
+              <NavItem tab="system-config" label="系统配置" icon={<SettingsIcon />} />
+              <NavItem tab="help" label="帮助中心" icon={<HelpIcon />} />
+            </aside>
+
+            {/* Main Content */}
+            <main className="main-content">
+              {/* 首次空数据：引导去帮助中心 */}
+              {!routeSessionId.value && (activeTab.value === 'summary' || activeTab.value === 'models' || activeTab.value === 'sessions') ? (
+                <WelcomeSetupBanner />
+              ) : null}
+
+              {/* KPI Cards — 会话详情页隐藏 */}
+              {!routeSessionId.value && (activeTab.value === 'summary' || activeTab.value === 'models' || activeTab.value === 'sessions') ? (
+              <div className="fade-up fade-up-d2">
+                <StatsToolbar />
+              <div className="kpi-row">
+                <KpiCard label="Sessions" value={kpiSessions} variant="blue" icon={<SessionsIcon />} />
+                <KpiCard label="Turns" value={kpiTurns} variant="green" icon={<TurnsIcon />} />
+                <KpiCard
+                  label="Total Tokens"
+                  value={kpiTokens}
+                  variant="orange"
+                  icon={<TokensIcon />}
+                />
+                <KpiCard label="Total Cost" value={kpiCost} variant="purple" icon={<CostIcon />} />
+              </div>
+              </div>
+              ) : null}
+
+              {/* ── Summary Tab ── */}
+              {activeTab.value === 'summary' && !routeSessionId.value ? (
+                <SummaryPanelsWrapper />
+              ) : null}
+
+              {/* ── Models Tab ── */}
+              {activeTab.value === 'models' && !routeSessionId.value ? (
+                <ModelsPageWrapper />
+              ) : null}
+
+              {/* ── Sessions Tab ── */}
+              {activeTab.value === 'sessions' && routeSessionId.value ? (
+                <SessionDetailWrapper sessionId={routeSessionId.value} />
+              ) : null}
+
+              {activeTab.value === 'sessions' && !routeSessionId.value ? (
+                <SessionsListPageWrapper />
+              ) : null}
+
+              {activeTab.value === 'agent-config' && !routeSessionId.value ? (
+                <AgentConfigPageWrapper />
+              ) : null}
+
+              {activeTab.value === 'agent-runs' && !routeSessionId.value ? (
+                <AgentRunsPageWrapper />
+              ) : null}
+
+              {activeTab.value === 'system-config' && !routeSessionId.value ? (
+                <SystemConfigPageWrapper />
+              ) : null}
+
+              {activeTab.value === 'matters' && !routeSessionId.value ? (
+                <MattersPageWrapper />
+              ) : null}
+
+              {activeTab.value === 'help' && !routeSessionId.value ? (
+                <HelpCenterPageWrapper />
+              ) : null}
+            </main>
+          </div>
+        </div>
+      )
+    })
+
+    const Root = component(() => {
+      if (shareMode.value) return <PublicSharePage />
+      if (authChecking.value) return <LoadingScreen />
+      if (!authenticated.value) return <LoginScreen />
+      return <App />
+    })
+
+    // ─── Mount ───
+    await initEficy()
+    render(Root, document.getElementById('app'))
+  </script>
+</body>
+</html>
