@@ -30,9 +30,9 @@ AGENT_TRACKER_API_KEY="{{API_KEY}}"
 完成统一配置后，用品牌包 **一键安装**（推荐）：
 
 ```bash
-npx @runmark/runmark
-# 无交互只装已探测到的：npx @runmark/runmark --clients detected
-# 或按需：npx @runmark/runmark --clients cursor,codex,workbuddy,grok
+npx @runmarks/runmark
+# 无交互只装已探测到的：npx @runmarks/runmark --clients detected
+# 或按需：npx @runmarks/runmark --clients cursor,codex,workbuddy,grok
 ```
 
 也可按产品分篇手动安装：Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build。

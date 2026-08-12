@@ -129,7 +129,7 @@ Dashboard：`http://localhost:3456/`。脚本幂等，重复执行不会覆盖�
 
 ### 2. 本机安装客户端
 
-服务端就绪后，在本机安装 Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build 等插件。统一入口是品牌包 `@runmark/runmark`。
+服务端就绪后，在本机安装 Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build 等插件。统一入口是品牌包 `@runmarks/runmark`。
 
 #### 方式 A：让 AI 读 Skill 安装（推荐）
 
@@ -145,7 +145,7 @@ Dashboard：`http://localhost:3456/`。脚本幂等，重复执行不会覆盖�
 请严格参考仓库内 skills/agent-tracker-clients/SKILL.md：
 1. 先列出可选 Client（Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build）让我勾选，不要默认 all
 2. 写入或核对 ~/.config/agent-tracker/env（endpoint + apiKey）
-3. 用统一入口安装：npx @runmark/runmark --clients <我选的列表>
+3. 用统一入口安装：npx @runmarks/runmark --clients <我选的列表>
 4. 装完告诉我需要重启哪些客户端，并给出 Dashboard 验证方式
 ```
 
@@ -167,25 +167,25 @@ EOF
 
 ```bash
 # 交互安装（推荐）：自动探测；已装用户再次运行会预选已装项并更新
-npx @runmark/runmark
+npx @runmarks/runmark
 
 # 只更新已装 Runmark 的客户端（无交互）
-npx @runmark/runmark --clients installed
-# 或：npx @runmark/runmark --yes
+npx @runmarks/runmark --clients installed
+# 或：npx @runmarks/runmark --yes
 
 # 一键装齐 / 按需
-npx @runmark/runmark --clients all
-npx @runmark/runmark --clients cursor,codex,workbuddy
+npx @runmarks/runmark --clients all
+npx @runmarks/runmark --clients cursor,codex,workbuddy
 
 # 卸载示例
-npx @runmark/runmark --clients codebuddy --uninstall
+npx @runmarks/runmark --clients codebuddy --uninstall
 ```
 
-若本机 `npx @runmark/runmark` 报 `command not found`，改用：
+若本机 `npx @runmarks/runmark` 报 `command not found`，改用：
 
 ```bash
-npx -p @runmark/runmark runmark
-# 或：bunx @runmark/runmark
+npx -p @runmarks/runmark runmark
+# 或：bunx @runmarks/runmark
 ```
 
 3. **重启**已安装的客户端（Claude / CodeBuddy / WorkBuddy 可用 `/reload-plugins`；Grok Build 新开会话即可）。Codex / Claude 系若提示未信任，在 App 内审查并信任 Runmark plugin hooks。
@@ -203,7 +203,7 @@ bun test
 
 常用入口：
 
-- `packages/runmark`：品牌统一安装入口 `@runmark/runmark`
+- `packages/runmark`：品牌统一安装入口 `@runmarks/runmark`
 - `packages/server`：Bun + Hono + SQLite 服务端和 Dashboard
 - `packages/plugin-opencode`：OpenCode 插件
 - `packages/plugin-codex`：Codex Hook 插件

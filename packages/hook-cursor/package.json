@@ -1,5 +1,5 @@
 {
-  "name": "@runmark/cursor-hooks",
+  "name": "@runmarks/cursor-hooks",
   "version": "0.2.6",
   "description": "Cursor IDE hooks for Runmark telemetry (session / message / turn / tool → /v1/ingest)",
   "type": "module",

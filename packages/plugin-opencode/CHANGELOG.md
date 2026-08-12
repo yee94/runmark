@@ -1,4 +1,4 @@
-# @runmark/opencode-plugin
+# @runmarks/opencode-plugin
 
 ## 0.2.6
 

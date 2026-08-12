@@ -41,11 +41,11 @@ agent-tracker/
 ├── skills/                   # Agent 查询 / 部署 / 客户端 Skills
 │   ├── agent-tracker-api/    # curl + OpenAPI：拉 session 上下文、时间段统计
 │   ├── agent-tracker-setup/  # 服务端部署
-│   └── agent-tracker-clients/# 本机客户端新装与更新（优先 npx @runmark/runmark）
+│   └── agent-tracker-clients/# 本机客户端新装与更新（优先 npx @runmarks/runmark）
 ├── .cursor/skills/           # 项目级 Cursor Skills
 │   └── eficy-shadcn/       # Dashboard / 单页 UI 开发（从 langfuse-analyze-agent 复制）
 ├── packages/
-│   ├── runmark/              # 品牌统一入口 @runmark/runmark（编排各客户端安装）
+│   ├── runmark/              # 品牌统一入口 @runmarks/runmark（编排各客户端安装）
 │   ├── shared/src/
 │   │   ├── index.ts          # Ingest 合约、领域模型、定价表、computeCost
 │   │   ├── model-id.ts       # 模型 id 规范化（-ioa 等别名）
@@ -112,11 +112,11 @@ bun run build                      # tsdown → dist/
 # 然后重启 OpenCode
 
 # 本机客户端统一入口（推荐；含 Cursor / OpenCode / Codex / Claude 系 / Grok）
-npx @runmark/runmark --clients all
-# 或按需：npx @runmark/runmark --clients cursor,codex,workbuddy,grok
+npx @runmarks/runmark --clients all
+# 或按需：npx @runmarks/runmark --clients cursor,codex,workbuddy,grok
 
 # 单包排障 / 源码调试（可选）
-npx @runmark/codex-plugin
+npx @runmarks/codex-plugin
 cd packages/plugin-codex && bash install.sh
 cd packages/plugin-claude-compat && bash install.sh --runtime claude
 cd packages/plugin-grok && bash install.sh
@@ -161,12 +161,12 @@ cd packages/plugin-grok && bash install.sh
 
 ### OpenCode 插件注册
 
-`npx @runmark/runmark --clients opencode` 会 **patch**（非覆写）`~/.config/opencode/opencode.jsonc` 的 `plugin` 数组；已有注释、其它插件、顶层字段与 symlink 必须保留。
+`npx @runmarks/runmark --clients opencode` 会 **patch**（非覆写）`~/.config/opencode/opencode.jsonc` 的 `plugin` 数组；已有注释、其它插件、顶层字段与 symlink 必须保留。
 
 `opencode.jsonc` 示例：
 
 ```jsonc
-"plugin": ["@runmark/opencode-plugin"]
+"plugin": ["@runmarks/opencode-plugin"]
 ```
 
 改 `src/index.ts` 后必须 rebuild `dist/index.js` 并重启 OpenCode。
@@ -234,7 +234,7 @@ Grok Build（`grok` CLI）通过**用户级 Hooks** 上报，hook 文件写入 `
 改 `src/` 后需 rebuild 并重装：
 ```bash
 cd packages/plugin-grok && bun run build && bash install.sh
-# 或：npx @runmark/runmark --clients grok
+# 或：npx @runmarks/runmark --clients grok
 ```
 
 用户级 hooks 一般无需 `/hooks-trust`（项目级 `.grok/hooks` 才需要）。装完后**新开 Grok 会话**即可；可用 `grok inspect --json` 确认 hooks 含 runmark。
@@ -369,7 +369,7 @@ bun test
 | **eficy-shadcn** | `.cursor/skills/eficy-shadcn/SKILL.md` | 改 `public/index.html`、新建 Eficy 单页 UI |
 | **agent-tracker-api** | `skills/agent-tracker-api/SKILL.md` | curl 拉 session 上下文、时间段统计、Agent 遥测分析 |
 | **agent-tracker-setup** | `skills/agent-tracker-setup/SKILL.md` | 服务端部署、health 验证、交付 Dashboard |
-| **agent-tracker-clients** | `skills/agent-tracker-clients/SKILL.md` | 本机安装 / 更新；优先 `npx @runmark/runmark --clients …` |
+| **agent-tracker-clients** | `skills/agent-tracker-clients/SKILL.md` | 本机安装 / 更新；优先 `npx @runmarks/runmark --clients …` |
 
 来源：`langfuse-analyze-agent/.agents/skills/eficy-shadcn`（已完整复制到本仓库）。
 

@@ -34,7 +34,7 @@ docker run -d --name runmark -p 3456:3456 \
 
 ### npm 客户端发布
 
-1. 用 Changesets  bump 客户端包版本（`@runmark/*`），提交到 `main`。
+1. 用 Changesets  bump 客户端包版本（`@runmarks/*`），提交到 `main`。
 2. 打标签并推送：
 
 ```bash
@@ -42,15 +42,15 @@ git tag -a npm-v0.2.6 -m "npm clients"
 git push origin npm-v0.2.6
 ```
 
-3. 流水线执行 `changeset publish`，发布到 **npmjs**（scope `@runmark`）。
+3. 流水线执行 `changeset publish`，发布到 **npmjs**（scope `@runmarks`）。
 
 **需要配置的 Secret：**
 
 | Secret | 用途 |
 |--------|------|
-| `NPM_TOKEN` | npmjs 自动化发布 token（Automation），且对 `@runmark` scope 有发布权限 |
+| `NPM_TOKEN` | npmjs 自动化发布 token（Automation），且对 `@runmarks` scope 有发布权限 |
 
-仓库需在 [npmjs.com](https://www.npmjs.com) 创建 `@runmark` 组织（或用户 scope），并把 token 对应账号加入该 scope。
+仓库需在 [npmjs.com](https://www.npmjs.com) 创建 `@runmarks` 组织（或用户 scope），并把 token 对应账号加入该 scope。
 
 ### Server + Docker + GitHub Release
 

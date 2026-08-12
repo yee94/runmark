@@ -1,5 +1,5 @@
 {
-  "name": "@runmark/runmark",
+  "name": "@runmarks/runmark",
   "version": "0.1.7",
   "private": false,
   "description": "Runmark 统一客户端安装入口：Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build",

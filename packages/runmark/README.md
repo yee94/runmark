@@ -1,44 +1,44 @@
-# @runmark/runmark
+# @runmarks/runmark
 
 Runmark **统一客户端安装入口**。未来本机接入都收敛到这一条命令：
 
 ```bash
-npx @runmark/runmark
+npx @runmarks/runmark
 ```
 
 无参数时会：**探测本机已装客户端 → 交互勾选（默认勾上已发现的）→ 安装**。
 
 | Client | 实际安装包 |
 |--------|------------|
-| Cursor | `@runmark/cursor-hooks` |
-| OpenCode | `@runmark/opencode-plugin` |
-| Codex | `@runmark/codex-plugin` |
-| Claude Code / CodeBuddy / WorkBuddy | `@runmark/claude-compat-plugin`（`runmark-tracker@runmark`） |
-| Grok Build | `@runmark/grok-plugin`（`~/.grok/hooks/runmark-tracker.json`） |
+| Cursor | `@runmarks/cursor-hooks` |
+| OpenCode | `@runmarks/opencode-plugin` |
+| Codex | `@runmarks/codex-plugin` |
+| Claude Code / CodeBuddy / WorkBuddy | `@runmarks/claude-compat-plugin`（`runmark-tracker@runmark`） |
+| Grok Build | `@runmarks/grok-plugin`（`~/.grok/hooks/runmark-tracker.json`） |
 
 ## 用法
 
 ```bash
 # 交互安装 / 更新（推荐）：探测 + 勾选；已装用户再次运行会预选已装项并更新
-npx @runmark/runmark
+npx @runmarks/runmark
 
 # 只更新已装 Runmark 的客户端（无交互）
-npx @runmark/runmark --clients installed
-npx @runmark/runmark --yes
+npx @runmarks/runmark --clients installed
+npx @runmarks/runmark --yes
 
 # 只装本机已发现的宿主
-npx @runmark/runmark --clients detected
+npx @runmarks/runmark --clients detected
 
 # 一键装齐 / 按需
-npx @runmark/runmark --clients all
-npx @runmark/runmark --clients cursor,codex,workbuddy
+npx @runmarks/runmark --clients all
+npx @runmarks/runmark --clients cursor,codex,workbuddy
 
 # 卸载
-npx @runmark/runmark --clients codebuddy --uninstall
+npx @runmarks/runmark --clients codebuddy --uninstall
 
 # 若本机 npx 报 runmark: command not found，改用：
-npx -p @runmark/runmark runmark
-# 或：bunx @runmark/runmark
+npx -p @runmarks/runmark runmark
+# 或：bunx @runmarks/runmark
 ```
 
 安装前请配置 `~/.config/agent-tracker/env`（`AGENT_TRACKER_ENDPOINT` / `AGENT_TRACKER_API_KEY`）。

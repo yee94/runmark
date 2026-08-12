@@ -1,5 +1,5 @@
 {
-  "name": "@runmark/claude-compat-plugin",
+  "name": "@runmarks/claude-compat-plugin",
   "version": "0.2.18",
   "private": false,
   "type": "module",

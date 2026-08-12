@@ -5,7 +5,7 @@ function printHelp(): void {
   console.log(`Runmark — Cursor Hook 初始化
 
 用法:
-  npx @runmark/cursor-hooks init [选项]
+  npx @runmarks/cursor-hooks init [选项]
   agent-tracker-cursor init [选项]
 
 选项:

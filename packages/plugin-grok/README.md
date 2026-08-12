@@ -51,13 +51,13 @@ Grok Hook stdin 通常不含完整 token。插件在 `Stop` 时读取：
 ### 统一入口（推荐）
 
 ```bash
-npx @runmark/runmark --clients grok
+npx @runmarks/runmark --clients grok
 ```
 
 ### 单包安装
 
 ```bash
-npx @runmark/grok-plugin
+npx @runmarks/grok-plugin
 ```
 
 安装脚本会：
@@ -76,7 +76,7 @@ bash install.sh
 ### 卸载
 
 ```bash
-npx @runmark/grok-plugin --uninstall
+npx @runmarks/grok-plugin --uninstall
 # 或
 bash install.sh --uninstall
 ```

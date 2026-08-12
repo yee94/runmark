@@ -2,7 +2,7 @@
 # Runmark — Claude Code / CodeBuddy / WorkBuddy Plugin 安装脚本
 #
 # 通过官方 plugin marketplace 一键安装 / 升级 / 卸载。
-# npx：npx @runmark/claude-compat-plugin [--runtime all|claude|codebuddy|workbuddy]
+# npx：npx @runmarks/claude-compat-plugin [--runtime all|claude|codebuddy|workbuddy]
 #
 # 用法：
 #   cd packages/plugin-claude-compat && bash install.sh
@@ -355,7 +355,7 @@ if [ "${#skipped[@]}" -gt 0 ]; then
 fi
 echo ""
 echo "卸载："
-echo "  npx @runmark/claude-compat-plugin --uninstall --runtime codebuddy"
+echo "  npx @runmarks/claude-compat-plugin --uninstall --runtime codebuddy"
 echo "  # 或：codebuddy plugin uninstall runmark-tracker"
 echo ""
 echo "下一步："

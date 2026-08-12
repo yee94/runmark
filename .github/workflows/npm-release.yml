@@ -33,11 +33,11 @@ jobs:
 
       - name: Build publishable packages
         run: |
-          bun run --filter @runmark/opencode-plugin build
-          bun run --filter @runmark/codex-plugin build
-          bun run --filter @runmark/grok-plugin build
-          bun run --filter @runmark/claude-compat-plugin build
-          bun run --filter @runmark/cursor-hooks build
+          bun run --filter @runmarks/opencode-plugin build
+          bun run --filter @runmarks/codex-plugin build
+          bun run --filter @runmarks/grok-plugin build
+          bun run --filter @runmarks/claude-compat-plugin build
+          bun run --filter @runmarks/cursor-hooks build
 
       - name: Install pnpm (for changesets)
         run: npm install --global pnpm@8.15.9

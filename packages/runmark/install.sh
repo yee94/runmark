@@ -1,16 +1,16 @@
 #!/usr/bin/env bash
-# @runmark/runmark — 统一客户端安装入口（品牌 npm 包）
+# @runmarks/runmark — 统一客户端安装入口（品牌 npm 包）
 #
 # 一键安装 / 更新 / 卸载本机 Agent 客户端插件：
 #   Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build
 #
 # 用法：
-#   npx @runmark/runmark                         # 探测 + 交互勾选（已装优先预选 → 更新）
-#   npx @runmark/runmark --clients installed     # 只更新已装 Runmark 的客户端
-#   npx @runmark/runmark --clients detected      # 只装本机已发现的宿主
-#   npx @runmark/runmark --clients all
-#   npx @runmark/runmark --clients cursor,codex,workbuddy,grok
-#   npx @runmark/runmark --clients cursor --uninstall
+#   npx @runmarks/runmark                         # 探测 + 交互勾选（已装优先预选 → 更新）
+#   npx @runmarks/runmark --clients installed     # 只更新已装 Runmark 的客户端
+#   npx @runmarks/runmark --clients detected      # 只装本机已发现的宿主
+#   npx @runmarks/runmark --clients all
+#   npx @runmarks/runmark --clients cursor,codex,workbuddy,grok
+#   npx @runmarks/runmark --clients cursor --uninstall
 #   bash packages/runmark/install.sh
 #
 set -euo pipefail
@@ -40,8 +40,8 @@ usage() {
 Runmark 客户端统一安装入口  v${VERSION}
 
 Usage:
-  npx @runmark/runmark [options]
-  npx @runmark/runmark --clients <list> [options]
+  npx @runmarks/runmark [options]
+  npx @runmarks/runmark --clients <list> [options]
   bash install.sh [--clients <list>] [options]
 
 默认（无 --clients 且在终端里）：
@@ -64,21 +64,21 @@ Options:
 
 Examples:
   # 交互安装 / 更新（推荐；已装用户再次运行会预选已装项）
-  npx @runmark/runmark
+  npx @runmarks/runmark
 
   # 只更新已装 Runmark 的客户端
-  npx @runmark/runmark --clients installed
-  npx @runmark/runmark --yes
+  npx @runmarks/runmark --clients installed
+  npx @runmarks/runmark --yes
 
   # 只装本机已发现的宿主
-  npx @runmark/runmark --clients detected
+  npx @runmarks/runmark --clients detected
 
   # 一键装齐 / 按需
-  npx @runmark/runmark --clients all
-  npx @runmark/runmark --clients cursor,codex,workbuddy
+  npx @runmarks/runmark --clients all
+  npx @runmarks/runmark --clients cursor,codex,workbuddy
 
   # 卸载 CodeBuddy
-  npx @runmark/runmark --clients codebuddy --uninstall
+  npx @runmarks/runmark --clients codebuddy --uninstall
 
 安装前请配置 ~/.config/agent-tracker/env（AGENT_TRACKER_ENDPOINT / API_KEY）。
 装完后重启对应客户端（Claude 系可用 /reload-plugins）。
@@ -149,10 +149,10 @@ client_installed() {
       ;;
     opencode)
       if [ -f "$HOME/.config/opencode/opencode.jsonc" ] \
-        && grep -qE '@runmark/opencode-plugin|agent-tracker-opencode-plugin' "$HOME/.config/opencode/opencode.jsonc" 2>/dev/null; then
+        && grep -qE '@runmarks/opencode-plugin|agent-tracker-opencode-plugin' "$HOME/.config/opencode/opencode.jsonc" 2>/dev/null; then
         return 0
       fi
-      [ -d "$HOME/.config/opencode/node_modules/@runmark/opencode-plugin" ] && return 0
+      [ -d "$HOME/.config/opencode/node_modules/@runmarks/opencode-plugin" ] && return 0
       return 1
       ;;
     codex)
@@ -502,7 +502,7 @@ fi
 
 echo "============================================"
 echo " Runmark — 统一客户端安装"
-echo " entry: @runmark/runmark@${VERSION}"
+echo " entry: @runmarks/runmark@${VERSION}"
 echo "============================================"
 echo ""
 scan_clients
@@ -518,7 +518,7 @@ elif [ -r /dev/tty ] && { [ -t 1 ] || [ -t 2 ]; }; then
   interactive_select
 else
   echo "ERROR: 非交互环境，请显式指定 --clients <list|all|installed|detected>，或加 --yes。" >&2
-  echo "       例: npx @runmark/runmark --clients installed" >&2
+  echo "       例: npx @runmarks/runmark --clients installed" >&2
   exit 1
 fi
 
@@ -562,7 +562,7 @@ check_env() {
 
 install_cursor() {
   local ref
-  ref="$(pkg_ref "@runmark/cursor-hooks" "$CURSOR_VER")"
+  ref="$(pkg_ref "@runmarks/cursor-hooks" "$CURSOR_VER")"
   echo "→ Cursor: $ref init"
   if command -v bunx >/dev/null 2>&1; then
     bunx --bun "$ref" init
@@ -589,12 +589,12 @@ patch_opencode_jsonc() {
 
 install_opencode() {
   local ref ver_pin
-  ref="$(pkg_ref "@runmark/opencode-plugin" "$OPENCODE_VER")"
+  ref="$(pkg_ref "@runmarks/opencode-plugin" "$OPENCODE_VER")"
   if [ "$OPENCODE_VER" = "latest" ]; then
     if [ -n "$REGISTRY" ]; then
-      ver_pin="$(npm view @runmark/opencode-plugin version --registry="$REGISTRY" 2>/dev/null || echo "")"
+      ver_pin="$(npm view @runmarks/opencode-plugin version --registry="$REGISTRY" 2>/dev/null || echo "")"
     else
-      ver_pin="$(npm view @runmark/opencode-plugin version 2>/dev/null || echo "")"
+      ver_pin="$(npm view @runmarks/opencode-plugin version 2>/dev/null || echo "")"
     fi
   else
     ver_pin="$OPENCODE_VER"
@@ -607,15 +607,15 @@ install_opencode() {
     echo "WARN: 无法解析 opencode plugin 版本，跳过配置 patch；仍尝试 bun add $ref"
   else
     # 已有文件：文本级 patch；不存在：才创建最小骨架。绝不整文件覆写已有配置。
-    patch_opencode_jsonc "$oc_cfg" "@runmark/opencode-plugin@${ver_pin}"
+    patch_opencode_jsonc "$oc_cfg" "@runmarks/opencode-plugin@${ver_pin}"
   fi
 
   if command -v bun >/dev/null 2>&1; then
     (
       cd "$oc_dir"
-      bun remove @runmark/opencode-plugin >/dev/null 2>&1 || true
+      bun remove @runmarks/opencode-plugin >/dev/null 2>&1 || true
       if [ -n "$REGISTRY" ]; then bun add "$ref" --registry="$REGISTRY"; else bun add "$ref"; fi
-      python3 -c 'import json,pathlib; p=pathlib.Path("node_modules/@runmark/opencode-plugin/package.json"); print("installed", json.loads(p.read_text())["version"] if p.exists() else "missing")'
+      python3 -c 'import json,pathlib; p=pathlib.Path("node_modules/@runmarks/opencode-plugin/package.json"); print("installed", json.loads(p.read_text())["version"] if p.exists() else "missing")'
     )
   else
     echo "WARN: 未找到 bun，已尽量 patch opencode.jsonc；请自行在 ~/.config/opencode 安装 $ref"
@@ -626,7 +626,7 @@ uninstall_opencode() {
   local oc_dir="${HOME}/.config/opencode"
   local oc_cfg="${oc_dir}/opencode.jsonc"
   if [ -d "$oc_dir" ] && command -v bun >/dev/null 2>&1; then
-    (cd "$oc_dir" && bun remove @runmark/opencode-plugin >/dev/null 2>&1 || true)
+    (cd "$oc_dir" && bun remove @runmarks/opencode-plugin >/dev/null 2>&1 || true)
   fi
   if [ -f "$oc_cfg" ] && [ -f "$PATCH_OPENCODE_PY" ]; then
     python3 "$PATCH_OPENCODE_PY" "$oc_cfg" --remove
@@ -637,7 +637,7 @@ uninstall_opencode() {
 
 install_codex() {
   local ref
-  ref="$(pkg_ref "@runmark/codex-plugin" "$CODEX_VER")"
+  ref="$(pkg_ref "@runmarks/codex-plugin" "$CODEX_VER")"
   echo "→ Codex: $ref"
   run_npx "$ref"
 }
@@ -657,7 +657,7 @@ uninstall_codex() {
 install_claude_compat() {
   local runtime="$1"
   local ref
-  ref="$(pkg_ref "@runmark/claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
+  ref="$(pkg_ref "@runmarks/claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
   echo "→ ${runtime}: $ref --runtime $runtime"
   run_npx "$ref" --runtime "$runtime"
 }
@@ -665,21 +665,21 @@ install_claude_compat() {
 uninstall_claude_compat() {
   local runtime="$1"
   local ref
-  ref="$(pkg_ref "@runmark/claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
+  ref="$(pkg_ref "@runmarks/claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
   echo "→ ${runtime}: uninstall"
   run_npx "$ref" --uninstall --runtime "$runtime"
 }
 
 install_grok() {
   local ref
-  ref="$(pkg_ref "@runmark/grok-plugin" "$GROK_VER")"
+  ref="$(pkg_ref "@runmarks/grok-plugin" "$GROK_VER")"
   echo "→ Grok Build: $ref"
   run_npx "$ref"
 }
 
 uninstall_grok() {
   local ref
-  ref="$(pkg_ref "@runmark/grok-plugin" "$GROK_VER")"
+  ref="$(pkg_ref "@runmarks/grok-plugin" "$GROK_VER")"
   echo "→ Grok Build: uninstall"
   run_npx "$ref" --uninstall
 }

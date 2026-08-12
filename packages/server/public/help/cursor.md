@@ -1,6 +1,6 @@
 # Cursor 安装配置
 
-Cursor 接入由 `@runmark/cursor-hooks` 完成。安装脚本会把 Hook 写入 Cursor 的 `hooks.json`。
+Cursor 接入由 `@runmarks/cursor-hooks` 完成。安装脚本会把 Hook 写入 Cursor 的 `hooks.json`。
 
 安装前请先完成“统一接入配置”，确保 `~/.config/agent-tracker/env` 中已经配置 `endpoint` 和 `apiKey`。
 
@@ -9,13 +9,13 @@ Cursor 接入由 `@runmark/cursor-hooks` 完成。安装脚本会把 Hook 写入
 用户级安装会写入 `~/.cursor/hooks.json`：
 
 ```bash
-npx @runmark/cursor-hooks init
+npx @runmarks/cursor-hooks init
 ```
 
 只给当前项目安装时，在项目根目录执行：
 
 ```bash
-npx @runmark/cursor-hooks init --project
+npx @runmarks/cursor-hooks init --project
 ```
 
 ## 重启

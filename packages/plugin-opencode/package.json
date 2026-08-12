@@ -1,5 +1,5 @@
 {
-  "name": "@runmark/opencode-plugin",
+  "name": "@runmarks/opencode-plugin",
   "version": "0.2.6",
   "type": "module",
   "main": "./dist/index.mjs",

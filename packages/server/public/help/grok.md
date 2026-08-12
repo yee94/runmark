@@ -1,6 +1,6 @@
 # Grok Build 安装配置
 
-Grok Build（`grok` CLI）通过用户级 Hooks 接入 Runmark。安装包为 `@runmark/grok-plugin`，写入 `~/.grok/hooks/runmark-tracker.json`，与 Orca / Asymptote 等其它 hook 文件共存。`Stop` 阶段读取 `~/.grok/sessions/...` 补齐 assistant、tool、token 与费用。
+Grok Build（`grok` CLI）通过用户级 Hooks 接入 Runmark。安装包为 `@runmarks/grok-plugin`，写入 `~/.grok/hooks/runmark-tracker.json`，与 Orca / Asymptote 等其它 hook 文件共存。`Stop` 阶段读取 `~/.grok/sessions/...` 补齐 assistant、tool、token 与费用。
 
 安装前请先完成“统一接入配置”，确保 `~/.config/agent-tracker/env` 中已经配置 `endpoint` 和 `apiKey`。
 
@@ -9,13 +9,13 @@ Grok Build（`grok` CLI）通过用户级 Hooks 接入 Runmark。安装包为 `@
 推荐使用统一入口：
 
 ```bash
-npx @runmark/runmark --clients grok
+npx @runmarks/runmark --clients grok
 ```
 
 或单独安装：
 
 ```bash
-npx @runmark/grok-plugin
+npx @runmarks/grok-plugin
 ```
 
 安装脚本会（可重复执行，幂等升级）：
@@ -34,7 +34,7 @@ bash install.sh
 ## 卸载
 
 ```bash
-npx @runmark/grok-plugin --uninstall
+npx @runmarks/grok-plugin --uninstall
 # 或
 bash install.sh --uninstall
 ```

@@ -1,13 +1,13 @@
 # WorkBuddy 安装配置
 
-WorkBuddy 通过 **Plugin Marketplace** 安装 Runmark 插件。安装包为 `@runmark/claude-compat-plugin`，使用 `--runtime workbuddy`。`Stop` 阶段读取 `~/.workbuddy/projects/...` 下的 transcript JSONL，补齐 assistant、tool、token，并由服务端估算费用。
+WorkBuddy 通过 **Plugin Marketplace** 安装 Runmark 插件。安装包为 `@runmarks/claude-compat-plugin`，使用 `--runtime workbuddy`。`Stop` 阶段读取 `~/.workbuddy/projects/...` 下的 transcript JSONL，补齐 assistant、tool、token，并由服务端估算费用。
 
 安装前请先完成“统一接入配置”，确保 `~/.config/agent-tracker/env` 中已经配置 `endpoint` 和 `apiKey`。
 
 ## 一键安装
 
 ```bash
-npx @runmark/claude-compat-plugin --runtime workbuddy
+npx @runmarks/claude-compat-plugin --runtime workbuddy
 ```
 
 安装脚本会（可重复执行，幂等升级）：

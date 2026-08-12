@@ -17,8 +17,8 @@ from patch_opencode_config import (  # noqa: E402
     remove_opencode_plugin,
 )
 
-SPEC = "@runmark/opencode-plugin@0.2.10"
-SPEC_OLD = "@runmark/opencode-plugin@0.2.3"
+SPEC = "@runmarks/opencode-plugin@0.2.10"
+SPEC_OLD = "@runmarks/opencode-plugin@0.2.3"
 
 
 class PatchOpencodeConfigTest(unittest.TestCase):

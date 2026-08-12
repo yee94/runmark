@@ -14,9 +14,9 @@ import pathlib
 import re
 import sys
 
-PLUGIN_BASE = "@runmark/opencode-plugin"
+PLUGIN_BASE = "@runmarks/opencode-plugin"
 PLUGIN_PAT = re.compile(
-    r"@runmark/opencode-plugin(?:@[^\"'\s,\]]+)?"
+    r"@runmarks/opencode-plugin(?:@[^\"'\s,\]]+)?"
 )
 PLUGIN_ARRAY_PAT = re.compile(r'("plugin"\s*:\s*)\[', re.MULTILINE)
 EMPTY_PLUGIN_ARRAY_PAT = re.compile(
@@ -130,14 +130,14 @@ def remove_opencode_plugin(path: pathlib.Path) -> str:
 
     # 去掉带可选尾逗号的整行 / 同行条目
     line_pat = re.compile(
-        r'^[ \t]*"[^"]*@runmark/opencode-plugin[^"]*"[ \t]*,?[ \t]*\n?',
+        r'^[ \t]*"[^"]*@runmarks/opencode-plugin[^"]*"[ \t]*,?[ \t]*\n?',
         re.MULTILINE,
     )
     patched, n = line_pat.subn("", text, count=1)
     if n == 0:
         # 同行内嵌：去掉 "spec", 或 , "spec"
         inline_pat = re.compile(
-            r',?\s*"@runmark/opencode-plugin(?:@[^"\']+)?"\s*,?'
+            r',?\s*"@runmarks/opencode-plugin(?:@[^"\']+)?"\s*,?'
         )
         patched, n = inline_pat.subn("", text, count=1)
         if n:
@@ -159,7 +159,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "plugin_spec",
         nargs="?",
-        help='插件规格，如 @runmark/opencode-plugin@0.2.10',
+        help='插件规格，如 @runmarks/opencode-plugin@0.2.10',
     )
     parser.add_argument(
         "--remove",

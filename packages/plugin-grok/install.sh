@@ -5,7 +5,7 @@
 # 与 Orca / Asymptote 等其它 hook 文件共存（各自独立 JSON）。
 #
 # 用法：
-#   npx @runmark/grok-plugin
+#   npx @runmarks/grok-plugin
 #   cd packages/plugin-grok && bash install.sh
 #   bash install.sh --uninstall
 #
@@ -170,5 +170,5 @@ echo "    | ${HOOK_SCRIPT} user-prompt"
 echo ""
 echo "卸载："
 echo "  bash install.sh --uninstall"
-echo "  # 或 npx @runmark/grok-plugin --uninstall"
+echo "  # 或 npx @runmarks/grok-plugin --uninstall"
 echo ""

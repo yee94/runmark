@@ -137,4 +137,4 @@
 
 - 0.2.0–0.2.2：引入内置 Agent、事项归档、会话摘要、Cursor 用量对账与 Dashboard 优化。
 - 0.2.4–0.2.10（客户端）：完善 Cursor、Codex、Claude Code、CodeBuddy、WorkBuddy 的采集与安装体验。
-- 0.1.x（Runmark）：发布统一客户端安装入口 `@runmark/runmark`。
+- 0.1.x（Runmark）：发布统一客户端安装入口 `@runmarks/runmark`。

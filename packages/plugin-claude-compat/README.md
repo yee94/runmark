@@ -12,13 +12,13 @@
 
 ```bash
 # Claude Code
-npx @runmark/claude-compat-plugin --runtime claude
+npx @runmarks/claude-compat-plugin --runtime claude
 
 # CodeBuddy
-npx @runmark/claude-compat-plugin --runtime codebuddy
+npx @runmarks/claude-compat-plugin --runtime codebuddy
 
 # WorkBuddy
-npx @runmark/claude-compat-plugin --runtime workbuddy
+npx @runmarks/claude-compat-plugin --runtime workbuddy
 ```
 
 本仓库源码：
@@ -37,7 +37,7 @@ bash install.sh --runtime codebuddy
 ## 卸载
 
 ```bash
-npx @runmark/claude-compat-plugin --uninstall --runtime codebuddy
+npx @runmarks/claude-compat-plugin --uninstall --runtime codebuddy
 # 或源码：
 bash install.sh --uninstall --runtime codebuddy
 # 或：

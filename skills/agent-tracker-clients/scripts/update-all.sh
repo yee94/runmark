@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# 本机一键安装 / 更新 Runmark 客户端（转调品牌包 @runmark/runmark）
+# 本机一键安装 / 更新 Runmark 客户端（转调品牌包 @runmarks/runmark）
 # 用法：
 #   ./skills/agent-tracker-clients/scripts/update-all.sh
 #   ./skills/agent-tracker-clients/scripts/update-all.sh all
@@ -27,10 +27,10 @@ if [ -x "$ROOT/packages/runmark/install.sh" ]; then
   echo "==> 使用仓库源码入口 packages/runmark"
   bash "$ROOT/packages/runmark/install.sh" --clients "$CLIENTS"
 else
-  echo "==> 使用 npm 包 @runmark/runmark"
+  echo "==> 使用 npm 包 @runmarks/runmark"
   if command -v bunx >/dev/null 2>&1; then
-    bunx --bun @runmark/runmark --clients "$CLIENTS"
+    bunx --bun @runmarks/runmark --clients "$CLIENTS"
   else
-    npx --yes @runmark/runmark --clients "$CLIENTS"
+    npx --yes @runmarks/runmark --clients "$CLIENTS"
   fi
 fi

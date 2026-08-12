@@ -1,13 +1,13 @@
 # Claude Code 安装配置
 
-Claude Code（含 TClaude / `tclaude`）通过 **Plugin Marketplace** 安装 Runmark 插件。安装包为 `@runmark/claude-compat-plugin`，使用 `--runtime claude`。`Stop` 阶段读取 transcript JSONL 补齐 assistant、tool、token，并由服务端估算费用。
+Claude Code（含 TClaude / `tclaude`）通过 **Plugin Marketplace** 安装 Runmark 插件。安装包为 `@runmarks/claude-compat-plugin`，使用 `--runtime claude`。`Stop` 阶段读取 transcript JSONL 补齐 assistant、tool、token，并由服务端估算费用。
 
 安装前请先完成“统一接入配置”，确保 `~/.config/agent-tracker/env` 中已经配置 `endpoint` 和 `apiKey`。
 
 ## 一键安装
 
 ```bash
-npx @runmark/claude-compat-plugin --runtime claude
+npx @runmarks/claude-compat-plugin --runtime claude
 ```
 
 安装脚本会（可重复执行，幂等升级）：

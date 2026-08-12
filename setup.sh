@@ -179,7 +179,7 @@ if [ "$SERVER_MODE" = false ]; then
 step "7/8 配置 OpenCode 插件注册"
 
 OPENCODE_CONFIG="${HOME}/.config/opencode/opencode.jsonc"
-PLUGIN_NAME="@runmark/opencode-plugin"
+PLUGIN_NAME="@runmarks/opencode-plugin"
 PLUGIN_REGISTERED=false
 
 # 必须 patch，禁止整文件覆写 / mv 替换（会拆掉 Mackup symlink、丢掉其它 plugin）

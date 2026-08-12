@@ -129,7 +129,7 @@ Dashboard: `http://localhost:3456/`. The script is idempotent — rerunning neve
 
 ### 2. Install clients
 
-Once the server is up, install the plugins on each machine: Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build. The unified entry point is the `@runmark/runmark` package.
+Once the server is up, install the plugins on each machine: Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build. The unified entry point is the `@runmarks/runmark` package.
 
 #### Option A: let an AI read the Skill (recommended)
 
@@ -145,7 +145,7 @@ Server:
 Strictly follow skills/agent-tracker-clients/SKILL.md in this repo:
 1. List the available clients (Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build) and let me pick; do not default to all
 2. Write or verify ~/.config/agent-tracker/env (endpoint + apiKey)
-3. Install via the unified entry: npx @runmark/runmark --clients <my selection>
+3. Install via the unified entry: npx @runmarks/runmark --clients <my selection>
 4. Tell me which clients need a restart and how to verify on the Dashboard
 ```
 
@@ -167,25 +167,25 @@ EOF
 
 ```bash
 # Interactive install (recommended): auto-detects; rerunning preselects and updates installed clients
-npx @runmark/runmark
+npx @runmarks/runmark
 
 # Update only installed Runmark clients (non-interactive)
-npx @runmark/runmark --clients installed
-# or: npx @runmark/runmark --yes
+npx @runmarks/runmark --clients installed
+# or: npx @runmarks/runmark --yes
 
 # Install everything / on demand
-npx @runmark/runmark --clients all
-npx @runmark/runmark --clients cursor,codex,workbuddy
+npx @runmarks/runmark --clients all
+npx @runmarks/runmark --clients cursor,codex,workbuddy
 
 # Uninstall example
-npx @runmark/runmark --clients codebuddy --uninstall
+npx @runmarks/runmark --clients codebuddy --uninstall
 ```
 
-If `npx @runmark/runmark` reports `command not found`, use:
+If `npx @runmarks/runmark` reports `command not found`, use:
 
 ```bash
-npx -p @runmark/runmark runmark
-# or: bunx @runmark/runmark
+npx -p @runmarks/runmark runmark
+# or: bunx @runmarks/runmark
 ```
 
 3. **Restart** the installed clients (Claude / CodeBuddy / WorkBuddy support `/reload-plugins`; Grok Build just needs a new session). If Codex / Claude-family prompts for trust, review and trust the Runmark plugin hooks in the app.
@@ -203,7 +203,7 @@ bun test
 
 Key packages:
 
-- `packages/runmark` — unified install entry point `@runmark/runmark`
+- `packages/runmark` — unified install entry point `@runmarks/runmark`
 - `packages/server` — Bun + Hono + SQLite server and Dashboard
 - `packages/plugin-opencode` — OpenCode plugin
 - `packages/plugin-codex` — Codex hook plugin

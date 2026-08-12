@@ -45,7 +45,7 @@ Codex Hook stdin 只提供基础事件。插件在 `Stop` 阶段读取 rollout J
 ### npx 一键安装
 
 ```bash
-npx @runmark/codex-plugin
+npx @runmarks/codex-plugin
 ```
 
 安装脚本会自动完成：
@@ -164,7 +164,7 @@ packages/plugin-codex/
 
 | | OpenCode Plugin | Codex Plugin |
 |--|----------------|--------------|
-| **安装方式** | npm 包（`@runmark/opencode-plugin`） | npm 包（`npx @runmark/codex-plugin`） |
+| **安装方式** | npm 包（`@runmarks/opencode-plugin`） | npm 包（`npx @runmarks/codex-plugin`） |
 | **运行方式** | OpenCode 进程内 JS 插件 | 独立进程（stdin/stdout JSON 命令行） |
 | **事件上报** | 6 个 hook（session/message/turn/tool） | Hook + rollout JSONL（session/message/turn/tool） |
 | **token/cost** | ✅ 完整采集 | ✅ 通过 rollout JSONL 解析 |
