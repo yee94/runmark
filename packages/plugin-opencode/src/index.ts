@@ -704,4 +704,17 @@ export const AgentTrackerPlugin: Plugin = async ({ project, $, directory, worktr
   };
 };
 
-export default AgentTrackerPlugin;
+/**
+ * OpenCode 1 走 server（函数）。
+ * OpenCode 2.0.12 只接受 { id, setup }，事件从 ctx.event.subscribe 读。
+ */
+const plugin = {
+  id: "agent-tracker",
+  server: AgentTrackerPlugin,
+  setup: async (ctx: unknown) => {
+    const { setupAgentTrackerV2 } = await import("./plugin-v2");
+    return setupAgentTrackerV2(ctx as Parameters<typeof setupAgentTrackerV2>[0]);
+  },
+};
+
+export default plugin;

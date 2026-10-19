@@ -167,6 +167,13 @@ export function recalculateSessionTotals(db: Database, sessionId: string): void 
   `).run({ $id: sessionId });
 }
 
+/** 价格回算仅更新费用，保留客户端累计用量与请求数。 */
+export function recalculateSessionCost(db: Database, sessionId: string): void {
+  db.query(`UPDATE sessions SET total_cost_usd = (
+    SELECT COALESCE(SUM(cost_usd), 0) FROM turns WHERE session_id = $id AND ${billableTurnClause()}
+  ) WHERE id = $id`).run({ $id: sessionId });
+}
+
 /** 将单条 usage 累加到已有 turn（仅 cost / token，不改 created_at） */
 function applyUsageToTurn(
   db: Database,

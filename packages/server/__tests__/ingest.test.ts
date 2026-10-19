@@ -20,7 +20,7 @@ describe("ingestService", () => {
         input_price: 3.0,
         output_price: 15.0,
       },
-      { provider: "codebuddy", model: "deepseek-v4-flash", input_price: 0.14, output_price: 0.28 },
+      { provider: "codebuddy", model: "deepseek-v4-flash", input_price: 0.429, output_price: 1.286 },
     ];
     costService.setPricing(pricing);
   });
@@ -235,6 +235,50 @@ describe("ingestService", () => {
 
     const tool = db.query("SELECT * FROM tool_calls WHERE call_id = $id").get({ $id: "c-1" });
     expect((tool as any).tool_name).toBe("bash");
+  });
+
+  it("dedupes user messages with same content in a session (hook vs transcript)", () => {
+    const at = new Date().toISOString();
+    const events: IngestEvent[] = [
+      {
+        type: "session.created",
+        session_id: "s-dedup",
+        agent: "codebuddy",
+      },
+      {
+        type: "message",
+        session_id: "s-dedup",
+        message_id: "msg-hook-1",
+        role: "user",
+        content: "继续",
+        created_at: at,
+      },
+      {
+        type: "message",
+        session_id: "s-dedup",
+        message_id: "jsonl-u1",
+        role: "user",
+        content: "继续",
+        created_at: at,
+      },
+      {
+        type: "message",
+        session_id: "s-dedup",
+        message_id: "jsonl-u2",
+        role: "user",
+        content: "<system-reminder>hint</system-reminder>\n继续",
+        created_at: at,
+      },
+    ];
+
+    const result = ingestService.ingestBatch(db, events);
+    expect(result.errors).toHaveLength(0);
+
+    const rows = db
+      .query("SELECT id, content FROM messages WHERE session_id = $id AND role = 'user' ORDER BY id")
+      .all({ $id: "s-dedup" }) as Array<{ id: string; content: string }>;
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => r.id).sort()).toEqual(["jsonl-u2", "msg-hook-1"].sort());
   });
 
   it("keeps tool results idempotent by session and call id", () => {

@@ -2,7 +2,7 @@
  * 模型 id 规范化（定价匹配用）
  *
  * 参考 opencode-providers `model-display-name.ts`：
- * - 各渠道后缀（-ioa / -official / …）归一到同一计价 key
+ * - CodeBuddy / BoxAI / iMate 等渠道后缀（-ioa / -official / …）归一到同一计价 key
  * - 点号 / 下划线 / 大小写统一，便于 Claude-Opus-4.8 ↔ claude-opus-4-8
  * - 少量硬编码别名（hy3 → hy-3）覆盖自动规则搞不定的情况
  *
@@ -19,6 +19,9 @@ const CHANNEL_SUFFIXES = [
   "-preview",
 ] as const;
 
+/** 能力后缀：位于 model id 末尾，剥上下文窗口标记时需先让位（grok-4.7-256k-fast） */
+const CAPABILITY_SUFFIXES = ["-fast"] as const;
+
 /**
  * 硬编码别名：规范化后的 key → 定价表使用的 canonical model id
  * 只列自动剥后缀仍对不齐的条目（对齐 opencode-shared display name 语义）。
@@ -31,7 +34,7 @@ const MODEL_PRICING_ALIASES: Record<string, string> = {
   // GLM 版本写法
   "glm-5-0": "glm-5",
   "glm-5v-turbo": "glm-5-turbo",
-  // 点号变体已由 normalize 处理；此处兜底旧 id
+  // iMate / BoxAI 点号变体已由 normalize 处理；此处兜底旧 id
   "gemini-3-1-pro": "gemini-3.1-pro",
   "gemini-3-5-flash": "gemini-3.5-flash",
 };
@@ -56,8 +59,11 @@ function stripChannelSuffixes(modelNorm: string): string {
     }
   }
   // 上下文窗口标记：claude-opus-5-300k / claude-opus-4-8-1m → 基座 id（同价）
-  if (/(^|-)\d+(k|m)$/i.test(current)) {
-    current = current.replace(/-\d+(k|m)$/i, "");
+  // 末尾为能力后缀时（grok-4.7-256k-fast）先摘后缀再剥上下文，否则数字在中间剥不掉
+  const capability = CAPABILITY_SUFFIXES.find((suffix) => current.endsWith(suffix)) ?? "";
+  const base = capability ? current.slice(0, -capability.length) : current;
+  if (/(^|-)\d+(k|m)$/i.test(base)) {
+    current = base.replace(/-\d+(k|m)$/i, "") + capability;
   }
   return current;
 }

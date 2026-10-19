@@ -8,7 +8,7 @@
     {
       "name": "runmark-tracker",
       "description": "将 Claude Code / CodeBuddy / WorkBuddy 会话遥测上报到 Runmark",
-      "version": "0.2.18",
+      "version": "0.2.20",
       "source": "./plugins/runmark-tracker",
       "category": "telemetry",
       "author": {

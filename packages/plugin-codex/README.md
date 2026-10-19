@@ -38,7 +38,7 @@ Codex Hook stdin 只提供基础事件。插件在 `Stop` 阶段读取 rollout J
 
 ### 前置条件
 
-- [Bun](https://bun.sh/) ≥ 1.1
+- **Bun ≥ 1.1 或 Node ≥ 18**（hook 启动器优先 bun，缺失回退 node）
 - Codex CLI（`npm install -g @openai/codex` 或 `brew install --cask codex`）
 - Runmark Server 已部署（[部署指南](../../README.md)）
 

@@ -69,7 +69,7 @@ export interface IngestMessageEvent {
   type: "message";
   session_id: string;
   message_id: string;
-  role: "user" | "assistant" | "system" | "tool";
+  role: "user" | "assistant" | "system" | "tool" | "reasoning";
   /** Plain text or JSON-serializable content. */
   content?: string | Record<string, unknown>;
   model?: string;
@@ -163,7 +163,7 @@ export interface Session {
 export interface ConversationMessage {
   id: string;
   session_id: string;
-  role: "user" | "assistant" | "system" | "tool";
+  role: "user" | "assistant" | "system" | "tool" | "reasoning";
   content?: string;
   model?: string;
   provider?: string;
@@ -225,7 +225,21 @@ export interface ModelPricing {
   cache_read_price?: number;
   cache_write_price?: number;
   reasoning_price?: number;
+  /** 整次请求输入（含缓存）超过阈值时使用的价格，按最高命中阈值选择。 */
+  context_tiers?: Array<{
+    above: number;
+    input_price: number;
+    output_price: number;
+    cache_read_price?: number;
+    cache_write_price?: number;
+    reasoning_price?: number;
+  }>;
 }
+
+const ASTRA_CONTEXT_PRICING = {
+  reasoning_price: 50,
+  context_tiers: [{ above: 272_000, input_price: 20, output_price: 75, cache_read_price: 2, cache_write_price: 25, reasoning_price: 75 }],
+};
 
 /** Default pricing table (USD per 1M tokens). Will be kept up to date periodically. */
 export const DEFAULT_PRICING: ModelPricing[] = [
@@ -233,6 +247,7 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   // claude-sonnet-5 按正式价 $3/$15 计；官方 intro 优惠价 $2/$10 至 2026-08-31，定价表不区分生效日期
   // Opus 4.5+ / Opus 5 官方 $5/$25（cache read 0.1x / 5m write 1.25x）；仅旧 Opus 4 / 4.1 为 $15/$75
   { provider: "anthropic", model: "claude-sonnet-5", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
+  { provider: "anthropic", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "anthropic", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "anthropic", model: "claude-opus-4-8", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "anthropic", model: "claude-opus-4-7", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
@@ -252,6 +267,23 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   { provider: "openai", model: "gpt-5.6-sol-fast", input_price: 10.0, output_price: 60.0, cache_read_price: 1.0, cache_write_price: 12.5 },
   { provider: "openai", model: "gpt-5.6-terra-fast", input_price: 5.0, output_price: 30.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "openai", model: "gpt-5.6-luna-fast", input_price: 2.0, output_price: 12.0, cache_read_price: 0.2, cache_write_price: 2.5 },
+  // GPT-6（2026-09-03 发布；>272K 长上下文整单按 $20/$75 计。base gpt-6 同 astra 标准档）
+  { provider: "openai", model: "gpt-6-sol", input_price: 2, output_price: 10, cache_read_price: 0.2, cache_write_price: 2.5, reasoning_price: 10,
+    context_tiers: [{ above: 272_000, input_price: 4, output_price: 15, cache_read_price: 0.4, cache_write_price: 5, reasoning_price: 15 }] },
+  { provider: "openai", model: "gpt-6-sol-fast", input_price: 4, output_price: 20, cache_read_price: 0.4, cache_write_price: 5, reasoning_price: 20,
+    context_tiers: [{ above: 272_000, input_price: 8, output_price: 30, cache_read_price: 0.8, cache_write_price: 10, reasoning_price: 30 }] },
+  { provider: "openai", model: "gpt-6-luna", input_price: 0.1, output_price: 0.5, cache_read_price: 0.01, cache_write_price: 0.125, reasoning_price: 0.5,
+    context_tiers: [{ above: 272_000, input_price: 0.2, output_price: 0.75, cache_read_price: 0.02, cache_write_price: 0.25, reasoning_price: 0.75 }] },
+  { provider: "openai", model: "gpt-6-luna-fast", input_price: 0.2, output_price: 1, cache_read_price: 0.02, cache_write_price: 0.25, reasoning_price: 1,
+    context_tiers: [{ above: 272_000, input_price: 0.4, output_price: 1.5, cache_read_price: 0.04, cache_write_price: 0.5, reasoning_price: 1.5 }] },
+  { provider: "openai", model: "gpt-6.1-sol", input_price: 2, output_price: 10, cache_read_price: 0.1, cache_write_price: 2.5, reasoning_price: 10,
+    context_tiers: [{ above: 272_000, input_price: 4, output_price: 15, cache_read_price: 0.2, cache_write_price: 5, reasoning_price: 15 }] },
+  { provider: "openai", model: "gpt-6.1-sol-fast", input_price: 4, output_price: 20, cache_read_price: 0.2, cache_write_price: 5, reasoning_price: 20,
+    context_tiers: [{ above: 272_000, input_price: 8, output_price: 30, cache_read_price: 0.4, cache_write_price: 10, reasoning_price: 30 }] },
+  { provider: "openai", model: "gpt-6", input_price: 10.0, output_price: 50.0, cache_read_price: 1.0, cache_write_price: 12.5, ...ASTRA_CONTEXT_PRICING },
+  { provider: "openai", model: "gpt-6-astra", input_price: 10.0, output_price: 50.0, cache_read_price: 1.0, cache_write_price: 12.5, ...ASTRA_CONTEXT_PRICING },
+  { provider: "openai", model: "gpt-6-astra-fast", input_price: 20.0, output_price: 100.0, cache_read_price: 2.0, cache_write_price: 25.0, reasoning_price: 100,
+    context_tiers: [{ above: 272_000, input_price: 40, output_price: 150, cache_read_price: 4, cache_write_price: 50, reasoning_price: 150 }] },
   { provider: "openai", model: "gpt-5.5", input_price: 5.0, output_price: 30.0, cache_read_price: 0.5 },
   { provider: "openai", model: "gpt-5.5-fast", input_price: 12.5, output_price: 75.0, cache_read_price: 1.25 },
   { provider: "openai", model: "gpt-5.4", input_price: 2.5, output_price: 15.0, cache_read_price: 0.25 },
@@ -280,34 +312,68 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   // 混元（hy3-ioa / hy-3）
   { provider: "hunyuan", model: "hy-3", input_price: 0.5, output_price: 2.0 },
   // CodeBuddy（OpenCode / IDE 常上报 CodeBuddy + Claude-Opus-4.8 / glm-*-ioa）
+  { provider: "codebuddy", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "codebuddy", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "codebuddy", model: "claude-opus-4-6", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "codebuddy", model: "claude-opus-4-7", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "codebuddy", model: "claude-opus-4-8", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "codebuddy", model: "claude-sonnet-4-6", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
-  { provider: "codebuddy", model: "deepseek-v4-flash", input_price: 0.14, output_price: 0.28, cache_read_price: 0.014 },
-  { provider: "codebuddy", model: "deepseek-v4-pro", input_price: 0.55, output_price: 2.19, cache_read_price: 0.055 },
+  { provider: "codebuddy", model: "gpt-6-astra", input_price: 10.0, output_price: 50.0, cache_read_price: 1.0, cache_write_price: 12.5, ...ASTRA_CONTEXT_PRICING },
+  // DeepSeek 官方 API 高峰价（2026-08-17 起峰谷定价，空闲时段为半价；人民币 / USD_TO_CNY）
+  { provider: "codebuddy", model: "deepseek-v4-flash", input_price: 0.429, output_price: 1.286, cache_read_price: 0.014 },
+  { provider: "codebuddy", model: "deepseek-v4-pro", input_price: 1.286, output_price: 3.857, cache_read_price: 0.043 },
   { provider: "codebuddy", model: "glm-5.2", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
   { provider: "codebuddy", model: "glm-5.1", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
   { provider: "codebuddy", model: "glm-5", input_price: 1.0, output_price: 3.2, cache_read_price: 0.2 },
   { provider: "codebuddy", model: "hy-3", input_price: 0.5, output_price: 2.0 },
-  // DeepSeek 官方 API
-  { provider: "deepseek", model: "deepseek-chat", input_price: 0.14, output_price: 0.28, cache_read_price: 0.014 },
-  { provider: "deepseek", model: "deepseek-reasoner", input_price: 0.55, output_price: 2.19, cache_read_price: 0.055 },
-  { provider: "deepseek", model: "deepseek-v4-flash", input_price: 0.14, output_price: 0.28, cache_read_price: 0.014 },
-  { provider: "deepseek", model: "deepseek-v4-pro", input_price: 0.55, output_price: 2.19, cache_read_price: 0.055 },
+  // Astra / Kimi
+  { provider: "astra", model: "kimi-k2", input_price: 2.0, output_price: 8.0 },
+  { provider: "astra", model: "deepseek-v4-pro-code", input_price: 1.286, output_price: 3.857, cache_read_price: 0.043 },
+  { provider: "astra", model: "glm-5.2", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
+  { provider: "astra", model: "glm-5.1", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
+  // BoxAI（腾讯内网代理，按 Anthropic 官方定价估算）
+  { provider: "boxai", model: "claude-sonnet-4-6", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
+  { provider: "boxai", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "boxai", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "boxai", model: "claude-opus-4-6", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "boxai", model: "claude-opus-4-7", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "boxai", model: "claude-opus-4-8", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "boxai", model: "deepseek-v4-pro", input_price: 1.286, output_price: 3.857, cache_read_price: 0.043 },
+  { provider: "boxai", model: "deepseek-v4-flash", input_price: 0.429, output_price: 1.286, cache_read_price: 0.014 },
+  { provider: "boxai", model: "glm-5.2", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
+  { provider: "boxai", model: "gemini-3.6-flash", input_price: 1.5, output_price: 7.5 },
+  { provider: "boxai", model: "gemini-3.5-flash", input_price: 1.5, output_price: 9.0 },
+  { provider: "boxai", model: "kimi-k2", input_price: 2.0, output_price: 8.0 },
+  // IMate（内网代理，含 Claude / GPT / GLM / 混元）
+  { provider: "imate", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "imate", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "imate", model: "claude-opus-4-6", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "imate", model: "claude-opus-4-7", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "imate", model: "claude-opus-4-8", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "imate", model: "gpt-6-astra", input_price: 10.0, output_price: 50.0, cache_read_price: 1.0, cache_write_price: 12.5, ...ASTRA_CONTEXT_PRICING },
+  { provider: "imate", model: "glm-5.2", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
+  { provider: "imate", model: "glm-5.1", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
+  { provider: "imate", model: "hy-3", input_price: 0.5, output_price: 2.0 },
   // Cursor IDE（Hook 上报 agent=cursor）
   // Composer 2.5：Standard $0.50/$2.50 cache $0.20；Fast（默认）$3/$15（Cursor 官方表）
   { provider: "cursor", model: "composer-2.5", input_price: 0.5, output_price: 2.5, cache_read_price: 0.2 },
   { provider: "cursor", model: "composer-2.5-fast", input_price: 3.0, output_price: 15.0, cache_read_price: 0.5 },
+  { provider: "cursor", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "cursor", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "cursor", model: "claude-opus-4-8", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
+  { provider: "cursor", model: "claude-opus-4-7", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "cursor", model: "claude-sonnet-4", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
   { provider: "cursor", model: "gpt-4.1", input_price: 2.0, output_price: 8.0 },
-  // Cursor / xAI 联合 Grok 4.5（Cursor 表 cache read $0.5；API 官方 cache $0.30，见 xai 行）
+  { provider: "cursor", model: "gemini-3.8-flash", input_price: 0.75, output_price: 3.5, cache_read_price: 0.075 },
+  // Cursor / xAI 联合 Grok（Cursor 表 cache read $0.5；API 官方 cache $0.30，见 xai 行）
   { provider: "cursor", model: "cursor-grok-4.5", input_price: 2.0, output_price: 6.0, cache_read_price: 0.5, reasoning_price: 6.0 },
   { provider: "cursor", model: "grok-4.5", input_price: 2.0, output_price: 6.0, cache_read_price: 0.5, reasoning_price: 6.0 },
+  // Grok 4.7（Cursor docs 2026-09-21）：standard $2/$6 cache $0.50；Fast 2x
+  { provider: "cursor", model: "cursor-grok-4.7", input_price: 2.0, output_price: 6.0, cache_read_price: 0.5, reasoning_price: 6.0 },
+  { provider: "cursor", model: "grok-4.7", input_price: 2.0, output_price: 6.0, cache_read_price: 0.5, reasoning_price: 6.0 },
+  { provider: "cursor", model: "grok-4.7-fast", input_price: 4.0, output_price: 12.0, cache_read_price: 1.0, reasoning_price: 12.0 },
   // Codex（Hook 上报 agent=codex，模型多为 openai / 代理 id）
+  { provider: "codex", model: "gpt-6-astra", input_price: 10.0, output_price: 50.0, cache_read_price: 1.0, cache_write_price: 12.5, ...ASTRA_CONTEXT_PRICING },
   { provider: "codex", model: "gpt-5.6-sol", input_price: 5.0, output_price: 30.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "codex", model: "gpt-5.6-terra", input_price: 2.5, output_price: 15.0, cache_read_price: 0.25, cache_write_price: 3.125 },
   { provider: "codex", model: "gpt-5.6-luna", input_price: 1.0, output_price: 6.0, cache_read_price: 0.1, cache_write_price: 1.25 },
@@ -318,6 +384,9 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   // xAI 官方 API（docs.x.ai；短上下文 <200k；reasoning 按 output 计）
   { provider: "xai", model: "grok-4.5", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
   { provider: "xai", model: "grok-4.5-build", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "xai", model: "grok-4.6", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "xai", model: "grok-4.7", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "xai", model: "grok-4.7-build-fast", input_price: 4.0, output_price: 12.0, cache_read_price: 0.5, reasoning_price: 12.0 },
   { provider: "xai", model: "grok-4.3", input_price: 1.25, output_price: 2.5, cache_read_price: 0.2, reasoning_price: 2.5 },
   { provider: "xai", model: "grok-build-0.1", input_price: 1.0, output_price: 2.0, cache_read_price: 0.2, reasoning_price: 2.0 },
   { provider: "xai", model: "grok-4", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
@@ -325,6 +394,9 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   { provider: "xai", model: "grok-3-mini", input_price: 0.3, output_price: 0.5 },
   // open-grok-build OpenCode 插件（provider=grok-build；cost 常漏 cache，server 按 API 重算）
   { provider: "grok-build", model: "grok-4.5", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "grok-build", model: "grok-4.6", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "grok-build", model: "grok-4.7", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "grok-build", model: "grok-4.7-build-fast", input_price: 4.0, output_price: 12.0, cache_read_price: 0.5, reasoning_price: 12.0 },
   { provider: "grok-build", model: "grok-4.3", input_price: 1.25, output_price: 2.5, cache_read_price: 0.2, reasoning_price: 2.5 },
   { provider: "grok-build", model: "grok-build", input_price: 1.0, output_price: 2.0, cache_read_price: 0.2, reasoning_price: 2.0 },
   { provider: "grok-build", model: "grok-composer-2.5-fast", input_price: 3.0, output_price: 15.0, cache_read_price: 0.5, reasoning_price: 15.0 },
@@ -334,6 +406,9 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   // Grok CLI Hook（agent=grok）
   { provider: "grok", model: "grok-4.5", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
   { provider: "grok", model: "grok-4.5-build", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "grok", model: "grok-4.6", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "grok", model: "grok-4.7", input_price: 2.0, output_price: 6.0, cache_read_price: 0.3, reasoning_price: 6.0 },
+  { provider: "grok", model: "grok-4.7-build-fast", input_price: 4.0, output_price: 12.0, cache_read_price: 0.5, reasoning_price: 12.0 },
   { provider: "grok", model: "grok-composer-2.5-fast", input_price: 3.0, output_price: 15.0, cache_read_price: 0.5, reasoning_price: 15.0 },
 ];
 
@@ -455,6 +530,10 @@ function findPricing(
   );
   if (exact) return exact;
 
+  // 精确模型的跨 provider 正价优先于本 provider 的泛型号匹配（如 gpt-6、Astra）。
+  const exactModel = pricingTable.find((p) => canonicalizeModelId(p.model) === modelNorm);
+  if (exactModel) return exactModel;
+
   const byProvider = pricingTable.filter((p) => p.provider.toLowerCase() === providerLower);
   const byProviderModel = pickLongestModelMatch(
     byProvider.filter((p) => {
@@ -464,7 +543,7 @@ function findPricing(
   );
   if (byProviderModel) return byProviderModel;
 
-  // 同 provider 无精确条目时，按规范化 model 跨 provider 回退（CodeBuddy Opus → Anthropic 单价）
+  // 同 provider 无精确条目时，按规范化 model 跨 provider 回退（CodeBuddy Opus → Anthropic/BoxAI 单价）
   const crossProvider = pickLongestModelMatch(
     pricingTable.filter((p) => {
       const priced = canonicalizeModelId(p.model);
@@ -498,12 +577,19 @@ export function computeCost(
     cache_read_tokens?: number;
     cache_write_tokens?: number;
     reasoning_tokens?: number;
+    /** Codex 等来源的 output_tokens 已包含推理，不能再次收费。 */
+    output_includes_reasoning?: boolean;
   },
   pricingTable: ModelPricing[] = DEFAULT_PRICING,
 ): number {
-  const pricing = findPricing(provider, model, pricingTable);
+  const base = findPricing(provider, model, pricingTable);
 
-  if (!pricing) return 0;
+  if (!base) return 0;
+
+  const context = usage.input_tokens + (usage.cache_read_tokens ?? 0) + (usage.cache_write_tokens ?? 0);
+  const tier = base.context_tiers?.filter((entry) => context > entry.above)
+    .sort((a, b) => b.above - a.above)[0];
+  const pricing = tier ? { ...base, ...tier } : base;
 
   const perM = (n?: number) => (n ?? 0) / 1_000_000;
 
@@ -517,7 +603,7 @@ export function computeCost(
   if (pricing.cache_write_price && usage.cache_write_tokens) {
     cost += perM(usage.cache_write_tokens) * pricing.cache_write_price;
   }
-  if (pricing.reasoning_price && usage.reasoning_tokens) {
+  if (!usage.output_includes_reasoning && pricing.reasoning_price && usage.reasoning_tokens) {
     cost += perM(usage.reasoning_tokens) * pricing.reasoning_price;
   }
 

@@ -13,7 +13,7 @@ describe("costService", () => {
       cache_write_price: 3.75,
     },
     { provider: "openai", model: "gpt-4.1", input_price: 2.0, output_price: 8.0 },
-    { provider: "codebuddy", model: "deepseek-v4-flash", input_price: 0.14, output_price: 0.28 },
+    { provider: "codebuddy", model: "deepseek-v4-flash", input_price: 0.429, output_price: 1.286 },
   ];
 
   beforeEach(() => {
@@ -65,7 +65,7 @@ describe("costService", () => {
       output_tokens: 1_000_000,
     });
 
-    expect(cost).toBeCloseTo(0.14 + 0.28, 6);
+    expect(cost).toBeCloseTo(0.429 + 1.286, 6);
   });
 
   it("resolveTurnCost falls back when OpenCode reports 0", () => {
@@ -142,6 +142,17 @@ describe("costService", () => {
     expect(cursorStd).toBeCloseTo(0.5 + 2.5 + 0.2, 6);
   });
 
+  it("prices Grok 4.7 standard and Fast tiers across cursor / xai / grok", () => {
+    const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_tokens: 1_000_000 };
+    // Cursor docs 2026-09-21：standard $2/$6 cache $0.50；Fast 2x
+    expect(computeCost("cursor", "grok-4.7", usage, DEFAULT_PRICING)).toBeCloseTo(2 + 6 + 0.5, 6);
+    expect(computeCost("cursor", "cursor-grok-4.7-500k", usage, DEFAULT_PRICING)).toBeCloseTo(2 + 6 + 0.5, 6);
+    expect(computeCost("cursor", "grok-4.7-256k-fast", usage, DEFAULT_PRICING)).toBeCloseTo(4 + 12 + 1, 6);
+    expect(computeCost("xai", "grok-4.7", usage, DEFAULT_PRICING)).toBeCloseTo(2 + 6 + 0.3, 6);
+    expect(computeCost("grok-build", "grok-4.7", usage, DEFAULT_PRICING)).toBeCloseTo(2 + 6 + 0.3, 6);
+    expect(computeCost("grok", "grok-4.7-build-fast", usage, DEFAULT_PRICING)).toBeCloseTo(4 + 12 + 0.5, 6);
+  });
+
   it("has explicit OpenAI GPT-5.5 pricing with cache read discount", () => {
     const cost = computeCost("openai", "gpt-5.5", {
       input_tokens: 1_000_000,
@@ -172,9 +183,10 @@ describe("costService", () => {
     expect(cost).toBeCloseTo(5 + 25, 6);
   });
 
-  it("normalizes Claude-Opus-4.8-1m under codebuddy", () => {
+  it("normalizes Claude-Opus-4.8-1m under codebuddy/imate", () => {
     const usage = { input_tokens: 1_000_000, output_tokens: 0 };
     expect(computeCost("codebuddy", "Claude-Opus-4.8-1m", usage, DEFAULT_PRICING)).toBeCloseTo(5, 6);
+    expect(computeCost("IMate", "Claude-Opus-4.8-1m", usage, DEFAULT_PRICING)).toBeCloseTo(5, 6);
   });
 
   it("prefers longer model match so gpt-5 does not steal gpt-5.4", () => {
@@ -192,6 +204,7 @@ describe("costService", () => {
     expect(computeCost("CodeBuddy", "Claude-Opus-4.9", usage, DEFAULT_PRICING)).toBeCloseTo(30, 6);
     expect(computeCost("codebuddy", "claude-opus-5", usage, DEFAULT_PRICING)).toBeCloseTo(30, 6);
     expect(computeCost("cursor", "claude-opus-5-300k", usage, DEFAULT_PRICING)).toBeCloseTo(30, 6);
+    expect(computeCost("IMate", "Claude-Opus-4.9-1m", usage, DEFAULT_PRICING)).toBeCloseTo(30, 6);
   });
 
   it("falls back unknown Sonnet version to sonnet family pricing", () => {
@@ -203,15 +216,17 @@ describe("costService", () => {
     expect(cost).toBeCloseTo(3 + 15, 6);
   });
 
-  it("falls back unknown GPT flagship to gpt family flagship, not mini", () => {
+  it("prices GPT-6 Astra explicitly and keeps generic GPT fallback for newer ids", () => {
     const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
-    // gpt-6 无条目 → 按 gpt 族旗舰兜底，最高 input_price 是 gpt-5.6-sol（$5/$30）
-    expect(computeCost("openai", "gpt-6", usage, DEFAULT_PRICING)).toBeCloseTo(35, 6);
-    expect(computeCost("CodeBuddy", "GPT-6", usage, DEFAULT_PRICING)).toBeCloseTo(35, 6);
+    // gpt-6 系列显式登记（$10/$50）；未知 gpt-7 仍按 gpt 族旗舰兜底
+    expect(computeCost("openai", "gpt-6", usage, DEFAULT_PRICING)).toBeCloseTo(95, 6);
+    expect(computeCost("CodeBuddy", "GPT-6", usage, DEFAULT_PRICING)).toBeCloseTo(95, 6);
+    expect(computeCost("imate", "gpt-6-astra", usage, DEFAULT_PRICING)).toBeCloseTo(95, 6);
+    expect(computeCost("openai", "gpt-7", usage, DEFAULT_PRICING)).toBeCloseTo(95, 6);
   });
 
   it("falls back unknown GPT mini to mini-tier pricing", () => {
-    const cost = computeCost("openai", "gpt-6-mini", {
+    const cost = computeCost("openai", "gpt-7-mini", {
       input_tokens: 1_000_000,
       output_tokens: 1_000_000,
     }, DEFAULT_PRICING);
@@ -220,17 +235,55 @@ describe("costService", () => {
     expect(cost).toBeCloseTo(5.25, 6);
   });
 
-  it("falls back unknown deepseek flash/pro by tier", () => {
-    const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
-    expect(computeCost("codebuddy", "deepseek-v5-flash", usage, DEFAULT_PRICING)).toBeCloseTo(0.42, 6);
-    expect(computeCost("codebuddy", "deepseek-v5-pro", usage, DEFAULT_PRICING)).toBeCloseTo(0.55 + 2.19, 6);
-    // 无档位 → 旗舰 pro，而非 flash
-    expect(computeCost("codebuddy", "deepseek-v5", usage, DEFAULT_PRICING)).toBeCloseTo(0.55 + 2.19, 6);
+  it("prices the whole Astra request above 272K, including cache and separate reasoning", () => {
+    const usage = { input_tokens: 200_000, cache_read_tokens: 72_000, output_tokens: 100, reasoning_tokens: 50 };
+    expect(computeCost("openai", "gpt-6-astra", usage)).toBeCloseTo(2.0795, 9);
+    expect(computeCost("openai", "gpt-6-astra", { ...usage, output_tokens: 150, output_includes_reasoning: true })).toBeCloseTo(2.0795, 9);
+    expect(computeCost("openai", "gpt-6-astra", { ...usage, cache_write_tokens: 1 })).toBeCloseTo(4.155275, 9);
+    expect(computeCost("openai", "gpt-6-astra-fast", { ...usage, cache_write_tokens: 1 })).toBeCloseTo(8.31055, 9);
+    costService.setPricing(DEFAULT_PRICING);
+    expect(costService.resolveTurnCost("openai", "gpt-6-astra", { input_tokens: 1118, cache_read_tokens: 279680, output_tokens: 302, reasoning_tokens: 510 }, 0)).toBeCloseTo(0.64262, 9);
   });
 
-  it("prices deepseek deepseek-v4-pro explicitly", () => {
+  it("selects the highest matching context tier regardless of order and honors zero prices", () => {
+    const table: ModelPricing[] = [{ provider: "test", model: "tiered", input_price: 10, output_price: 50, cache_read_price: 1,
+      context_tiers: [
+        { above: 200, input_price: 30, output_price: 70, cache_read_price: 0 },
+        { above: 100, input_price: 20, output_price: 60 },
+      ] }];
+    expect(computeCost("test", "tiered", { input_tokens: 1, cache_read_tokens: 200, output_tokens: 1 }, table)).toBe(0.0001);
+    expect(computeCost("test", "tiered", { input_tokens: 100, output_tokens: 1 }, table)).toBe(0.00105);
+  });
+
+  it("prices every GPT-6 SKU independently across providers and context bands", () => {
+    for (const [model, input, output, read, write] of [
+      ["gpt-6-astra", 10, 50, 1, 12.5], ["gpt-6-sol", 2, 10, 0.2, 2.5],
+      ["gpt-6-luna", 0.1, 0.5, 0.01, 0.125], ["gpt-6.1-sol", 2, 10, 0.1, 2.5],
+    ] as const) {
+      for (const provider of ["openai", "codex", "codebuddy", "magpie-openai"]) {
+        for (const fast of [false, true]) {
+          const id = model + (fast ? "-fast" : "");
+          const factor = fast ? 2 : 1;
+          expect(computeCost(provider, id, { input_tokens: 200000, cache_read_tokens: 72000, output_tokens: 100, reasoning_tokens: 50 }))
+            .toBeCloseTo((200000 * input + 72000 * read + 150 * output) * factor / 1e6, 9);
+          expect(computeCost(provider, id, { input_tokens: 200000, cache_read_tokens: 72000, cache_write_tokens: 1, output_tokens: 100, reasoning_tokens: 50 }))
+            .toBeCloseTo((400000 * input + 144000 * read + 2 * write + 225 * output) * factor / 1e6, 9);
+        }
+      }
+    }
+  });
+
+  it("falls back unknown deepseek flash/pro by tier", () => {
+    const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
+    expect(computeCost("codebuddy", "deepseek-v5-flash", usage, DEFAULT_PRICING)).toBeCloseTo(0.429 + 1.286, 6);
+    expect(computeCost("codebuddy", "deepseek-v5-pro", usage, DEFAULT_PRICING)).toBeCloseTo(1.286 + 3.857, 6);
+    // 无档位 → 旗舰 pro，而非 flash
+    expect(computeCost("codebuddy", "deepseek-v5", usage, DEFAULT_PRICING)).toBeCloseTo(1.286 + 3.857, 6);
+  });
+
+  it("prices Astra deepseek_v4_pro_code explicitly", () => {
     const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000, cache_read_tokens: 1_000_000 };
-    expect(computeCost("deepseek", "deepseek-v4-pro", usage, DEFAULT_PRICING)).toBeCloseTo(0.55 + 2.19 + 0.055, 6);
+    expect(computeCost("astra", "deepseek_v4_pro_code", usage, DEFAULT_PRICING)).toBeCloseTo(1.286 + 3.857 + 0.043, 6);
   });
 
   it("prices glm-5.2-ioa via zhipu / codebuddy glm family", () => {
@@ -250,7 +303,7 @@ describe("costService", () => {
 
   it("prices gemini 3.x flash at 3.x rates across proxy providers", () => {
     const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
-    for (const provider of ["google", "cursor"]) {
+    for (const provider of ["google", "boxai", "cursor"]) {
       expect(computeCost(provider, "gemini-3.6-flash", usage, DEFAULT_PRICING)).toBeCloseTo(1.5 + 7.5, 6);
       expect(computeCost(provider, "gemini-3.5-flash", usage, DEFAULT_PRICING)).toBeCloseTo(1.5 + 9.0, 6);
     }
@@ -265,7 +318,7 @@ describe("costService", () => {
 
   it("prices kimi-k3 above kimi-k2 instead of falling back to k2", () => {
     const usage = { input_tokens: 1_000_000, output_tokens: 1_000_000 };
-    for (const provider of ["moonshot", "deepseek"]) {
+    for (const provider of ["moonshot", "boxai", "astra"]) {
       expect(computeCost(provider, "kimi-k3", usage, DEFAULT_PRICING)).toBeCloseTo(3 + 15, 6);
     }
     // k2 系列不受影响

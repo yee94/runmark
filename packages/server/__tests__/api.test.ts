@@ -249,6 +249,32 @@ describe("API integration", () => {
     expect(session.duration_ms).toBeLessThan(60 * 60 * 1000);
   });
 
+  it("GET /v1/sessions excludes synthetic import sessions by default", async () => {
+    db.exec(`
+      INSERT INTO sessions (id, agent, title, started_at, ended_at, request_count, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd)
+      VALUES
+        ('agent-tracker-synthetic-import-daily-2026-06-16-gpt-5-5-0', '', '[runmark-import] 2026-06-16 GPT-5.5', '2026-06-16T12:00:00.000Z', '2026-06-16T12:00:00.000Z', 1, 0, 0, 1000, 0),
+        ('legacy-import-id', 'IMate', '[runmark-import] IMate 本月', '2026-06-16T09:00:00.000Z', NULL, 0, 0, 0, 500, 0),
+        ('real-session', 'cursor', '真实会话', '2026-06-16T09:00:00.000Z', NULL, 0, 0, 0, 100, 0)
+    `);
+    db.exec(`
+      INSERT INTO messages (id, session_id, role, content, created_at)
+      VALUES
+        ('m-synthetic', 'agent-tracker-synthetic-import-daily-2026-06-16-gpt-5-5-0', 'user', 'import', '2026-06-16T12:00:00.000Z'),
+        ('m-legacy', 'legacy-import-id', 'user', 'import', '2026-06-16T09:00:00.000Z'),
+        ('m-real', 'real-session', 'user', 'hello', '2026-06-16T09:00:00.000Z')
+    `);
+
+    const sessionsRes = await app.request("/v1/sessions");
+    const sessions = await sessionsRes.json();
+    expect(sessions.length).toBe(1);
+    expect(sessions[0].id).toBe("real-session");
+
+    const withImportsRes = await app.request("/v1/sessions?include_imports=1");
+    const withImports = await withImportsRes.json();
+    expect(withImports.length).toBe(3);
+  });
+
   it("GET /v1/sessions excludes smartfetch-secondary temporary sessions", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, started_at, ended_at, request_count, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd)

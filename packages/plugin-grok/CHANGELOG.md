@@ -5,6 +5,7 @@
 ### Patch Changes
 
 - Resolve hook runtime with node/bun fallback (bun → ~/.bun/bin/bun → node → nvm/fnm/volta/asdf), baking the absolute path into the launcher so host GUIs without a login-shell PATH still report telemetry.
+- Collect git metadata with `node:child_process.execFile` so the timeout works under both Bun and Node.
 
 ## 0.1.1
 

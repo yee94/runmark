@@ -2,7 +2,60 @@
 
 ## Unreleased
 
-- Client plugins (grok / codex / claude-compat / runmark): resolve hook runtime with a node/bun fallback (bun → ~/.bun/bin/bun → node → nvm/fnm/volta/asdf), baking the absolute path into the hook launcher so host GUIs without a login-shell PATH still report telemetry.
+## 0.2.36 (Server) - 2026-10-19
+
+Catch-up from 0.2.27. Public installs keep DeepSeek defaults (`https://api.deepseek.com`, `deepseek-chat` / `deepseek-reasoner`) and the `@runmarks/*` packages.
+
+- Price GPT-6, GPT-6 Astra, Sol, Luna, and GPT-6.1 Sol independently, including the above-272K context tier. An exact model id wins over a fuzzy cross-provider match.
+- Reprice supports a single session, dry-run, and tiered prices. Codex `output_tokens` already include reasoning and are not charged twice.
+- Stats APIs accept last month and a custom inclusive `from` / `to`. The dashboard uses a two-month calendar and shows a loading state beside the range control.
+- Session traces support filters, stable deep links, and ranged shares.
+- Collect `function_call` / `function_call_result`, subagent transcripts, and `reasoning` / `tool` roles (Claude-compat plugin 0.2.20).
+- Send `X-API-Key` only to Astra hosts. Other OpenAI-compatible endpoints get Bearer auth only.
+- Updater: reflink database snapshots with a SQLite online-backup fallback, Bun lockfile v2 installs, and no false timeout while a long update is still running.
+- OpenCode plugin 0.2.8 reports billable `finish=tool-calls` steps. Client hook launchers fall back from bun to node and record git metadata with `node:child_process`.
+
+## 0.2.35 (Server) - 2026-10-18
+
+- Fixed GPT-6 Astra long-context pricing: when one request's input including cache exceeds 272K, the whole request uses the higher tier for Standard and Fast names.
+- Bill Astra reasoning tokens separately, and skip a second reasoning charge when Codex output already includes it.
+- Persist context tiers on the price table. Historical reprice supports a session filter and dry-run, and updates cost inside a transaction without resetting token or request totals.
+
+## 0.2.34 (Server) - 2026-10-18
+
+- Fixed a false update failure after three minutes. The dashboard keeps polling while the server reports backup, install, or health-check progress.
+
+## 0.2.33 (Server) - 2026-10-18
+
+- Stats APIs accept last month and a custom inclusive range via timezone-aware `from` / `to` on all four stats endpoints.
+- Date filtering uses a two-month calendar and adds this year, this quarter, last quarter, and the previous three months.
+- The updater can reflink a database snapshot and falls back to SQLite's online backup. Server packaging tolerates Bun lockfile v2.
+
+## 0.2.32 (Server) - 2026-09-23
+
+- Added Grok 4.7 / 4.6, GPT-6, Opus 5.5, and Cursor `gemini-3.8-flash` prices.
+- Fixed model-id normalization so a context marker in the middle of an id (for example `grok-4.7-256k-fast`) still matches the Fast price.
+- Delayed session-agent retries after `AgentRunBusyError` by 250ms instead of spinning on the ready queue.
+- Server packages now generate a real `bun.lock` under Bun 1.4 (`--lockfile-only` without `--production`).
+
+## 0.2.31 (Server) - 2026-08-20
+
+- Unified trace filters and stable deep links for sessions and public shares.
+- Added ranged shares and restored full share search resources.
+
+## 0.2.30 (Server) - 2026-08-13
+
+- Updated DeepSeek V4 Flash / Pro peak prices to the official 2026-08-17 peak/off-peak schedule (CNY / 7).
+
+## 0.2.29 (Server) - 2026-08-13
+
+- Store `function_call` / `function_call_result`, including CodeBuddy CLI and Claude tool-call cache handling.
+- Support subagent sessions: SessionStart mapping, PostToolUse `call_id`, and subagent transcript dispatch.
+- Session detail shows `reasoning` and `tool` roles.
+
+## 0.2.28 (Server) - 2026-08-13
+
+- Attach `X-API-Key` only for the Astra gateway. Standard OpenAI-compatible endpoints send Bearer only.
 
 ## 0.2.27 (Server) - 2026-08-08
 

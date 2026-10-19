@@ -137,28 +137,55 @@ source skills/agent-tracker-api/runmark-api.sh
 
 ## 2. 时间段统计
 
-`range` 支持：
+四个统计接口（`summary`、`by-model`、`by-agent`、`daily`）共用 `range` / `from` / `to`。省略 `range` 默认本月；`range` 支持：
 
 | range | 含义 |
 |-------|------|
 | `today` | 当天 UTC 0 点至今 |
 | `24h` | 过去 24 小时 |
 | `7d` | 过去 7 天 |
-| `month` | 本月 1 日至今 |
+| `month` | 本月 UTC 1 日至今 |
+| `last_month` | 上一个完整 UTC 自然月 |
+| `custom` | 自定义闭区间，必须同时传 `from` / `to` |
 | `all` | 全量 |
 
 ```bash
 runmark_get "/v1/stats/summary?range=7d" | jq .
 runmark_get "/v1/stats/by-model?range=7d&sort=cost" | jq .
 runmark_get "/v1/stats/by-agent?range=7d&sort=tokens" | jq .
-runmark_get /v1/stats/daily | jq .
+runmark_get "/v1/stats/daily?range=7d" | jq .
 ```
+
+### 自定义日期与快捷范围
+
+`from` / `to` 使用带时区的 ISO 8601 时间，成对传入时优先于 `range`，首尾均包含。缺少一端、格式非法或起点晚于终点返回 HTTP 400。用 `--data-urlencode` 编码时区中的 `+`。
+
+```bash
+# 北京时间 2026 年第三季度，含 7 月 1 日与 9 月 30 日全天
+runmark_get /v1/stats/summary -G \
+  --data-urlencode 'range=custom' \
+  --data-urlencode 'from=2026-07-01T00:00:00+08:00' \
+  --data-urlencode 'to=2026-09-30T23:59:59.999+08:00' | jq .
+```
+
+年度、季度等是客户端计算边界后调用 `range=custom`，不是新增的 `range` 枚举：
+
+| 用户表达 | 按用户时区计算日期边界 |
+|----------|------------------------|
+| 本年度 | 今年 1 月 1 日至今天 |
+| 本季度 | 当前自然季度第一天至今天 |
+| 上季度 | 上一个完整自然季度 |
+| 前三个月 | 当前月之前三个完整自然月，不含本月 |
+
+日期查询起点取当天 00:00:00，终点取当天 23:59:59.999；用户时区未知时先确认。Dashboard 使用浏览器本地时区传边界；直接只传预设 `range` 则按 UTC 计算。`daily` 仍按 UTC 日期分组。`summary` 返回实际使用的 `from` / `to`，全量时为 null。
 
 一键快照：
 
 ```bash
 source skills/agent-tracker-api/runmark-api.sh
 ./skills/agent-tracker-api/examples/fetch-period-snapshot.sh 7d week-snapshot.json
+./skills/agent-tracker-api/examples/fetch-period-snapshot.sh custom quarter-snapshot.json \
+  '2026-07-01T00:00:00+08:00' '2026-09-30T23:59:59.999+08:00'
 ```
 
 注意：

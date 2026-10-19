@@ -7,6 +7,10 @@ import { createApp } from "../src/app";
 import { resetDatabase } from "../src/db";
 import type { ServerConfig } from "../src/config";
 import type { Database } from "bun:sqlite";
+import { FOCUS_ANCESTOR_DEPTH_MAX } from "../src/routes/session-shares";
+
+/** focus / seed 固定时间锚，避免 Date.now() 影响时间相关断言 */
+const SEED_TIME_BASE = Date.parse("2026-06-01T12:00:00.000Z");
 
 const API_KEY = "test-share-secret";
 const SHARE_LINK_HMAC_PREFIX = "agent-tracker-session-share-link-v1:";
@@ -18,9 +22,11 @@ function expectedShareAlias(tokenHash: string): string {
   return `${tokenHash}.${signature}`;
 }
 
-function expectedAgentPrompt(apiUrl: string): string {
+function expectedAgentPrompt(apiUrl: string, restricted = false): string {
   return [
-    "请先读取 Session 摘要（优先 AISummary）。需要详情时，从响应 resources 选择 search / messages / turns / tool_calls 链接，用 curl -o <file> 落盘后再分析。",
+    restricted
+      ? "请先读取 Session 摘要（优先 AISummary）。需要详情时，仅使用响应 resources.trace 按 next_offset 分页读取已过滤、已脱敏的共享调用链，并用 curl -o <file> 落盘后分析。"
+      : "请先读取 Session 摘要（优先 AISummary）。需要定位时先使用 resources.search；需要详情时，从响应 resources 选择 trace / messages / turns / tool_calls 链接，按 next_offset 分页读取并用 curl -o <file> 落盘后分析。",
     "",
     "---",
     "",
@@ -40,9 +46,9 @@ function shareTestConfig(dbPath: string): ServerConfig {
     logFile: "/tmp/agent-tracker-share-test.log",
     cursorSyncEnabled: false,
     cursorApiKey: API_KEY,
-    llmBaseUrl: "https://api.deepseek.com",
+    llmBaseUrl: "https://api.example.com/v1/chat/completions",
     llmApiKey: "ac:test",
-    llmModel: "deepseek-chat",
+    llmModel: "deepseek_v4_flash_code",
     agentThrottleMs: 10 * 60 * 1000,
     agentAutoRunEnabled: false,
     updateEnabled: false,
@@ -69,7 +75,7 @@ function seedSession(db: Database, id = "share-sess-1") {
       'parent-secret', '{"is_fork":true,"fork_parent_session_id":"parent-secret"}', '短摘要',
       1, 100, 50, 150, 0.01
     )
-  `).run({ $id: id, $started_at: new Date().toISOString() });
+  `).run({ $id: id, $started_at: new Date(SEED_TIME_BASE).toISOString() });
 
   db.query(`
     INSERT INTO messages (id, session_id, role, content, created_at)
@@ -77,7 +83,7 @@ function seedSession(db: Database, id = "share-sess-1") {
   `).run({
     $id: `msg-${id}`,
     $session_id: id,
-    $created_at: new Date(Date.now() - 3000).toISOString(),
+    $created_at: new Date(SEED_TIME_BASE - 3000).toISOString(),
   });
 
   db.query(`
@@ -86,7 +92,7 @@ function seedSession(db: Database, id = "share-sess-1") {
   `).run({
     $id: `msg-asst-${id}`,
     $session_id: id,
-    $created_at: new Date(Date.now() - 2000).toISOString(),
+    $created_at: new Date(SEED_TIME_BASE - 2000).toISOString(),
   });
 
   db.query(`
@@ -100,7 +106,7 @@ function seedSession(db: Database, id = "share-sess-1") {
   `).run({
     $id: `turn-${id}`,
     $session_id: id,
-    $created_at: new Date(Date.now() - 1500).toISOString(),
+    $created_at: new Date(SEED_TIME_BASE - 1500).toISOString(),
   });
 
   db.query(`
@@ -114,7 +120,7 @@ function seedSession(db: Database, id = "share-sess-1") {
   `).run({
     $id: `turn-2-${id}`,
     $session_id: id,
-    $created_at: new Date(Date.now() - 1000).toISOString(),
+    $created_at: new Date(SEED_TIME_BASE - 1000).toISOString(),
   });
 
   db.query(`
@@ -127,7 +133,7 @@ function seedSession(db: Database, id = "share-sess-1") {
   `).run({
     $id: `tool-${id}`,
     $session_id: id,
-    $created_at: new Date(Date.now() - 500).toISOString(),
+    $created_at: new Date(SEED_TIME_BASE - 500).toISOString(),
   });
 
   db.query(`
@@ -139,7 +145,7 @@ function seedSession(db: Database, id = "share-sess-1") {
   `).run({
     $id: `tool-2-${id}`,
     $session_id: id,
-    $created_at: new Date().toISOString(),
+    $created_at: new Date(SEED_TIME_BASE).toISOString(),
   });
 
   return id;
@@ -148,14 +154,16 @@ function seedSession(db: Database, id = "share-sess-1") {
 async function createShare(
   app: ReturnType<typeof createApp>["app"],
   duration = "6h",
+  sessionId = "share-sess-1",
+  scope: { types?: string[]; node?: string | null; child?: string | null } = {},
 ) {
-  const createRes = await app.request("/v1/sessions/share-sess-1/shares", {
+  const createRes = await app.request(`/v1/sessions/${sessionId}/shares`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       "X-API-Key": API_KEY,
     },
-    body: JSON.stringify({ duration }),
+    body: JSON.stringify({ duration, ...scope }),
   });
   expect(createRes.status).toBe(201);
   return createRes.json() as Promise<{
@@ -166,6 +174,50 @@ async function createShare(
     expires_at: string;
     agent_prompt: string;
   }>;
+}
+
+/** 链接会话：用于 child 隔离 / 环检测 / cursor-turn 聚焦 */
+function seedLinkedSession(
+  db: Database,
+  id: string,
+  parentId: string | null,
+  opts?: { agent?: string; title?: string; startedAt?: string },
+) {
+  const startedAt = opts?.startedAt ?? new Date().toISOString();
+  db.query(`
+    INSERT INTO sessions (
+      id, agent, title, provider, model, started_at,
+      project_name, user_email, hostname, directory, worktree, repo_url, branch,
+      parent_session_id, metadata, AISummary,
+      request_count, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd
+    ) VALUES (
+      $id, $agent, $title, 'anthropic', 'claude-sonnet-4',
+      $started_at,
+      'secret-project', 'user@secret.example', 'secret-host', '/secret/dir', '/secret/worktree',
+      'git@secret.example/repo.git', 'secret-branch',
+      $parent_session_id, $metadata, '短摘要',
+      1, 10, 5, 15, 0.001
+    )
+  `).run({
+    $id: id,
+    $agent: opts?.agent ?? "opencode",
+    $title: opts?.title ?? `子会话 ${id}`,
+    $started_at: startedAt,
+    $parent_session_id: parentId,
+    $metadata: parentId
+      ? '{"is_subagent":true}'
+      : '{"is_fork":true,"fork_parent_session_id":"parent-secret"}',
+  });
+
+  db.query(`
+    INSERT INTO messages (id, session_id, role, content, created_at)
+    VALUES ($id, $session_id, 'user', $content, $created_at)
+  `).run({
+    $id: `${id}-user`,
+    $session_id: id,
+    $content: `hello ${id}`,
+    $created_at: startedAt,
+  });
 }
 
 describe("session shares", () => {
@@ -276,22 +328,25 @@ describe("session shares", () => {
     expect(bundle.summary_markdown).toBe("短摘要");
     expect(bundle.session.total_cost_cny).toBeDefined();
     expect(bundle.session.total_tokens).toBe(150);
-    expect(bundle.session.message_count).toBe(2);
-    expect(bundle.session.turn_count).toBe(2);
 
     // 默认 body 禁止 messages/turns/tool_calls 全量数组
     expect(bundle).not.toHaveProperty("messages");
     expect(bundle).not.toHaveProperty("turns");
     expect(bundle).not.toHaveProperty("tool_calls");
-    expect(bundle.counts).toEqual({ messages: 2, turns: 2, tool_calls: 2 });
+    expect(bundle).not.toHaveProperty("counts");
 
     const base = created.api_url;
     expect(bundle.resources).toEqual({
       search: `${base}/search`,
+      trace: `${base}/trace?limit=50`,
       messages: `${base}/messages?format=jsonl&limit=50`,
       turns: `${base}/turns?format=jsonl&limit=50`,
       tool_calls: `${base}/tool-calls?format=jsonl&limit=50`,
     });
+    expect(bundle.scope).toEqual({ types: [], node: null, child: null });
+    expect(bundle).not.toHaveProperty("rows");
+    expect(bundle).not.toHaveProperty("item");
+    expect(bundle).not.toHaveProperty("items");
 
     // 公开 bundle 的 agent_prompt 与创建响应完全一致（raw API URL）
     expect(bundle.agent_prompt).toBe(created.agent_prompt);
@@ -338,10 +393,10 @@ describe("session shares", () => {
     expect(bundle.session.id).toBe("share-sess-1");
     expect(bundle.session.AISummary).toBe("短摘要");
     expect(bundle.summary_markdown).toBe("短摘要");
-    expect(bundle.counts.messages).toBe(2);
+    expect(bundle).not.toHaveProperty("counts");
     expect(bundle).not.toHaveProperty("messages");
     expect(bundle.share.expires_at).toBe(created.expires_at);
-    expect(bundle.resources.search).toContain(`/v1/public/session-shares/${alias}/search`);
+    expect(bundle.resources.trace).toContain(`/v1/public/session-shares/${alias}/trace`);
     expect(bundle.agent_prompt).toContain("curl -sS");
     expect(bundle.agent_prompt).toContain(alias);
   });
@@ -403,7 +458,7 @@ describe("session shares", () => {
     const bundle = await res.json();
     expect(bundle.session.id).toBe("share-sess-1");
     expect(bundle.session.AISummary).toBe("短摘要");
-    expect(bundle.counts).toEqual({ messages: 2, turns: 2, tool_calls: 2 });
+    expect(bundle).not.toHaveProperty("counts");
     expect(bundle).not.toHaveProperty("messages");
   });
 
@@ -451,9 +506,11 @@ describe("session shares", () => {
 
     for (const path of [
       `/v1/public/session-shares/${created.token}/search?q=hello`,
+      `/v1/public/session-shares/${created.token}/trace`,
       `/v1/public/session-shares/${created.token}/messages`,
       `/v1/public/session-shares/${created.token}/turns`,
       `/v1/public/session-shares/${created.token}/tool-calls`,
+      `/v1/public/session-shares/${created.token}/focus?node=msg-share-sess-1`,
     ]) {
       const res = await app.request(path);
       expect(res.status).toBe(410);
@@ -874,5 +931,549 @@ describe("session shares", () => {
       headers: { "X-API-Key": API_KEY },
     });
     expect(badId.status).toBe(404);
+  });
+
+  it("paginates the shared root trace and filters complete categories", async () => {
+    seedLinkedSession(db, "share-child-1", "share-sess-1", {
+      startedAt: new Date(SEED_TIME_BASE + 1000).toISOString(),
+    });
+    db.query(`
+      INSERT INTO messages (id, session_id, role, content, created_at)
+      VALUES ('reasoning-share-1', 'share-sess-1', 'reasoning', 'reasoning body', $created_at)
+    `).run({ $created_at: new Date(SEED_TIME_BASE + 1500).toISOString() });
+    db.query(`
+      INSERT INTO turns (
+        id, session_id, model, provider, total_tokens, duration_ms, cost_usd,
+        finish_reason, error, created_at
+      ) VALUES
+        ('abort-share-1', 'share-sess-1', 'claude-sonnet-4', 'anthropic', 1, 1, 0,
+          'aborted', NULL, $abort_at),
+        ('error-share-1', 'share-sess-1', 'claude-sonnet-4', 'anthropic', 1, 1, 0,
+          NULL, 'provider failed', $error_at)
+    `).run({
+      $abort_at: new Date(SEED_TIME_BASE + 2000).toISOString(),
+      $error_at: new Date(SEED_TIME_BASE + 3000).toISOString(),
+    });
+    const created = await createShare(app);
+
+    const first = await app.request(
+      `/v1/public/session-shares/${created.token}/trace?limit=2&offset=0`,
+    );
+    expect(first.status).toBe(200);
+    const firstBody = await first.json();
+    expect(firstBody.items.map((item: { key: string }) => item.key)).toEqual([
+      "msg-msg-share-sess-1",
+      "msg-msg-asst-share-sess-1",
+    ]);
+    expect(firstBody.items.map((item: { category: string }) => item.category)).toEqual([
+      "user",
+      "assistant",
+    ]);
+    expect(firstBody.pagination).toEqual({
+      limit: 2,
+      offset: 0,
+      returned: 2,
+      has_more: true,
+      next_offset: 2,
+    });
+
+    const second = await app.request(
+      `/v1/public/session-shares/${created.token}/trace?limit=2&offset=2`,
+    );
+    const secondBody = await second.json();
+    expect(secondBody.items.map((item: { key: string }) => item.key)).toEqual([
+      "turn-turn-share-sess-1",
+      "turn-turn-2-share-sess-1",
+    ]);
+
+    const filteredShare = await createShare(app, "6h", "share-sess-1", {
+      types: ["assistant", "tool"],
+    });
+    const filtered = await app.request(
+      `/v1/public/session-shares/${filteredShare.token}/trace?limit=50`,
+    );
+    expect(filtered.status).toBe(200);
+    const filteredBody = await filtered.json();
+    expect(filteredBody.items.map((item: { category: string }) => item.category)).toEqual([
+      "assistant",
+      "tool",
+      "tool",
+    ]);
+    expect(filteredBody.items.map((item: { key: string }) => item.key).sort()).toEqual([
+      "msg-msg-asst-share-sess-1",
+      "tool-tool-2-share-sess-1",
+      "tool-tool-share-sess-1",
+    ]);
+
+    const subagentShare = await createShare(app, "6h", "share-sess-1", {
+      types: ["subagent"],
+    });
+    const subagents = await app.request(
+      `/v1/public/session-shares/${subagentShare.token}/trace`,
+    );
+    const subagentBody = await subagents.json();
+    expect(subagentBody.items).toHaveLength(1);
+    expect(subagentBody.items[0].key).toBe("subagent-share-child-1");
+    expect(subagentBody.items[0].category).toBe("subagent");
+    expect(JSON.stringify(subagentBody)).not.toContain("hello share-child-1");
+    expect(subagentBody.items[0]).not.toHaveProperty("parent_session_id");
+
+    const statusShare = await createShare(app, "6h", "share-sess-1", {
+      types: ["reasoning", "abort", "error"],
+    });
+    const statuses = await app.request(
+      `/v1/public/session-shares/${statusShare.token}/trace`,
+    );
+    const statusBody = await statuses.json();
+    expect(statusBody.items.map((item: { category: string }) => item.category)).toEqual([
+      "reasoning",
+      "abort",
+      "error",
+    ]);
+
+    for (const path of ["limit=101", "limit=0", "offset=-1"]) {
+      const invalid = await app.request(
+        `/v1/public/session-shares/${created.token}/trace?${path}`,
+      );
+      expect(invalid.status).toBe(400);
+    }
+  });
+
+  it("persists a hard type scope across page, trace, focus, resources, and active links", async () => {
+    db.query(`
+      INSERT INTO messages (id, session_id, role, content, created_at)
+      VALUES ('msg-tool-role-share-sess-1', 'share-sess-1', 'tool', 'tool role message', $created_at)
+    `).run({ $created_at: new Date(SEED_TIME_BASE - 1750).toISOString() });
+    const created = await createShare(app, "6h", "share-sess-1", {
+      types: ["tool", "assistant", "tool"],
+    });
+    expect(created.share_url).toContain("?types=assistant,tool");
+    expect(created.agent_prompt).toBe(expectedAgentPrompt(created.api_url, true));
+
+    const root = await app.request(`/v1/public/session-shares/${created.token}`);
+    expect(root.status).toBe(200);
+    const bundle = await root.json();
+    expect(bundle.scope).toEqual({ types: ["assistant", "tool"], node: null, child: null });
+    expect(bundle.resources).toEqual({ trace: `${created.api_url}/trace?limit=50` });
+    expect(bundle.agent_prompt).toBe(expectedAgentPrompt(created.api_url, true));
+
+    const trace = await app.request(
+      `/v1/public/session-shares/${created.token}/trace?types=user,turn`,
+    );
+    expect(trace.status).toBe(200);
+    const traceBody = await trace.json();
+    expect(traceBody.items.map((item: { category: string }) => item.category)).toEqual([
+      "assistant",
+      "tool",
+      "tool",
+      "tool",
+    ]);
+    expect(traceBody.items.map((item: { key: string }) => item.key)).toContain(
+      "msg-msg-tool-role-share-sess-1",
+    );
+
+    const allowedFocus = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-asst-share-sess-1`,
+    );
+    expect(allowedFocus.status).toBe(200);
+    const blockedFocus = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-share-sess-1`,
+    );
+    expect(blockedFocus.status).toBe(404);
+
+    for (const resource of ["search?q=hello", "messages", "turns", "tool-calls"]) {
+      const blocked = await app.request(
+        `/v1/public/session-shares/${created.token}/${resource}`,
+      );
+      expect(blocked.status).toBe(403);
+    }
+
+    const active = await app.request("/v1/sessions/share-sess-1/shares", {
+      headers: { "X-API-Key": API_KEY },
+    });
+    const activeBody = await active.json();
+    const listed = activeBody.shares.find((share: { id: string }) => share.id === created.id);
+    expect(listed.scope).toEqual({ types: ["assistant", "tool"], node: null, child: null });
+    expect(listed.share_url).toContain("?types=assistant,tool");
+  });
+
+  it("persists an exact node scope and rejects attempts to expand it", async () => {
+    const created = await createShare(app, "6h", "share-sess-1", {
+      types: ["turn"],
+      node: "turn-turn-share-sess-1",
+    });
+    expect(created.share_url).toContain("types=turn");
+    expect(created.share_url).toContain("node=turn-turn-share-sess-1");
+
+    const root = await app.request(`/v1/public/session-shares/${created.token}`);
+    const bundle = await root.json();
+    expect(bundle.scope).toEqual({
+      types: ["turn"],
+      node: "turn-turn-share-sess-1",
+      child: null,
+    });
+
+    const trace = await app.request(`/v1/public/session-shares/${created.token}/trace`);
+    const traceBody = await trace.json();
+    expect(traceBody.items.map((item: { key: string }) => item.key)).toEqual([
+      "turn-turn-share-sess-1",
+    ]);
+
+    const otherTurn = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=turn-turn-2-share-sess-1`,
+    );
+    expect(otherTurn.status).toBe(404);
+
+    const mismatch = await app.request("/v1/sessions/share-sess-1/shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+      body: JSON.stringify({
+        duration: "1h",
+        types: ["assistant"],
+        node: "turn-turn-share-sess-1",
+      }),
+    });
+    expect(mismatch.status).toBe(400);
+
+    const invalidTypes = await app.request("/v1/sessions/share-sess-1/shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+      body: JSON.stringify({ duration: "1h", types: ["assistant", "secret"] }),
+    });
+    expect(invalidTypes.status).toBe(400);
+
+    const childWithoutNode = await app.request("/v1/sessions/share-sess-1/shares", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-API-Key": API_KEY },
+      body: JSON.stringify({ duration: "1h", child: "share-child-1" }),
+    });
+    expect(childWithoutNode.status).toBe(400);
+  });
+
+  it("merges a Cursor synthetic turn and excludes its billing row", async () => {
+    seedSession(db, "share-cursor-root");
+    db.query("UPDATE sessions SET agent = 'cursor' WHERE id = 'share-cursor-root'").run();
+    db.query(`
+      INSERT INTO turns (
+        id, session_id, message_id, model, provider,
+        input_tokens, output_tokens, total_tokens, cost_usd, duration_ms, created_at
+      ) VALUES (
+        'cursor-usage-root-bill', 'share-cursor-root', 'msg-asst-share-cursor-root',
+        'cursor', 'cursor', 8, 4, 12, 0.002, 30, $created_at
+      )
+    `).run({ $created_at: new Date(SEED_TIME_BASE - 2000).toISOString() });
+    const created = await createShare(app, "6h", "share-cursor-root", { types: ["turn"] });
+
+    const res = await app.request(
+      `/v1/public/session-shares/${created.token}/trace`,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    const keys = body.items.map((item: { key: string }) => item.key);
+    expect(keys).toContain("cursor-turn-msg-asst-share-cursor-root");
+    expect(keys).not.toContain("turn-cursor-usage-root-bill");
+    const synthetic = body.items.find(
+      (item: { key: string }) => item.key === "cursor-turn-msg-asst-share-cursor-root",
+    );
+    expect(synthetic.id).toBe("msg-asst-share-cursor-root");
+    expect(synthetic.total_tokens).toBe(12);
+  });
+
+  it("focus requires a node and protects the share credential", async () => {
+    const created = await createShare(app, "1h");
+    const alias = expectedShareAlias(created.id);
+
+    const missingNode = await app.request(`/v1/public/session-shares/${created.token}/focus`);
+    expect(missingNode.status).toBe(400);
+    expect(await missingNode.json()).toEqual({ error: "Invalid node" });
+
+    const badNode = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=not-a-key`,
+    );
+    expect(badNode.status).toBe(400);
+
+    const invalid = await app.request("/v1/public/session-shares/not-a-real-token/focus?node=msg-share-sess-1");
+    expect(invalid.status).toBe(404);
+
+    const tokenHash = createHash("sha256").update(created.token).digest("hex");
+    db.query(
+      "UPDATE session_shares SET expires_at = $expires_at WHERE token_hash = $token_hash",
+    ).run({
+      $expires_at: new Date(Date.now() - 60_000).toISOString(),
+      $token_hash: tokenHash,
+    });
+    const expired = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-share-sess-1`,
+    );
+    expect(expired.status).toBe(410);
+    expect(await expired.json()).toEqual({ error: "Share expired" });
+
+    db.query(
+      "UPDATE session_shares SET expires_at = $expires_at WHERE token_hash = $token_hash",
+    ).run({
+      $expires_at: new Date(Date.now() + 60_000).toISOString(),
+      $token_hash: tokenHash,
+    });
+    const viaAlias = await app.request(
+      `/v1/public/session-shares/${alias}/focus?node=msg-msg-share-sess-1`,
+    );
+    expect(viaAlias.status).toBe(200);
+    const body = await viaAlias.json();
+    expect(body.node).toBe("msg-msg-share-sess-1");
+    expect(body.child).toBeNull();
+    expect(body.item.key).toBe("msg-msg-share-sess-1");
+    expect(body).not.toHaveProperty("items");
+  });
+
+  it("focus looks up root keys and returns a bounded explicit projection", async () => {
+    const created = await createShare(app);
+
+    const msg = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-share-sess-1`,
+    );
+    expect(msg.status).toBe(200);
+    const body = await msg.json();
+    expect(body.node).toBe("msg-msg-share-sess-1");
+    expect(body.child).toBeNull();
+    expect(body).not.toHaveProperty("items");
+    expect(body.item.key).toBe("msg-msg-share-sess-1");
+    expect(body.item.kind).toBe("message");
+    expect(body.item.id).toBe("msg-share-sess-1");
+    expect(body.item.content).toContain("hello share");
+    expect(body.item).toHaveProperty("truncated");
+    expect(body.item).not.toHaveProperty("tool_calls");
+    expect(body.item).not.toHaveProperty("focused");
+
+    const turn = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=turn-turn-share-sess-1`,
+    );
+    expect(turn.status).toBe(200);
+    const turnBody = await turn.json();
+    expect(turnBody.item.key).toBe("turn-turn-share-sess-1");
+    expect(turnBody.item.kind).toBe("turn");
+    expect(turnBody.item.cost_cny).toBeDefined();
+
+    const tool = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=tool-tool-share-sess-1`,
+    );
+    expect(tool.status).toBe(200);
+    const toolBody = await tool.json();
+    expect(toolBody.item.key).toBe("tool-tool-share-sess-1");
+    expect(toolBody.item.kind).toBe("tool");
+    expect(toolBody.item).toHaveProperty("args_truncated");
+    expect(toolBody.item).toHaveProperty("output_text_truncated");
+    expect(toolBody.item).not.toHaveProperty("file_path");
+
+    const dump = JSON.stringify(body);
+    for (const secret of [
+      "secret-project",
+      "user@secret.example",
+      "secret-host",
+      "/secret/dir",
+      "git@secret.example",
+      "parent-secret",
+    ]) {
+      expect(dump).not.toContain(secret);
+    }
+    const sensitiveKeys = [
+      "project_name",
+      "user_email",
+      "hostname",
+      "directory",
+      "worktree",
+      "repo_url",
+      "branch",
+      "metadata",
+      "parent_session_id",
+      "is_fork",
+      "fork_source_title",
+      "fork_parent_session_id",
+    ];
+    for (const key of sensitiveKeys) {
+      expect(body.item).not.toHaveProperty(key);
+    }
+  });
+
+  it("focus confines lookup to the shared root session", async () => {
+    seedLinkedSession(db, "share-child-1", "share-sess-1", {
+      startedAt: "2026-07-09T12:10:00.000Z",
+    });
+    const created = await createShare(app);
+
+    const childMsgOnRoot = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-share-child-1-user`,
+    );
+    expect(childMsgOnRoot.status).toBe(404);
+
+    const subagent = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=subagent-share-child-1`,
+    );
+    expect(subagent.status).toBe(200);
+    const body = await subagent.json();
+    expect(body.item.kind).toBe("subagent");
+    expect(body.item.id).toBe("share-child-1");
+    expect(body.item.summary).toBe("子会话 share-child-1");
+    expect(body.item).not.toHaveProperty("project_name");
+    expect(body.item).not.toHaveProperty("metadata");
+    expect(JSON.stringify(body.item)).not.toContain("secret-project");
+    expect(JSON.stringify(body.item)).not.toContain("hello share-child-1");
+  });
+
+  it("focus confines child scope to descendants and rejects unrelated or cyclic parents", async () => {
+    seedLinkedSession(db, "share-child-1", "share-sess-1", {
+      startedAt: "2026-07-09T12:00:00.000Z",
+    });
+    seedLinkedSession(db, "share-grand-1", "share-child-1", {
+      startedAt: "2026-07-09T12:01:00.000Z",
+    });
+    seedLinkedSession(db, "share-child-2", "share-sess-1", {
+      startedAt: "2026-07-09T12:02:00.000Z",
+    });
+    seedLinkedSession(db, "unrelated-sess", null, {
+      startedAt: "2026-07-09T12:03:00.000Z",
+    });
+    seedLinkedSession(db, "cycle-a", "share-sess-1", {
+      startedAt: "2026-07-09T12:04:00.000Z",
+    });
+    seedLinkedSession(db, "cycle-b", "cycle-a", {
+      startedAt: "2026-07-09T12:05:00.000Z",
+    });
+    db.query("UPDATE sessions SET parent_session_id = $parent WHERE id = $id").run({
+      $parent: "cycle-b",
+      $id: "cycle-a",
+    });
+
+    const created = await createShare(app);
+
+    const childOk = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-share-child-1-user&child=share-child-1`,
+    );
+    expect(childOk.status).toBe(200);
+    const childBody = await childOk.json();
+    expect(childBody.child).toBe("share-child-1");
+    expect(childBody.node).toBe("msg-share-child-1-user");
+    expect(childBody.item.key).toBe("msg-share-child-1-user");
+
+    const grandOk = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-share-grand-1-user&child=share-grand-1`,
+    );
+    expect(grandOk.status).toBe(200);
+    expect((await grandOk.json()).child).toBe("share-grand-1");
+
+    const parentNodeInChild = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-share-sess-1&child=share-child-1`,
+    );
+    expect(parentNodeInChild.status).toBe(404);
+
+    const sibling = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-share-child-2-user&child=share-child-1`,
+    );
+    expect(sibling.status).toBe(404);
+
+    const unrelated = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-unrelated-sess-user&child=unrelated-sess`,
+    );
+    expect(unrelated.status).toBe(404);
+
+    const parentOfRoot = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-share-sess-1&child=parent-secret`,
+    );
+    expect(parentOfRoot.status).toBe(404);
+
+    const cyclic = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-cycle-a-user&child=cycle-a`,
+    );
+    expect(cyclic.status).toBe(404);
+
+    const explicitRoot = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-msg-share-sess-1&child=share-sess-1`,
+    );
+    expect(explicitRoot.status).toBe(200);
+    expect((await explicitRoot.json()).child).toBeNull();
+  });
+
+  it("focus rejects child ancestor chains that exceed the hard depth limit", async () => {
+    const base = Date.parse("2026-07-10T00:00:00.000Z");
+    let parent = "share-sess-1";
+    for (let i = 0; i <= FOCUS_ANCESTOR_DEPTH_MAX; i++) {
+      const id = `deep-${i}`;
+      seedLinkedSession(db, id, parent, {
+        startedAt: new Date(base + i * 1000).toISOString(),
+      });
+      parent = id;
+    }
+    const created = await createShare(app);
+    const allowedId = `deep-${FOCUS_ANCESTOR_DEPTH_MAX - 1}`;
+    const rejectedId = `deep-${FOCUS_ANCESTOR_DEPTH_MAX}`;
+
+    const allowed = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-${allowedId}-user&child=${allowedId}`,
+    );
+    expect(allowed.status).toBe(200);
+    expect((await allowed.json()).child).toBe(allowedId);
+
+    const rejected = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=msg-${rejectedId}-user&child=${rejectedId}`,
+    );
+    expect(rejected.status).toBe(404);
+  });
+
+  it("focus excludes fork structural keys from public excerpts", async () => {
+    const created = await createShare(app);
+    for (const node of ["fork-from-parent-secret", "fork-origin-msg-pmsg-1", "fork-from-"]) {
+      const res = await app.request(
+        `/v1/public/session-shares/${created.token}/focus?node=${encodeURIComponent(node)}`,
+      );
+      expect(res.status).toBe(404);
+    }
+  });
+
+  it("focus supports cursor-turn keys on cursor descendant sessions", async () => {
+    seedLinkedSession(db, "share-cursor-1", "share-sess-1", {
+      agent: "cursor",
+      startedAt: "2026-07-09T13:00:00.000Z",
+    });
+    db.query(`
+      INSERT INTO messages (id, session_id, role, content, model, provider, created_at)
+      VALUES ($id, $session_id, 'assistant', 'cursor reply', 'cursor', 'cursor', $created_at)
+    `).run({
+      $id: "asst-cursor-1",
+      $session_id: "share-cursor-1",
+      $created_at: "2026-07-09T13:00:01.000Z",
+    });
+    db.query(`
+      INSERT INTO turns (
+        id, session_id, message_id, model, provider,
+        input_tokens, output_tokens, total_tokens, cost_usd, duration_ms, created_at
+      ) VALUES (
+        $id, $session_id, $message_id, 'cursor', 'cursor',
+        8, 4, 12, 0.002, 30, $created_at
+      )
+    `).run({
+      $id: "cursor-usage-bill-1",
+      $session_id: "share-cursor-1",
+      $message_id: "asst-cursor-1",
+      $created_at: "2026-07-09T13:00:01.000Z",
+    });
+
+    const created = await createShare(app);
+    const res = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=cursor-turn-asst-cursor-1&child=share-cursor-1`,
+    );
+    expect(res.status).toBe(200);
+    const body = await res.json();
+    expect(body.child).toBe("share-cursor-1");
+    expect(body.node).toBe("cursor-turn-asst-cursor-1");
+    expect(body.item.key).toBe("cursor-turn-asst-cursor-1");
+    expect(body.item.kind).toBe("turn");
+    expect(body.item.id).toBe("asst-cursor-1");
+    expect(body.item.total_tokens).toBe(12);
+    expect(body.item.cost_cny).toBeDefined();
+    expect(body.item.key).not.toBe("turn-cursor-usage-bill-1");
+
+    const billingKey = await app.request(
+      `/v1/public/session-shares/${created.token}/focus?node=turn-cursor-usage-bill-1&child=share-cursor-1`,
+    );
+    expect(billingKey.status).toBe(404);
   });
 });

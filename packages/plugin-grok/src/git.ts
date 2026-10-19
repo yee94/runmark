@@ -2,24 +2,23 @@
  * Git 元信息采集（Grok Hook 侧）
  *
  * 每次 SessionStart / 首条 user prompt 调用时即时采集，因 hook 之间进程独立无法缓存。
+ * 使用 node:child_process.execFile，bun / node 均可运行；timeout 真正生效。
  */
 
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
+
+const execFileAsync = promisify(execFile);
 const GIT_TIMEOUT_MS = 2_000;
 
 async function runGit(args: string[], cwd?: string): Promise<string> {
   try {
-    const proc = Bun.spawn(["git", ...args], {
+    const { stdout } = await execFileAsync("git", args, {
       cwd: cwd || process.cwd(),
-      stdout: "pipe",
-      stderr: "pipe",
+      timeout: GIT_TIMEOUT_MS,
+      windowsHide: true,
     });
-    const output = await new Response(proc.stdout).text();
-    const timeout = setTimeout(() => {
-      proc.kill();
-    }, GIT_TIMEOUT_MS);
-    await proc.exited;
-    clearTimeout(timeout);
-    return output.trim();
+    return stdout.trim();
   } catch {
     return "";
   }

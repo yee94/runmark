@@ -12,5 +12,14 @@ import { type PluginConfig } from "@agent-tracker/shared";
 /** 加载插件配置；fileEnvPath 仅用于测试，默认 ~/.config/agent-tracker/env */
 export declare function loadPluginConfig(fileEnvPath?: string): PluginConfig;
 export declare const AgentTrackerPlugin: Plugin;
-export default AgentTrackerPlugin;
+/**
+ * OpenCode 1 走 server（函数）。
+ * OpenCode 2.0.12 只接受 { id, setup }，事件从 ctx.event.subscribe 读。
+ */
+declare const plugin: {
+    id: string;
+    server: Plugin;
+    setup: (ctx: unknown) => Promise<void | (() => void)>;
+};
+export default plugin;
 //# sourceMappingURL=index.d.ts.map

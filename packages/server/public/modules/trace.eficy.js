@@ -8,6 +8,118 @@ function isCursorUsageTurnId(id) {
   return id && String(id).indexOf('cursor-usage-') === 0
 }
 
+/** 调用链筛选分类（固定顺序，与 URL types 一致） */
+export const TRACE_CATEGORIES = Object.freeze([
+  'user',
+  'reasoning',
+  'assistant',
+  'turn',
+  'tool',
+  'abort',
+  'error',
+  'subagent',
+])
+
+const TRACE_CATEGORY_SET = new Set(TRACE_CATEGORIES)
+
+/** 工具节点稳定 key：tool_calls 表主键 */
+export function toolTraceKey(row) {
+  return 'tool-' + row.id
+}
+
+/** Cursor 合成 turn：无 Hook turn 时按 messageId 稳定命名 */
+export function cursorTurnTraceKey(messageId) {
+  return 'cursor-turn-' + messageId
+}
+
+/** fork 结构行（来源会话 / 父会话首条）筛选时始终可见 */
+export function isForkStructuralItem(item) {
+  return !!(item && (item.kind === 'fork-from' || item.forkOrigin))
+}
+
+/** 将时间线条目映射到筛选分类；结构行返回 null */
+export function traceItemCategory(item) {
+  if (!item || isForkStructuralItem(item)) return null
+  if (item.kind === 'subagent') return 'subagent'
+  if (item.kind === 'tool') return 'tool'
+  if (item.kind === 'turn') {
+    if (item.abort || item.role === 'turn-abort') return 'abort'
+    if (item.role === 'turn-fail') return 'error'
+    return 'turn'
+  }
+  if (item.kind === 'message') {
+    if (item.role === 'reasoning') return 'reasoning'
+    if (item.role === 'assistant') return 'assistant'
+    if (item.role === 'tool') return 'tool'
+    return 'user'
+  }
+  return null
+}
+
+function selectedTraceCategories(types) {
+  const selected = []
+  const seen = new Set()
+  for (const raw of types || []) {
+    const type = String(raw || '').trim()
+    if (!TRACE_CATEGORY_SET.has(type) || seen.has(type)) continue
+    seen.add(type)
+    selected.push(type)
+  }
+  return selected
+}
+
+/** 分类计数（未筛选时间线；结构行不计入） */
+export function countTraceCategories(items) {
+  const counts = {}
+  for (const cat of TRACE_CATEGORIES) counts[cat] = 0
+  for (const it of items || []) {
+    const cat = traceItemCategory(it)
+    if (cat && TRACE_CATEGORY_SET.has(cat)) counts[cat] += 1
+  }
+  return counts
+}
+
+/** 按选中分类筛选；空选中表示全部分类；fork 结构行始终可见 */
+export function filterTraceItems(items, types) {
+  const selected = selectedTraceCategories(types)
+  const showAll = selected.length === 0 || selected.length === TRACE_CATEGORIES.length
+  return (items || []).filter((it) => {
+    if (isForkStructuralItem(it)) return true
+    if (showAll) return true
+    const cat = traceItemCategory(it)
+    return !!(cat && selected.indexOf(cat) >= 0)
+  })
+}
+
+/** 统一解析选中项：显式 pending 保留，筛掉或无 node 时保持未选中 */
+export function resolveTraceSelection(items, selectedKey, types) {
+  const list = items || []
+  const visible = filterTraceItems(list, types)
+  const key = selectedKey == null ? '' : String(selectedKey).trim()
+  if (key) {
+    if (visible.some((it) => it.key === key)) return key
+    const inTimeline = list.some((it) => it.key === key)
+    if (!inTimeline) return key
+    return null
+  }
+  return null
+}
+
+/** 点击当前行取消选择，点击其他行切换选择 */
+export function toggleTraceSelectionKey(selectedKey, itemKey) {
+  if (itemKey == null || itemKey === '') return null
+  return selectedKey === itemKey ? null : itemKey
+}
+
+/** child 查询由选中项 ownerSessionId 相对根会话得出；subagent 桩仍属父会话 */
+export function traceChildQuery(item, rootSessionId) {
+  if (!item || rootSessionId == null || rootSessionId === '') return null
+  const ownerId = item.ownerSessionId
+  if (ownerId == null || ownerId === '') return null
+  if (String(ownerId) === String(rootSessionId)) return null
+  return String(ownerId)
+}
+
 /** 工厂：注入 index 侧格式化与 signals */
 export function createTraceHelpers(ctx) {
   const {
@@ -40,7 +152,7 @@ export function createTraceHelpers(ctx) {
   }
 
   /** fork 调用链顶部：来源会话 + 父会话首条消息 */
-  function buildForkTracePrelude(detail) {
+  function buildForkTracePrelude(detail, ownerSessionId) {
     if (!detail?.forkParent) return []
     const parent = detail.forkParent
     const parentId = parent.id
@@ -54,6 +166,7 @@ export function createTraceHelpers(ctx) {
       parentSessionId: parentId,
       created_at: parent.started_at || parent.last_activity_at || '',
       depth: 0,
+      ownerSessionId,
     }]
     const msg = detail.forkParentFirstMessage
     if (msg && !isGarbageMessage(msg.content)) {
@@ -69,6 +182,7 @@ export function createTraceHelpers(ctx) {
           created_at: msg.created_at || parent.started_at || '',
           depth: 0,
           forkOrigin: true,
+          ownerSessionId,
         })
       }
     }
@@ -197,10 +311,10 @@ export function createTraceHelpers(ctx) {
     }
   }
 
-  function pushTurnTraceItem(items, turn, createdAt, depth) {
+  function pushTurnTraceItem(items, turn, createdAt, depth, ownerSessionId, key) {
     const aborted = isUserAbortTurn(turn)
     items.push({
-      key: 'turn-' + turn.id,
+      key: key || ('turn-' + turn.id),
       kind: 'turn',
       role: aborted ? 'turn-abort' : (turn.error ? 'turn-fail' : 'turn'),
       abort: aborted,
@@ -211,13 +325,15 @@ export function createTraceHelpers(ctx) {
       cost_cny: turn.cost_cny,
       created_at: createdAt,
       depth,
+      ownerSessionId,
     })
   }
 
   /** 合并 messages / turns / tools / subagent 为时间线 */
-  function buildTraceItems(detail, depth, sessionCtx) {
+  function buildTraceItems(detail, depth, sessionCtx, ownerSessionId) {
     if (!detail) return []
     depth = depth || 0
+    const ownerId = ownerSessionId || (sessionCtx && sessionCtx.id) || (detail.session && detail.session.id) || null
     const items = []
     const messages = detail.messages || []
     const turns = detail.turns || []
@@ -238,6 +354,7 @@ export function createTraceHelpers(ctx) {
         model: msg.model,
         created_at: msg.created_at,
         depth,
+        ownerSessionId: ownerId,
       })
     }
 
@@ -249,7 +366,7 @@ export function createTraceHelpers(ctx) {
       if (isCursorUsageTurnId(turn.id)) continue
       const hookAnchor = cursorTurnIdx && turn.message_id && messages.find((m) => m.id === turn.message_id)
       const createdAt = hookAnchor ? hookAnchor.created_at : turn.created_at
-      pushTurnTraceItem(items, turn, createdAt, depth)
+      pushTurnTraceItem(items, turn, createdAt, depth, ownerId)
     }
 
     // Cursor：每条 assistant 无 Hook turn 时补 LLM 节点（时间=消息，cost 取自对账 turn）
@@ -259,21 +376,24 @@ export function createTraceHelpers(ctx) {
         if (sessionCtx && !isEventAfterFork(sessionCtx, msg.created_at)) continue
         if (cursorTurnIdx.hookByMsg[msg.id]) continue
         const display = cursorDisplayTurn(null, cursorTurnIdx.billingByMsg[msg.id], msg)
-        pushTurnTraceItem(items, { id: msg.id, ...display }, msg.created_at, depth)
+        pushTurnTraceItem(items, { id: msg.id, ...display }, msg.created_at, depth, ownerId, cursorTurnTraceKey(msg.id))
       }
     }
 
     for (const tool of tools) {
       if (sessionCtx && !isEventAfterFork(sessionCtx, tool.created_at)) continue
+      // 父时间线：子 agent 的 tool.call_id 不要再画一份（PostToolUse 误挂到父会话）
+      if (depth === 0 && tool.call_id && detail.childToolCallIds && detail.childToolCallIds[tool.call_id]) continue
       const title = tool.output_title ? ': ' + tool.output_title : ''
       items.push({
-        key: 'tool-' + tool.call_id,
+        key: toolTraceKey(tool),
         kind: 'tool',
         role: 'tool',
         summary: (tool.tool_name || 'tool') + title,
         fullText: tool.output_text || tool.output_title || '',
         created_at: tool.created_at,
         depth,
+        ownerSessionId: ownerId,
       })
     }
 
@@ -292,19 +412,21 @@ export function createTraceHelpers(ctx) {
         cost_cny: child.total_cost_cny,
         created_at: child.started_at,
         depth,
+        ownerSessionId: ownerId,
       })
     }
 
-    // 同时间戳时：user → turn（计量）→ assistant → tool → 其它，避免「回复压在推理上面」
+    // 同时间戳时：user → turn（计量）→ reasoning → assistant → tool → 其它，避免「回复压在推理上面」
     const tieBreak = (it) => {
       if (it.kind === 'fork-from') return 0
       if (it.kind === 'message' && (it.role === 'user' || it.role === 'system')) return 1
       if (it.kind === 'turn') return 2
-      if (it.kind === 'message' && it.role === 'assistant') return 3
-      if (it.kind === 'message') return 4
-      if (it.kind === 'tool') return 5
-      if (it.kind === 'subagent') return 6
-      return 7
+      if (it.kind === 'message' && it.role === 'reasoning') return 3
+      if (it.kind === 'message' && it.role === 'assistant') return 4
+      if (it.kind === 'message') return 5
+      if (it.kind === 'tool') return 6
+      if (it.kind === 'subagent') return 7
+      return 8
     }
     items.sort((a, b) => {
       const ta = new Date(a.created_at).getTime()
@@ -319,29 +441,56 @@ export function createTraceHelpers(ctx) {
     return items
   }
 
+  /** 子会话上下文：优先父级 subagent 行上的 childSession，其次 child detail.session */
+  function childSessionContext(item, childDetail, childId) {
+    const fromItem = item && item.childSession
+    const fromDetail = childDetail && childDetail.session
+    if (!fromItem && !fromDetail) return { id: childId }
+    return {
+      ...(fromDetail || {}),
+      ...(fromItem || {}),
+      id: childId,
+    }
+  }
+
   /** 展开 subagent 后扁平化 trace（含嵌套子项） */
   function flattenTraceItems(rootSessionId, items, detail, sessionCtx) {
     const flat = []
     const expanded = expandedSubagents.value
     const childDetails = (detail && detail.childDetails) || {}
-    for (const it of items) {
-      flat.push(it)
-      if (it.kind === 'subagent' && expanded[it.childSessionId]) {
-        const childDetail = childDetails[it.childSessionId]
-        if (childDetail) {
-          const nested = buildTraceItems(childDetail, (it.depth || 0) + 1, null)
-          flat.push(...nested.map((n) => ({ ...n, nested: true })))
+    const walk = (list, ownerId, seen) => {
+      for (const it of list || []) {
+        const item = it.ownerSessionId ? it : { ...it, ownerSessionId: ownerId }
+        flat.push(item)
+        if (item.kind === 'subagent' && expanded[item.childSessionId]) {
+          const childId = item.childSessionId
+          if (!childId || seen.has(childId)) continue
+          const childDetail = childDetails[childId]
+          if (!childDetail) continue
+          const nextSeen = new Set(seen)
+          nextSeen.add(childId)
+          const nested = buildTraceItems(
+            childDetail,
+            (item.depth || 0) + 1,
+            childSessionContext(item, childDetail, childId),
+            childId,
+          )
+          walk(nested.map((n) => ({ ...n, nested: true })), childId, nextSeen)
         }
       }
     }
+    const seen = new Set()
+    if (rootSessionId) seen.add(rootSessionId)
+    walk(items, rootSessionId, seen)
     return flat
   }
 
   function mergeForkTraceItems(session, detail) {
-    const prelude = buildForkTracePrelude(detail)
+    const ownerId = (session && session.id) || (detail && detail.session && detail.session.id) || null
+    const prelude = buildForkTracePrelude(detail, ownerId)
     const body = flattenTraceItems(
-      session?.id,
-      buildTraceItems(detail, 0, isForkSession(session) ? session : null),
+      ownerId,
+      buildTraceItems(detail, 0, session, ownerId),
       detail,
       session,
     )
@@ -354,5 +503,18 @@ export function createTraceHelpers(ctx) {
     isForkSession,
     forkParentSessionId,
     mergeForkTraceItems,
+    buildTraceItems,
+    flattenTraceItems,
+    buildForkTracePrelude,
+    TRACE_CATEGORIES,
+    isForkStructuralItem,
+    traceItemCategory,
+    countTraceCategories,
+    filterTraceItems,
+    resolveTraceSelection,
+    toggleTraceSelectionKey,
+    traceChildQuery,
+    toolTraceKey,
+    cursorTurnTraceKey,
   }
 }

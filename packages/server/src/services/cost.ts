@@ -42,6 +42,7 @@ class CostService {
       cache_read_tokens?: number;
       cache_write_tokens?: number;
       reasoning_tokens?: number;
+      output_includes_reasoning?: boolean;
     },
   ): number {
     return computeCost(provider, model, usage, this.pricing);
@@ -61,6 +62,7 @@ class CostService {
       cache_read_tokens?: number;
       cache_write_tokens?: number;
       reasoning_tokens?: number;
+      output_includes_reasoning?: boolean;
     },
     costUsd?: number | null,
   ): number {

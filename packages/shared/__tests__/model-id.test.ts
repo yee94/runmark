@@ -23,6 +23,14 @@ describe("canonicalizeModelId", () => {
     expect(canonicalizeModelId("gpt-5.5")).toBe("gpt-5-5");
     expect(normalizeModelId("composer_2.5")).toBe("composer-2-5");
   });
+
+  it("strips context tier when a capability suffix follows it", () => {
+    // 数字位于中间：不先摘 -fast 会剥不掉 256k，Fast 变体会错拿 standard 价
+    expect(canonicalizeModelId("grok-4.7-256k-fast")).toBe("grok-4-7-fast");
+    expect(canonicalizeModelId("grok-4.7-500k-fast")).toBe("grok-4-7-fast");
+    expect(canonicalizeModelId("grok-4.7-256k")).toBe("grok-4-7");
+    expect(canonicalizeModelId("claude-opus-4.8-1m")).toBe("claude-opus-4-8");
+  });
 });
 
 describe("computeCost via shared aliases", () => {

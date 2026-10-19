@@ -4,9 +4,11 @@
  */
 import type { Database } from "bun:sqlite";
 import { costService } from "./cost";
-import { recalculateSessionTotals } from "./cursorEnrich";
+import { recalculateSessionCost } from "./cursorEnrich";
 
 export interface RepriceOptions {
+  sessionId?: string;
+  dryRun?: boolean;
   /** ISO 时间下界（含），默认不限 */
   from?: string;
   /** ISO 时间上界（含），默认不限 */
@@ -20,6 +22,7 @@ export interface RepriceOptions {
 }
 
 export interface RepriceResult {
+  dry_run: boolean;
   scanned: number;
   updated: number;
   sessions_touched: number;
@@ -34,6 +37,7 @@ export interface RepriceResult {
 }
 
 type TurnRow = {
+  agent: string | null;
   id: string;
   session_id: string;
   provider: string | null;
@@ -51,6 +55,10 @@ export function repriceTurns(db: Database, options: RepriceOptions = {}): Repric
   const clauses: string[] = ["1=1"];
   const params: Record<string, string | number> = { $limit: limit };
 
+  if (options.sessionId) {
+    clauses.push("session_id = $session_id");
+    params.$session_id = options.sessionId;
+  }
   if (options.from) {
     clauses.push("created_at >= $from");
     params.$from = options.from;
@@ -76,7 +84,8 @@ export function repriceTurns(db: Database, options: RepriceOptions = {}): Repric
       `
       SELECT id, session_id, provider, model,
              input_tokens, output_tokens, cache_read_tokens, cache_write_tokens,
-             reasoning_tokens, cost_usd
+              reasoning_tokens, cost_usd,
+              (SELECT agent FROM sessions WHERE sessions.id = turns.session_id) AS agent
       FROM turns
       WHERE ${clauses.join(" AND ")}
       ORDER BY created_at ASC
@@ -103,6 +112,7 @@ export function repriceTurns(db: Database, options: RepriceOptions = {}): Repric
         cache_read_tokens: t.cache_read_tokens ?? 0,
         cache_write_tokens: t.cache_write_tokens ?? 0,
         reasoning_tokens: t.reasoning_tokens ?? 0,
+        output_includes_reasoning: t.agent === "codex",
       });
 
       // 估出 0 表示无定价匹配，保留原值
@@ -111,7 +121,9 @@ export function repriceTurns(db: Database, options: RepriceOptions = {}): Repric
       const oldCost = Number(t.cost_usd ?? 0);
       if (Math.abs(newCost - oldCost) < 1e-9) continue;
 
-      updateTurn.run({ $id: t.id, $cost: newCost });
+      if (!options.dryRun) {
+        updateTurn.run({ $id: t.id, $cost: newCost });
+      }
       updated += 1;
       delta += newCost - oldCost;
       sessionIds.add(t.session_id);
@@ -125,15 +137,15 @@ export function repriceTurns(db: Database, options: RepriceOptions = {}): Repric
         });
       }
     }
+    if (!options.dryRun) {
+      for (const sid of sessionIds) recalculateSessionCost(db, sid);
+    }
   });
 
   tx(rows);
 
-  for (const sid of sessionIds) {
-    recalculateSessionTotals(db, sid);
-  }
-
   return {
+    dry_run: options.dryRun ?? false,
     scanned: rows.length,
     updated,
     sessions_touched: sessionIds.size,

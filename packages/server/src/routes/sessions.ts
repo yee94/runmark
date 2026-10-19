@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
-import { usdToCny } from "@agent-tracker/shared";
+import { usdToCny, type ModelPricing } from "@agent-tracker/shared";
+import { getPricing } from "../db";
 import { withCostCny, withPricingCny, withTotalCostCny } from "../services/currency";
 import { DEFAULT_STATS_RANGE, parseModelSort, resolveStatsRange, sessionsTimeClause, turnsTimeClause } from "../services/stats";
 import { forkFieldsForSession } from "../services/fork";
@@ -106,6 +107,12 @@ const SESSION_LAST_ACTIVITY_ORDER = `(
     SELECT created_at AS t FROM turns WHERE session_id = sessions.id
   )
 )`;
+
+/** 用量导入脚本写入的合成 / mock session，默认不进入 Dashboard 会话列表 */
+const SYNTHETIC_SESSION_EXCLUDE_SQL = `
+  id NOT LIKE 'agent-tracker-synthetic-import%'
+  AND COALESCE(title, '') NOT LIKE '[runmark-import]%'
+`;
 
 /** OpenCode SmartFetch 临时会话（与 OpenChamber HIDDEN_SESSION_TITLES 对齐） */
 const HIDDEN_SESSION_EXCLUDE_SQL = `
@@ -214,6 +221,7 @@ export function createSessionsRoute(db: Database) {
     const limit = clampInt(c.req.query("limit"), 50, 1, 200);
     const offset = clampInt(c.req.query("offset"), 0, 0, 1_000_000);
     const user_email = c.req.query("user_email");
+    const includeImports = c.req.query("include_imports") === "1";
     const q = (c.req.query("q") ?? "").trim();
 
     let query = "SELECT * FROM sessions WHERE parent_session_id IS NULL";
@@ -223,6 +231,11 @@ export function createSessionsRoute(db: Database) {
       $user_email?: string;
       $q?: string;
     } = { $limit: limit, $offset: offset };
+
+    // 合成用量导入（mock）默认不进入「最近会话」列表；调试可加 ?include_imports=1
+    if (!includeImports) {
+      query += ` AND (${SYNTHETIC_SESSION_EXCLUDE_SQL})`;
+    }
 
     // SmartFetch 临时会话默认隐藏；详情页仍可按 id 直达
     query += ` AND (${HIDDEN_SESSION_EXCLUDE_SQL})`;
@@ -343,13 +356,7 @@ export function createPricingRoute(db: Database) {
   const app = new Hono();
 
   app.get("/v1/pricing", (c) => {
-    const rows = db.query("SELECT * FROM pricing ORDER BY provider, model").all() as {
-      input_price: number;
-      output_price: number;
-      cache_read_price?: number | null;
-      cache_write_price?: number | null;
-      reasoning_price?: number | null;
-    }[];
+    const rows = getPricing(db).sort((a, b) => a.provider.localeCompare(b.provider) || a.model.localeCompare(b.model));
     return c.json(rows.map(withPricingCny));
   });
 
@@ -362,17 +369,26 @@ export function createPricingRoute(db: Database) {
       cache_read_price?: number;
       cache_write_price?: number;
       reasoning_price?: number;
+      context_tiers?: ModelPricing["context_tiers"];
     }>();
 
+    if (body.context_tiers !== undefined && (!Array.isArray(body.context_tiers) || body.context_tiers.some((tier) =>
+      !tier || ![tier.above, tier.input_price, tier.output_price].every((value) => typeof value === "number" && Number.isFinite(value) && value >= 0) ||
+      [tier.cache_read_price, tier.cache_write_price, tier.reasoning_price].some((value) => value !== undefined && (typeof value !== "number" || !Number.isFinite(value) || value < 0))
+    ))) return c.json({ error: "Invalid context_tiers" }, 400);
+    // 旧版价格编辑器不传分档字段时保留已有分档；显式 [] 可清除。
+    const tiers = body.context_tiers ?? getPricing(db).find((p) => p.provider === body.provider && p.model === body.model)?.context_tiers;
+
     const stmt = db.query(`
-      INSERT INTO pricing (provider, model, input_price, output_price, cache_read_price, cache_write_price, reasoning_price, updated_at)
-      VALUES ($provider, $model, $input_price, $output_price, $cache_read_price, $cache_write_price, $reasoning_price, $updated_at)
+      INSERT INTO pricing (provider, model, input_price, output_price, cache_read_price, cache_write_price, reasoning_price, context_tiers, updated_at)
+      VALUES ($provider, $model, $input_price, $output_price, $cache_read_price, $cache_write_price, $reasoning_price, $context_tiers, $updated_at)
       ON CONFLICT(provider, model) DO UPDATE SET
         input_price = excluded.input_price,
         output_price = excluded.output_price,
         cache_read_price = excluded.cache_read_price,
         cache_write_price = excluded.cache_write_price,
         reasoning_price = excluded.reasoning_price,
+        context_tiers = excluded.context_tiers,
         updated_at = excluded.updated_at
     `);
 
@@ -384,6 +400,7 @@ export function createPricingRoute(db: Database) {
       $cache_read_price: body.cache_read_price ?? null,
       $cache_write_price: body.cache_write_price ?? null,
       $reasoning_price: body.reasoning_price ?? null,
+      $context_tiers: tiers ? JSON.stringify(tiers) : null,
       $updated_at: new Date().toISOString(),
     });
 
@@ -395,6 +412,7 @@ export function createPricingRoute(db: Database) {
       cache_read_price: body.cache_read_price,
       cache_write_price: body.cache_write_price,
       reasoning_price: body.reasoning_price,
+      context_tiers: tiers,
     });
 
     return c.json({ ok: true }, 200);
@@ -411,7 +429,16 @@ export function createPricingRoute(db: Database) {
       providers?: string[];
       model_contains?: string;
       limit?: number;
+      session_id?: string;
+      dry_run?: boolean;
     };
+
+    if (body.session_id !== undefined && (typeof body.session_id !== "string" || !body.session_id.trim())) {
+      return c.json({ error: "Invalid session_id" }, 400);
+    }
+    if (body.dry_run !== undefined && typeof body.dry_run !== "boolean") {
+      return c.json({ error: "Invalid dry_run" }, 400);
+    }
 
     const result = repriceTurns(db, {
       from: body.from,
@@ -419,6 +446,8 @@ export function createPricingRoute(db: Database) {
       providers: body.providers,
       modelContains: body.model_contains,
       limit: body.limit,
+      sessionId: body.session_id,
+      dryRun: body.dry_run,
     });
 
     return c.json({ ok: true, ...result }, 200);
@@ -431,7 +460,7 @@ export function createStatsRoute(db: Database) {
   const app = new Hono();
 
   app.get("/v1/stats/summary", (c) => {
-    const { from, to } = resolveStatsRange(c.req.query("range"));
+    const { from, to } = resolveStatsRange(c.req.query("range"), { from: c.req.query("from"), to: c.req.query("to") });
     const params = { $from: from, $to: to };
 
     const totalSessions = db.query(
@@ -476,11 +505,13 @@ export function createStatsRoute(db: Database) {
       cost_usd: costUsd,
       cost_cny: usdToCny(costUsd),
       range: c.req.query("range") ?? DEFAULT_STATS_RANGE,
+      from,
+      to,
     });
   });
 
   app.get("/v1/stats/by-model", (c) => {
-    const { from, to } = resolveStatsRange(c.req.query("range"));
+    const { from, to } = resolveStatsRange(c.req.query("range"), { from: c.req.query("from"), to: c.req.query("to") });
     const sort = parseModelSort(c.req.query("sort"));
     const orderBy = sort === "tokens" ? "total_tokens DESC" : "total_cost_usd DESC";
 
@@ -505,7 +536,7 @@ export function createStatsRoute(db: Database) {
   });
 
   app.get("/v1/stats/by-agent", (c) => {
-    const { from, to } = resolveStatsRange(c.req.query("range"));
+    const { from, to } = resolveStatsRange(c.req.query("range"), { from: c.req.query("from"), to: c.req.query("to") });
     const params = { $from: from, $to: to };
 
     const rows = db.query(`
@@ -537,7 +568,7 @@ export function createStatsRoute(db: Database) {
   });
 
   app.get("/v1/stats/daily", (c) => {
-    const { from, to } = resolveStatsRange(c.req.query("range"));
+    const { from, to } = resolveStatsRange(c.req.query("range"), { from: c.req.query("from"), to: c.req.query("to") });
     const params = { $from: from, $to: to };
 
     const rows = db.query(`

@@ -18,9 +18,9 @@ function testConfig(): ServerConfig {
     logFile: "",
     cursorSyncEnabled: false,
     cursorApiKey: "test-key",
-    llmBaseUrl: "https://api.deepseek.com",
+    llmBaseUrl: "https://api.example.com/v1/chat/completions",
     llmApiKey: "ac:test",
-    llmModel: "deepseek-chat",
+    llmModel: "deepseek_v4_flash_code",
     agentThrottleMs: 80,
     agentAutoRunEnabled: true,
     updateEnabled: false,
@@ -252,6 +252,51 @@ describe("AgentThrottleScheduler", () => {
     await wait(30);
     expect(calls).toEqual([["s-1"], ["s-2", "s-3"]]);
     expect(maxActiveRuns).toBe(1);
+  });
+
+  it("retries session-scoped ready sessions after busy without spinning", async () => {
+    const calls: string[][] = [];
+    const runtime = {
+      listAgents: () => [{
+        id: "agent-busy",
+        enabled: true,
+        triggers: [{ id: "chat_event", enabled: true, schedule: "session:debounce:20ms" }],
+      }],
+      runAgent: async (_agentId: string, input: any) => {
+        calls.push(input.session_ids);
+        if (calls.length === 1) throw new AgentRunBusyError("agent-busy");
+        return {};
+      },
+    } as unknown as AgentRuntime;
+    const scheduler = new AgentThrottleScheduler(runtime, testConfig());
+
+    scheduler.scheduleAfterIngest([messageEvent("s-busy", "m-busy")]);
+    await wait(40);
+    expect(calls).toEqual([["s-busy"]]);
+    await wait(80);
+    expect(calls).toEqual([["s-busy"]]);
+    await wait(250);
+    expect(calls).toEqual([["s-busy"], ["s-busy"]]);
+  });
+
+  it("does not tight-loop when a session-scoped agent stays busy", async () => {
+    const calls: string[][] = [];
+    const runtime = {
+      listAgents: () => [{
+        id: "agent-busy",
+        enabled: true,
+        triggers: [{ id: "chat_event", enabled: true, schedule: "session:debounce:10ms" }],
+      }],
+      runAgent: async (_agentId: string, input: any) => {
+        calls.push(input.session_ids);
+        throw new AgentRunBusyError("agent-busy");
+      },
+    } as unknown as AgentRuntime;
+    const scheduler = new AgentThrottleScheduler(runtime, testConfig());
+
+    scheduler.scheduleAfterIngest([messageEvent("s-busy", "m-busy")]);
+    await wait(80);
+    expect(calls.length).toBe(1);
   });
 
   it("requeues a throttled batch when another entry point is already running the agent", async () => {

@@ -25,6 +25,46 @@ write_state() {
 
 cleanup_staging() { rm -rf "$STAGING_DIR" 2>/dev/null || true; }
 
+install_staging_dependencies() {
+  local lock_version bun_version
+  [ -s bun.lock ] || { log ERROR "Release is missing bun.lock; refusing unlocked install"; return 1; }
+  lock_version=$(sed -n 's/.*"lockfileVersion"[[:space:]]*:[[:space:]]*\([0-9][0-9]*\).*/\1/p' bun.lock | head -1)
+  case "$lock_version" in
+    1) "$BUN_BIN" install --production --frozen-lockfile ;;
+    2)
+      if "$BUN_BIN" -e 'const [a,b]=process.versions.bun.split(".").map(Number);process.exit(a>1||(a===1&&b>=4)?0:1)'; then
+        "$BUN_BIN" install --production --frozen-lockfile
+      else
+        bun_version="${BUN_COMPAT_VERSION:-1.4.0}"
+        [[ "$bun_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || { log ERROR "Invalid BUN_COMPAT_VERSION"; return 1; }
+        log INFO "Installing lockfile v2 with bun@${bun_version}"
+        "$BUN_BIN" x --bun "bun@${bun_version}" install --production --frozen-lockfile
+      fi ;;
+    *) log ERROR "Unsupported lockfile version: ${lock_version:-missing}"; return 1 ;;
+  esac
+}
+
+reflink_database() {
+  local snapshot="$1" was_active=false suffix
+  if systemctl is-active --quiet "$SERVICE_NAME"; then
+    was_active=true
+    SERVICE_WAS_STOPPED=true
+    systemctl stop "$SERVICE_NAME" || return 1
+  fi
+  systemctl is-active --quiet "$SERVICE_NAME" && return 1
+  # 停服后克隆主库及 WAL；不复制共享内存索引，由 SQLite 重建。
+  cp --reflink=always --preserve=mode "$DB_FILE" "$snapshot" || return 1
+  for suffix in -wal; do
+    if [ -f "${DB_FILE}${suffix}" ]; then
+      cp --reflink=always --preserve=mode "${DB_FILE}${suffix}" "${snapshot}${suffix}" || return 1
+    fi
+  done
+  if [ "$was_active" = true ]; then
+    systemctl start "$SERVICE_NAME" || return 1
+    SERVICE_WAS_STOPPED=false
+  fi
+}
+
 resolve_db_path() {
   local env_file="$APP_ROOT/.env" db_path="packages/server/data/agent-tracker.db"
   if [ -f "$env_file" ]; then local val; val=$(grep -m1 '^AGENT_TRACKER_DB_PATH=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d ' \r'); [ -n "$val" ] && db_path="$val"; fi
@@ -32,7 +72,7 @@ resolve_db_path() {
 }
 
 snapshot_database() {
-  local db_dir snapshot integrity
+  local db_dir snapshot integrity probe mode
   DB_FILE=$(resolve_db_path); db_dir=$(dirname "$DB_FILE")
   [ -d "$db_dir" ] || { log ERROR "DB dir missing"; return 1; }
   [ -s "$DB_FILE" ] || { log ERROR "DB file missing or empty"; return 1; }
@@ -41,7 +81,19 @@ snapshot_database() {
   mkdir -p "$BACKUP_PATH/data"
   snapshot="$BACKUP_PATH/data/$(basename "$DB_FILE")"
   log INFO "Creating consistent DB snapshot"
-  sqlite3 "$DB_FILE" ".backup '$snapshot'" 2>>"$LOG_FILE" || { log ERROR "SQLite snapshot failed"; return 1; }
+  mode="${AGENT_TRACKER_BACKUP_MODE:-auto}"
+  case "$mode" in auto|sqlite|reflink) ;; *) log ERROR "Invalid backup mode: $mode"; return 1 ;; esac
+  probe="$BACKUP_PATH/data/.reflink-probe"
+  if [ "$mode" != sqlite ] && cp --reflink=always "$DB_FILE" "$probe" 2>/dev/null; then
+    rm -f "$probe"
+    log INFO "Creating copy-on-write snapshot (brief service stop)"
+    reflink_database "$snapshot" || { log ERROR "Reflink snapshot failed"; return 1; }
+  else
+    rm -f "$probe"
+    [ "$mode" != reflink ] || { log ERROR "Filesystem does not support reflink"; return 1; }
+    log INFO "Using portable SQLite online backup"
+    sqlite3 "$DB_FILE" ".backup '$snapshot'" 2>>"$LOG_FILE" || { log ERROR "SQLite snapshot failed"; return 1; }
+  fi
   [ -s "$snapshot" ] || { log ERROR "SQLite snapshot is empty"; return 1; }
   integrity=$(sqlite3 -readonly "$snapshot" "PRAGMA integrity_check;" 2>>"$LOG_FILE" || true)
   [ "$integrity" = "ok" ] || { log ERROR "SQLite snapshot integrity check failed"; return 1; }
@@ -101,7 +153,7 @@ perform_rollback() {
 
 # ---- traps ----
 on_exit() { local ec=$?; trap - EXIT INT TERM; [ "${ROLLBACK_NEEDED:-false}" = "true" ] && perform_rollback; if [ "${SERVICE_WAS_STOPPED:-false}" = "true" ] && [ "${ROLLBACK_NEEDED:-false}" != "true" ] && [ "${CURRENT_PHASE:-}" != "completed" ] && [ "${CURRENT_PHASE:-}" != "rolling_back" ] && [ "${CURRENT_PHASE:-}" != "rolled_back" ]; then log WARN "Restarting original service"; systemctl start "$SERVICE_NAME" 2>/dev/null || true; fi; exec 200>&- 2>/dev/null || true; cleanup_staging; exit "$ec"; }
-on_signal() { log ERROR "Signal received"; ROLLBACK_NEEDED=true; CURRENT_PHASE="failed"; exit 1; }
+on_signal() { log ERROR "Signal received"; CURRENT_PHASE="failed"; exit 1; }
 
 # ---- config ----
 MANIFEST_URL=""; EXPECTED_VERSION=""; STATE_FILE=""
@@ -188,7 +240,7 @@ cleanup_staging; mkdir -p "$STAGING_DIR"; tar -xzf "$TMP_ARCHIVE" -C "$STAGING_D
 STAGING_APP=""; for d in "$STAGING_DIR"/*; do [ -d "$d" ] && [ -f "$d/package.json" ] && { STAGING_APP="$d"; break; }; done
 [ -z "$STAGING_APP" ] && { log ERROR "No app in archive"; write_state "failed" "$EXPECTED_VERSION" "No app in archive"; exit 1; }
 log INFO "Installing deps in staging"; cd "$STAGING_APP"
-"$BUN_BIN" install --production --frozen-lockfile 2>&1 | redact_secrets >> "$LOG_FILE" || { log ERROR "bun install failed"; write_state "failed" "$EXPECTED_VERSION" "bun install failed"; exit 1; }
+install_staging_dependencies 2>&1 | redact_secrets >> "$LOG_FILE" || { log ERROR "bun install failed (see update.log for lockfile/runtime details)"; write_state "failed" "$EXPECTED_VERSION" "bun install failed (see update.log for lockfile/runtime details)"; exit 1; }
 log INFO "Staging ready"
 
 # ---- 7. backup code (pre-stop) ----

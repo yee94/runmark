@@ -3,6 +3,7 @@ import type { Database } from "bun:sqlite";
 import type { FileLogger } from "@agent-tracker/shared";
 import type { ServerConfig } from "../config";
 import { AgentRunBusyError, MATTER_ARCHIVE_AGENT_ID, MATTER_SEARCH_AGENT_ID, SESSION_SEARCH_AGENT_ID, SESSION_SUMMARY_AGENT_ID, getAgentRuntime } from "../services/agents";
+import { buildLlmAuthHeaders } from "../services/llmHeaders";
 
 async function testOpenAiCompatible(baseUrl: string, apiKey: string, model: string): Promise<{ ok: boolean; message: string }> {
   const controller = new AbortController();
@@ -10,11 +11,7 @@ async function testOpenAiCompatible(baseUrl: string, apiKey: string, model: stri
   try {
     const res = await fetch(baseUrl, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "Authorization": `Bearer ${apiKey}`,
-        "X-API-Key": apiKey,
-      },
+      headers: buildLlmAuthHeaders(apiKey, baseUrl),
       body: JSON.stringify({
         model,
         messages: [

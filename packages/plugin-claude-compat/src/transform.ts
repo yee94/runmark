@@ -11,6 +11,7 @@ import type {
   IngestToolResultEvent,
   IngestTurnEvent,
 } from "@agent-tracker/shared";
+import { parentSessionIdFromSubagentPath } from "./subagent-paths";
 
 // ---------------------------------------------------------------------------
 // Hook 输入类型（宽松定义，仅提取已知字段）
@@ -191,6 +192,9 @@ export function transformSessionStart(
   meta: SessionMeta,
 ): IngestSessionEvent {
   const provider = inferProvider(input.model);
+  const parentSessionId = input.transcript_path
+    ? parentSessionIdFromSubagentPath(input.transcript_path)
+    : undefined;
   return {
     type: "session.created",
     session_id: input.session_id,
@@ -202,10 +206,12 @@ export function transformSessionStart(
     directory: meta.directory ?? input.cwd,
     provider: provider !== "unknown" ? provider : undefined,
     model: input.model,
+    parent_session_id: parentSessionId,
     metadata: {
       source: input.source,
       permission_mode: input.permission_mode,
       runtime: meta.agent,
+      ...(parentSessionId ? { is_subagent: true } : {}),
     },
   };
 }

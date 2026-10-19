@@ -206,6 +206,7 @@ export function createSystemUpdateModule(ctx) {
 
         // ── 进行中：同步前端阶段，只在 phase 变化时记日志 ──
         if (backendPhase && BACKEND_ACTIVE_PHASES.has(backendPhase)) {
+          attempts = 0
           const frontPhase = mapBackendPhase(backendPhase)
           if (peek(updatePhase) !== frontPhase) {
             updatePhase.value = frontPhase

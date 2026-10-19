@@ -281,7 +281,13 @@ describe("parseClaudeTranscriptEvents", () => {
         stateDir: join(path, "..", "state-cb"),
       });
       const messages = events.filter((e) => e.type === "message" && e.role === "assistant");
+      const users = events.filter((e) => e.type === "message" && e.role === "user");
       const turns = events.filter((e) => e.type === "turn.completed");
+      expect(users).toHaveLength(1);
+      expect(users[0]).toMatchObject({
+        message_id: "u1",
+        content: "Reply with exactly: PONG.",
+      });
       expect(messages).toHaveLength(1);
       expect(messages[0]).toMatchObject({ content: "PONG.", model: "deepseek-v4-flash-ioa", provider: "codebuddy" });
       expect(turns).toHaveLength(1);
@@ -917,6 +923,474 @@ describe("parseClaudeTranscriptEvents", () => {
         // 与成功 Turn 同结构：挂在半截 assistant 的 message_id 上
         turn_id: "a1",
         message_id: "a1",
+      });
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("CodeBuddy CLI: function_call + function_call_result → tool.result (Bash skeleton, Edit full)", () => {
+    const longBashOut = "x".repeat(5_000);
+    const path = writeTranscript([
+      {
+        id: "u1",
+        timestamp: 1_000,
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text: "跑一下" }],
+        sessionId: "s-cli-tools",
+      },
+      {
+        id: "fc-bash",
+        parentId: "u1",
+        timestamp: 2_000,
+        type: "function_call",
+        callId: "call_bash_1",
+        name: "Bash",
+        arguments: JSON.stringify({ command: "pwd", description: "print cwd" }),
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-cli-tools",
+        cwd: "/tmp",
+      },
+      {
+        id: "fcr-bash",
+        parentId: "fc-bash",
+        timestamp: 3_000,
+        type: "function_call_result",
+        callId: "call_bash_1",
+        name: "Bash",
+        status: "completed",
+        output: { type: "text", text: longBashOut },
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-cli-tools",
+        cwd: "/tmp",
+      },
+      {
+        id: "fc-edit",
+        parentId: "fcr-bash",
+        timestamp: 4_000,
+        type: "function_call",
+        callId: "call_edit_1",
+        name: "Edit",
+        arguments: JSON.stringify({ file_path: "/tmp/a.ts", old_string: "a", new_string: "b" }),
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-cli-tools",
+        cwd: "/tmp",
+      },
+      {
+        id: "fcr-edit",
+        parentId: "fc-edit",
+        timestamp: 5_000,
+        type: "function_call_result",
+        callId: "call_edit_1",
+        name: "Edit",
+        status: "completed",
+        output: { type: "text", text: "file updated successfully" },
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-cli-tools",
+        cwd: "/tmp",
+      },
+      {
+        id: "fc-fetch",
+        timestamp: 6_000,
+        type: "function_call",
+        callId: "call_fetch_1",
+        name: "WebFetch",
+        arguments: JSON.stringify({ url: "https://example.com" }),
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-cli-tools",
+      },
+      {
+        id: "fcr-fetch",
+        timestamp: 7_000,
+        type: "function_call_result",
+        callId: "call_fetch_1",
+        name: "WebFetch",
+        status: "completed",
+        output: { type: "text", text: "hello from web" },
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-cli-tools",
+      },
+    ]);
+
+    try {
+      const events = parseClaudeTranscriptEvents({
+        session_id: "s-cli-tools",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir: join(path, "..", "state-cli-tools"),
+      });
+      const users = events.filter((e) => e.type === "message" && e.role === "user");
+      expect(users).toHaveLength(1);
+      expect(users[0]).toMatchObject({ content: "跑一下", message_id: "u1" });
+
+      const tools = events.filter((e) => e.type === "tool.result");
+      expect(tools).toHaveLength(3);
+
+      const bash = tools.find((e) => e.type === "tool.result" && e.call_id === "call_bash_1");
+      expect(bash).toMatchObject({
+        tool_name: "Bash",
+        call_id: "call_bash_1",
+        args: { command: "pwd", description: "print cwd" },
+      });
+      // 高频工具：正文截断到 ~2k，仍保留命令
+      expect(bash && "output_text" in bash && bash.output_text).toBeTruthy();
+      expect(String((bash as { output_text?: string }).output_text).length).toBeLessThan(longBashOut.length);
+      expect(String((bash as { output_text?: string }).output_text)).toContain("[truncated]");
+
+      const edit = tools.find((e) => e.type === "tool.result" && e.call_id === "call_edit_1");
+      expect(edit).toMatchObject({
+        tool_name: "Edit",
+        output_text: "file updated successfully",
+        args: { file_path: "/tmp/a.ts", old_string: "a", new_string: "b" },
+      });
+
+      const fetch = tools.find((e) => e.type === "tool.result" && e.call_id === "call_fetch_1");
+      expect(fetch).toMatchObject({
+        tool_name: "WebFetch",
+        output_text: "hello from web",
+      });
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("CodeBuddy CLI: pending function_call held until result; SessionEnd flushes skeleton", () => {
+    const path = writeTranscript([
+      {
+        id: "fc1",
+        timestamp: 1_000,
+        type: "function_call",
+        callId: "call_pending",
+        name: "Bash",
+        arguments: JSON.stringify({ command: "sleep 10" }),
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-pending",
+      },
+    ]);
+    const stateDir = join(path, "..", "state-pending");
+
+    try {
+      const first = parseClaudeTranscriptEvents({
+        session_id: "s-pending",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir,
+      });
+      expect(first.filter((e) => e.type === "tool.result")).toHaveLength(0);
+
+      // 补上 result → 合并发出
+      writeFileSync(
+        path,
+        [
+          JSON.stringify({
+            id: "fc1",
+            timestamp: 1_000,
+            type: "function_call",
+            callId: "call_pending",
+            name: "Bash",
+            arguments: JSON.stringify({ command: "sleep 10" }),
+            providerData: { model: "claude-opus-5" },
+            sessionId: "s-pending",
+          }),
+          JSON.stringify({
+            id: "fcr1",
+            timestamp: 2_000,
+            type: "function_call_result",
+            callId: "call_pending",
+            name: "Bash",
+            status: "completed",
+            output: { type: "text", text: "done" },
+            providerData: { model: "claude-opus-5" },
+            sessionId: "s-pending",
+          }),
+        ].join("\n") + "\n",
+      );
+
+      const second = parseClaudeTranscriptEvents({
+        session_id: "s-pending",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir,
+      });
+      expect(second.filter((e) => e.type === "tool.result")).toHaveLength(1);
+      expect(second[0]).toMatchObject({
+        type: "tool.result",
+        call_id: "call_pending",
+        args: { command: "sleep 10" },
+        output_text: "done",
+      });
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("CodeBuddy CLI: flushPendingTools emits skeleton for orphan function_call", () => {
+    const path = writeTranscript([
+      {
+        id: "fc1",
+        timestamp: 1_000,
+        type: "function_call",
+        callId: "call_orphan",
+        name: "Read",
+        arguments: JSON.stringify({ file_path: "/tmp/x" }),
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-flush",
+      },
+    ]);
+    const stateDir = join(path, "..", "state-flush-pending");
+
+    try {
+      const held = parseClaudeTranscriptEvents({
+        session_id: "s-flush",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir,
+      });
+      expect(held).toHaveLength(0);
+
+      const flushed = parseClaudeTranscriptEvents({
+        session_id: "s-flush",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir,
+        flushPendingTools: true,
+      });
+      // offset 未变，无新行；仅刷 pending 骨架
+      expect(flushed).toHaveLength(1);
+      expect(flushed[0]).toMatchObject({
+        type: "tool.result",
+        tool_name: "Read",
+        call_id: "call_orphan",
+        args: { file_path: "/tmp/x" },
+      });
+      expect((flushed[0] as { output_text?: string }).output_text).toBeUndefined();
+
+      // 再 flush 不应重复
+      expect(
+        parseClaudeTranscriptEvents({
+          session_id: "s-flush",
+          agent: "codebuddy",
+          transcript_path: path,
+          stateDir,
+          flushPendingTools: true,
+        }),
+      ).toHaveLength(0);
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("Claude nested tool_use still skips Bash/Read (regression)", () => {
+    const path = writeTranscript([
+      {
+        type: "assistant",
+        uuid: "a1",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          content: [
+            { type: "tool_use", id: "toolu_bash", name: "Bash", input: { command: "pwd" } },
+            { type: "tool_use", id: "toolu_edit", name: "Edit", input: { file_path: "/a" } },
+          ],
+        },
+      },
+      {
+        type: "user",
+        uuid: "u2",
+        timestamp: "2026-01-01T00:00:02.000Z",
+        message: {
+          role: "user",
+          content: [
+            { type: "tool_result", tool_use_id: "toolu_bash", content: "/tmp" },
+            { type: "tool_result", tool_use_id: "toolu_edit", content: "ok" },
+          ],
+        },
+      },
+    ]);
+
+    try {
+      const events = parseClaudeTranscriptEvents({
+        session_id: "s-claude-skip",
+        agent: "claude",
+        transcript_path: path,
+        stateDir: join(path, "..", "state-claude-skip"),
+      });
+      const tools = events.filter((e) => e.type === "tool.result");
+      expect(tools).toHaveLength(1);
+      expect(tools[0]).toMatchObject({ tool_name: "Edit", output_text: "ok" });
+      // Claude user 行不发 message（仅 codebuddy/workbuddy CLI 发）
+      expect(events.filter((e) => e.type === "message" && e.role === "user")).toHaveLength(0);
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("CodeBuddy CLI: function_call rawUsage → turn.completed with cache hit", () => {
+    const path = writeTranscript([
+      {
+        id: "fc-usage",
+        timestamp: 10_000,
+        type: "function_call",
+        callId: "call_usage_1",
+        name: "Bash",
+        arguments: JSON.stringify({ command: "ls" }),
+        providerData: {
+          model: "claude-opus-5",
+          // 精简 usage（无 hit）若先于 rawUsage 会被误用；解析应优先 rawUsage
+          usage: {
+            requests: 1,
+            inputTokens: 35997,
+            outputTokens: 352,
+            totalTokens: 36349,
+          },
+          rawUsage: {
+            prompt_tokens: 35997,
+            completion_tokens: 352,
+            total_tokens: 36349,
+            prompt_cache_hit_tokens: 26267,
+            cache_read_input_tokens: 0,
+            prompt_cache_write_tokens: 5202,
+            cache_creation_input_tokens: 5202,
+            completion_thinking_tokens: 0,
+            prompt_tokens_details: { cached_tokens: 26267 },
+          },
+        },
+        sessionId: "s-usage",
+      },
+      {
+        id: "fcr-usage",
+        timestamp: 11_000,
+        type: "function_call_result",
+        callId: "call_usage_1",
+        name: "Bash",
+        status: "completed",
+        output: { type: "text", text: "ok" },
+        providerData: { model: "claude-opus-5" },
+        sessionId: "s-usage",
+      },
+    ]);
+
+    try {
+      const events = parseClaudeTranscriptEvents({
+        session_id: "s-usage",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir: join(path, "..", "state-usage"),
+      });
+
+      const turns = events.filter((e) => e.type === "turn.completed");
+      expect(turns).toHaveLength(1);
+      // prompt 35997 - hit 26267 - write 5202 = 4528 non-cached input
+      expect(turns[0]).toMatchObject({
+        turn_id: "fc-usage",
+        message_id: "fc-usage",
+        model: "claude-opus-5",
+        provider: "anthropic",
+        input_tokens: 4528,
+        cache_read_tokens: 26267,
+        cache_write_tokens: 5202,
+        output_tokens: 352,
+        total_tokens: 36349,
+      });
+
+      const tools = events.filter((e) => e.type === "tool.result");
+      expect(tools).toHaveLength(1);
+      expect(tools[0]).toMatchObject({
+        call_id: "call_usage_1",
+        tool_name: "Bash",
+        output_text: "ok",
+      });
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("Claude cache_read_input_tokens still works without prompt_cache_hit (regression)", () => {
+    const path = writeTranscript([
+      {
+        type: "assistant",
+        uuid: "a-cache",
+        timestamp: "2026-01-01T00:00:01.000Z",
+        message: {
+          role: "assistant",
+          model: "claude-sonnet-4",
+          content: [{ type: "text", text: "hi" }],
+          usage: {
+            input_tokens: 120,
+            output_tokens: 40,
+            cache_read_input_tokens: 20,
+            cache_creation_input_tokens: 10,
+          },
+        },
+      },
+    ]);
+
+    try {
+      const events = parseClaudeTranscriptEvents({
+        session_id: "s-claude-cache",
+        agent: "claude",
+        transcript_path: path,
+        stateDir: join(path, "..", "state-claude-cache"),
+      });
+      const turns = events.filter((e) => e.type === "turn.completed");
+      expect(turns).toHaveLength(1);
+      expect(turns[0]).toMatchObject({
+        input_tokens: 90,
+        cache_read_tokens: 20,
+        cache_write_tokens: 10,
+        output_tokens: 40,
+        total_tokens: 160,
+      });
+    } finally {
+      rmSync(join(path, ".."), { recursive: true, force: true });
+    }
+  });
+
+  it("CodeBuddy CLI: type=reasoning → message role=reasoning from rawContent", () => {
+    const path = writeTranscript([
+      {
+        id: "r1",
+        timestamp: 10_000,
+        type: "reasoning",
+        content: [],
+        rawContent: [
+          {
+            type: "reasoning_text",
+            text: "The user wants to check if the package was installed. Let me verify.",
+          },
+        ],
+        providerData: { model: "glm-5.2-ioa" },
+        sessionId: "s-reason",
+        parentId: "prev-1",
+      },
+      {
+        id: "r-empty",
+        timestamp: 11_000,
+        type: "reasoning",
+        content: [],
+        rawContent: [],
+        providerData: { model: "glm-5.2-ioa" },
+        sessionId: "s-reason",
+      },
+    ]);
+
+    try {
+      const events = parseClaudeTranscriptEvents({
+        session_id: "s-reason",
+        agent: "codebuddy",
+        transcript_path: path,
+        stateDir: join(path, "..", "state-reason"),
+      });
+      const reasoning = events.filter((e) => e.type === "message" && e.role === "reasoning");
+      expect(reasoning).toHaveLength(1);
+      expect(reasoning[0]).toMatchObject({
+        message_id: "r1",
+        role: "reasoning",
+        content: "The user wants to check if the package was installed. Let me verify.",
+        model: "glm-5.2-ioa",
+        parent_message_id: "prev-1",
       });
     } finally {
       rmSync(join(path, ".."), { recursive: true, force: true });

@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="0.2.19"
+VERSION="0.2.20"
 RUNTIME_ARG="all"
 DO_UNINSTALL=0
 # 归属：plugin@marketplace → runmark-tracker@runmark

@@ -35,6 +35,8 @@ type AgentScheduleState = {
 };
 
 const DEFAULT_THROTTLE_MS = 10 * 60 * 1000;
+/** busy 重试最小间隔，避免微任务空转占死 event loop */
+const BUSY_RETRY_MS = 250;
 
 export class AgentThrottleScheduler {
   private agentStates = new Map<string, AgentScheduleState>();
@@ -234,6 +236,18 @@ export class AgentThrottleScheduler {
     }
   }
 
+  /** busy 时延迟再拉 ready，让出 event loop */
+  private scheduleReadyRetry(agentId: string, state: AgentScheduleState, delayMs: number): void {
+    if (state.timer || state.running) return;
+    if (![...state.sessions.values()].some((ss) => ss.status === "ready")) return;
+    const timer = setTimeout(() => {
+      state.timer = null;
+      void this.runReadySessions(agentId, state);
+    }, delayMs) as TimerHandle;
+    timer.unref?.();
+    state.timer = timer;
+  }
+
   /** 将会话级 ready 队列合并执行；agent 仍 single-flight */
   private async runReadySessions(agentId: string, state: AgentScheduleState): Promise<void> {
     if (state.running) return;
@@ -251,6 +265,7 @@ export class AgentThrottleScheduler {
       ss.lastStartedAt = now;
     }
     state.running = true;
+    let busy = false;
     try {
       await this.runtime.runAgent(agentId, {
         trigger: "chat_event",
@@ -273,6 +288,7 @@ export class AgentThrottleScheduler {
             state.sessions.set(sessionId, ss);
           }
         }
+        busy = true;
         this.logger?.debug(`agent ${state.mode} waiting for active run: ${agentId}`);
       } else {
         this.logger?.error(`agent ${state.mode} failed for ${agentId}: ${err instanceof Error ? err.message : String(err)}`);
@@ -280,7 +296,8 @@ export class AgentThrottleScheduler {
     } finally {
       state.running = false;
       // 先拉 ready，再给仍在 waiting 的会话补 arm（正常有 timer，busy 重入时可能需要）
-      void this.runReadySessions(agentId, state);
+      if (busy) this.scheduleReadyRetry(agentId, state, BUSY_RETRY_MS);
+      else void this.runReadySessions(agentId, state);
       for (const [sessionId, ss] of state.sessions) {
         if (ss.status === "waiting" && !ss.timer) this.armSession(agentId, state, sessionId);
       }

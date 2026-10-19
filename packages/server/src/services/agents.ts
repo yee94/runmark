@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { FileLogger } from "@agent-tracker/shared";
 import type { ServerConfig } from "../config";
 import { formatSchedule, parseSchedule } from "./agentSchedule";
+import { buildLlmAuthHeaders } from "./llmHeaders";
 import { computeMatterPlanMetrics, parseMatterPlan, validateMatterPlan, type MatterPlan } from "./matterPlan";
 
 export const SESSION_SUMMARY_AGENT_ID = "agent-session-summary";
@@ -1275,11 +1276,7 @@ async function callOpenAiCompatible(provider: ProviderRow, model: ModelRow, mess
     try {
       const res = await fetch(provider.base_url, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${provider.api_key ?? ""}`,
-          "X-API-Key": provider.api_key ?? "",
-        },
+        headers: buildLlmAuthHeaders(provider.api_key ?? "", provider.base_url),
         body: JSON.stringify({
           model: model.model,
           messages,
@@ -2303,6 +2300,8 @@ export class AgentRuntime {
   private sessionSearchCandidateWhere(): string {
     return `
       parent_session_id IS NULL
+      AND id NOT LIKE 'agent-tracker-synthetic-import%'
+      AND COALESCE(title, '') NOT LIKE '[runmark-import]%'
       AND COALESCE(title, '') != 'smartfetch-secondary'
       AND (
         EXISTS (SELECT 1 FROM messages m WHERE m.session_id = sessions.id)

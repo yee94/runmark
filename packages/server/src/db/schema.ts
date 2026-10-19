@@ -104,6 +104,7 @@ CREATE TABLE IF NOT EXISTS pricing (
   cache_read_price REAL,
   cache_write_price REAL,
   reasoning_price REAL,
+  context_tiers TEXT,
   updated_at TEXT NOT NULL,
   PRIMARY KEY (provider, model)
 );
@@ -303,6 +304,9 @@ CREATE TABLE IF NOT EXISTS session_shares (
   session_id TEXT NOT NULL,
   created_at TEXT NOT NULL,
   expires_at TEXT NOT NULL,
+  trace_types TEXT NOT NULL DEFAULT '',
+  node_key TEXT,
+  child_session_id TEXT,
   FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
 );
 

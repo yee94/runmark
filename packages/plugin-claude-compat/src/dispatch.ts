@@ -28,6 +28,11 @@ import { shouldSkipTool } from "./constants";
 import { sendEvents } from "./send";
 import { parseClaudeTranscriptEvents } from "./transcript";
 import {
+  collectSubagentEvents,
+  isSubagentTranscriptPath,
+  resolvePostToolUseTarget,
+} from "./subagents";
+import {
   collectTranscriptEventsForStop,
   orderIdeEventsForIngest,
   shouldDebounceCodeBuddyIde,
@@ -102,14 +107,33 @@ export async function dispatchHookEvent(opts: DispatchOptions): Promise<void> {
     case "post-tool-use": {
       if (!config.includeToolOutput) break;
       // 与 Cursor 一致：跳过 Read/Write/Shell|Bash/Grep 等高频噪声工具
-      if (shouldSkipTool((input as { tool_name?: string }).tool_name ?? "")) {
+      const toolName = (input as { tool_name?: string }).tool_name ?? "";
+      if (shouldSkipTool(toolName)) {
         logger.debug("skip tool.result", {
-          toolName: (input as { tool_name?: string }).tool_name,
+          toolName,
           sessionId: input.session_id,
         });
         break;
       }
-      const ev = transformPostToolUse(input as any, agent);
+      const callId = (input as { tool_use_id?: string }).tool_use_id ?? "";
+      const target = resolvePostToolUseTarget({
+        agent,
+        sessionId: input.session_id,
+        transcriptPath: input.transcript_path,
+        callId,
+      });
+      if (target.skip) {
+        logger.debug("skip parent post-tool-use owned by subagent", {
+          toolName,
+          callId,
+          sessionId: input.session_id,
+        });
+        break;
+      }
+      const ev = transformPostToolUse(
+        { ...(input as object), session_id: target.sessionId } as any,
+        agent,
+      );
       await sendEvents([ev], { endpoint: config.endpoint, apiKey: config.apiKey, logger });
       break;
     }
@@ -133,11 +157,25 @@ export async function dispatchHookEvent(opts: DispatchOptions): Promise<void> {
             session_id: input.session_id,
             agent,
             transcript_path: path,
+            // SessionEnd：刷出仍无 result 的 CLI function_call 骨架
+            flushPendingTools: eventType === "session-end",
           }),
         logger,
       });
 
-      // SessionEnd：CodeBuddy IDE 整批补；其它 runtime 只补 turn/tool
+      // 父会话 Stop：顺带扫 …/<sessionId>/subagents/*.jsonl（子路径自身的 Stop 不再扫）
+      const parentPath = input.transcript_path ?? "";
+      const subagentEvents =
+        parentPath && !isSubagentTranscriptPath(parentPath)
+          ? collectSubagentEvents({
+              parentSessionId: input.session_id,
+              parentTranscriptPath: parentPath,
+              agent,
+              flushPendingTools: eventType === "session-end",
+            })
+          : [];
+
+      // SessionEnd：CodeBuddy IDE 整批补；其它 runtime 只补 turn/tool；子会话保留 session.created
       if (eventType === "session-end") {
         const ide = shouldDebounceCodeBuddyIde(agent, input.transcript_path);
         const catchUp = ide
@@ -146,10 +184,19 @@ export async function dispatchHookEvent(opts: DispatchOptions): Promise<void> {
               (event) =>
                 event.type === "turn.completed" ||
                 event.type === "turn.error" ||
-                event.type === "tool.result",
+                event.type === "tool.result" ||
+                (event.type === "message" && event.role === "reasoning"),
             );
+        const subCatchUp = subagentEvents.filter(
+          (event) =>
+            event.type === "session.created" ||
+            event.type === "turn.completed" ||
+            event.type === "turn.error" ||
+            event.type === "tool.result" ||
+            (event.type === "message" && event.role === "reasoning"),
+        );
         const idle = transformStop(input as any, agent).filter((event) => event.type === "session.idle");
-        await sendEvents([...catchUp, ...idle], {
+        await sendEvents([...catchUp, ...subCatchUp, ...idle], {
           endpoint: config.endpoint,
           apiKey: config.apiKey,
           logger,
@@ -174,6 +221,7 @@ export async function dispatchHookEvent(opts: DispatchOptions): Promise<void> {
           : null;
       const events = orderIdeEventsForIngest([
         ...transcriptEvents,
+        ...subagentEvents,
         ...(abortFallback ? [abortFallback] : []),
         ...fallbackEvents.filter((event) => {
           if (event.type !== "message") return true;

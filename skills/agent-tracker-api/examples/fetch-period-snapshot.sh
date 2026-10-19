@@ -1,11 +1,21 @@
 #!/usr/bin/env bash
 # 拉取某时间段的统计快照 + 近期会话列表（供 Agent 分析用量趋势）
-# 用法: ./fetch-period-snapshot.sh [range] [output.json]
-# range: today | 24h | 7d | month | all
+# 用法: ./fetch-period-snapshot.sh [range] [output.json] [from] [to]
+# range: today | 24h | 7d | month | last_month | custom | all
 set -euo pipefail
 
 RANGE="${1:-7d}"
 OUT="${2:-period-${RANGE}.json}"
+FROM="${3:-}"
+TO="${4:-}"
+if [[ ( -n "$FROM" && -z "$TO" ) || ( -z "$FROM" && -n "$TO" ) || ( "$RANGE" == custom && -z "$FROM" ) ]]; then
+  echo "from / to 必须成对传入；custom 必填" >&2
+  exit 1
+fi
+STATS_QUERY=(-G --data-urlencode "range=$RANGE")
+if [[ -n "$FROM" ]]; then
+  STATS_QUERY+=(--data-urlencode "from=$FROM" --data-urlencode "to=$TO")
+fi
 
 # 自动加载 ~/.config/agent-tracker/env（静默，缺失不报错）
 ENV_FILE="${HOME}/.config/agent-tracker/env"
@@ -20,10 +30,10 @@ if [[ -n "$KEY" ]]; then
   AUTH=(-H "X-API-Key: $KEY")
 fi
 
-curl -sS "${AUTH[@]}" "$BASE/v1/stats/summary?range=$RANGE" > /tmp/at-summary.json
-curl -sS "${AUTH[@]}" "$BASE/v1/stats/by-model?range=$RANGE&sort=tokens" > /tmp/at-by-model.json
-curl -sS "${AUTH[@]}" "$BASE/v1/stats/by-agent?range=$RANGE&sort=tokens" > /tmp/at-by-agent.json
-curl -sS "${AUTH[@]}" "$BASE/v1/stats/daily" > /tmp/at-daily.json
+curl -fsS "${AUTH[@]}" "${STATS_QUERY[@]}" "$BASE/v1/stats/summary" > /tmp/at-summary.json
+curl -fsS "${AUTH[@]}" "${STATS_QUERY[@]}" --data-urlencode 'sort=tokens' "$BASE/v1/stats/by-model" > /tmp/at-by-model.json
+curl -fsS "${AUTH[@]}" "${STATS_QUERY[@]}" --data-urlencode 'sort=tokens' "$BASE/v1/stats/by-agent" > /tmp/at-by-agent.json
+curl -fsS "${AUTH[@]}" "${STATS_QUERY[@]}" "$BASE/v1/stats/daily" > /tmp/at-daily.json
 curl -sS "${AUTH[@]}" "$BASE/v1/sessions?limit=100" > /tmp/at-sessions.json
 curl -sS "${AUTH[@]}" "$BASE/v1/turns?limit=50" > /tmp/at-recent-turns.json
 curl -sS "${AUTH[@]}" "$BASE/v1/cursor/status" > /tmp/at-cursor-status.json

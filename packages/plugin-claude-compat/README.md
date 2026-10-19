@@ -10,6 +10,12 @@
 
 ## 安装
 
+### 前置条件
+
+- **Bun ≥ 1.1 或 Node ≥ 18**（hook 启动器优先 bun，缺失回退 node）
+- 对应产品 CLI（`claude` / `tclaude` / `codebuddy` / WorkBuddy App）
+- Runmark Server 已部署
+
 ```bash
 # Claude Code
 npx @runmarks/claude-compat-plugin --runtime claude

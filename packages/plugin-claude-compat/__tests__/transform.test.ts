@@ -91,6 +91,29 @@ describe("transform hooks", () => {
       repo_url: "git@x",
       branch: "main",
     });
+    expect(ev.parent_session_id).toBeUndefined();
+    expect(ev.metadata?.is_subagent).toBeUndefined();
+  });
+
+  it("maps SessionStart under /subagents/ to parent_session_id + is_subagent", () => {
+    const ev = transformSessionStart(
+      {
+        session_id: "child-1",
+        hook_event_name: "SessionStart",
+        source: "startup",
+        transcript_path:
+          "/Users/x/.codebuddy/projects/demo/parent-1/subagents/child-1.jsonl",
+        cwd: "/tmp/demo",
+        model: "claude-sonnet-4",
+      },
+      { agent: "codebuddy" },
+    );
+    expect(ev).toMatchObject({
+      type: "session.created",
+      session_id: "child-1",
+      parent_session_id: "parent-1",
+      metadata: { is_subagent: true, runtime: "codebuddy" },
+    });
   });
 
   it("maps SessionStart resume to session.compacted", () => {

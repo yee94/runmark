@@ -294,7 +294,7 @@ cd packages/plugin-grok && bun run build && bash install.sh
 
 KPI 与模型表共用 query：
 
-- `range`: `today` \| `24h` \| `7d` \| `month` \| `all`
+- `range`: `today` \| `24h` \| `7d` \| `month` \| `last_month` \| `all` \| `custom`（`custom` 需成对带时区的 `from` / `to`）
 - `sort`: `tokens` \| `cost`（倒序，server 侧 `ORDER BY`）
 
 示例：`GET /v1/stats/by-model?range=7d&sort=cost`

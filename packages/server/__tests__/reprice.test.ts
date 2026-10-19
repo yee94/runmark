@@ -17,6 +17,24 @@ describe("repriceTurns", () => {
     costService.setPricing(DEFAULT_PRICING);
   });
 
+  it("previews and repairs one Astra session atomically without replacing cumulative tokens", () => {
+    const db = setupDb();
+    for (const id of ["astra", "other"]) {
+      db.query("INSERT INTO sessions (id, agent, started_at, total_tokens, total_cost_usd) VALUES (?, 'opencode', '2026-10-18', 43017847, 0.15449)").run(id);
+      db.query(`INSERT INTO turns (id, session_id, provider, model, input_tokens, output_tokens, cache_read_tokens, reasoning_tokens, total_tokens, duration_ms, cost_usd, created_at)
+        VALUES (?, ?, 'openai', 'gpt-6-astra', 1118, 302, 279680, 510, 281610, 0, 0.15449, '2026-10-18')`).run(id, id);
+    }
+    const preview = repriceTurns(db, { sessionId: "astra", dryRun: true });
+    expect(preview.updated).toBe(1);
+    expect(preview.delta_usd).toBeCloseTo(0.48813, 9);
+    expect(db.query("SELECT cost_usd FROM turns WHERE id = 'astra'").get()).toEqual({ cost_usd: 0.15449 });
+    repriceTurns(db, { sessionId: "astra" });
+    expect(db.query("SELECT total_tokens, total_cost_usd FROM sessions WHERE id = 'astra'").get()).toEqual({ total_tokens: 43017847, total_cost_usd: 0.64262 });
+    expect(db.query("SELECT cost_usd FROM turns WHERE id = 'other'").get()).toEqual({ cost_usd: 0.15449 });
+    expect(repriceTurns(db, { sessionId: "astra" }).updated).toBe(0);
+    db.close();
+  });
+
   it("recalculates under-reported grok-build cost including cache", () => {
     const db = setupDb();
     const now = "2026-07-25T12:00:00.000Z";

@@ -1,10 +1,24 @@
-export type StatsRange = "today" | "24h" | "7d" | "month" | "all";
+import { HTTPException } from "hono/http-exception";
+
+export type StatsRange = "today" | "24h" | "7d" | "month" | "last_month" | "custom" | "all";
 export type ModelSort = "cost" | "tokens";
 
 export const DEFAULT_STATS_RANGE: StatsRange = "month";
 
-export function resolveStatsRange(range: string | undefined): { from: string | null; to: string | null } {
+export function resolveStatsRange(range: string | undefined, bounds: { from?: string; to?: string } = {}): { from: string | null; to: string | null } {
   const effective = range || DEFAULT_STATS_RANGE;
+  if (bounds.from !== undefined || bounds.to !== undefined || effective === "custom") {
+    const parse = (value: string | undefined) => {
+      if (!value || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?(Z|[+-]\d{2}:\d{2})$/.test(value) || !Number.isFinite(Date.parse(value))) {
+        throw new HTTPException(400, { message: "from and to must be ISO 8601 timestamps with timezone" });
+      }
+      return new Date(value).toISOString();
+    };
+    const from = parse(bounds.from);
+    const to = parse(bounds.to);
+    if (from > to) throw new HTTPException(400, { message: "from must not be after to" });
+    return { from, to };
+  }
   const now = new Date();
   const to = now.toISOString();
 
@@ -22,6 +36,11 @@ export function resolveStatsRange(range: string | undefined): { from: string | n
       const start = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
       return { from: start.toISOString(), to };
     }
+    case "last_month":
+      return {
+        from: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - 1, 1)).toISOString(),
+        to: new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1) - 1).toISOString(),
+      };
     default:
       return { from: null, to: null };
   }

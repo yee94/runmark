@@ -28,6 +28,7 @@ export function initializeDatabase(db: Database): void {
   ensureCursorConfigColumns(db);
   ensureCursorColumns(db);
   ensureAgentColumns(db);
+  ensureSessionSharesColumns(db);
   db.exec(SCHEMA_SQL);
   migrateSchema(db);
   seedBuiltinAgentConfig(db);
@@ -123,6 +124,7 @@ function ensurePricingColumns(db: Database): void {
     ["cache_read_price", "REAL"],
     ["cache_write_price", "REAL"],
     ["reasoning_price", "REAL"],
+    ["context_tiers", "TEXT"],
     ["updated_at", "TEXT NOT NULL DEFAULT ''"],
   ]);
 }
@@ -272,6 +274,14 @@ function ensureAgentColumns(db: Database): void {
   ]);
 }
 
+function ensureSessionSharesColumns(db: Database): void {
+  ensureTableColumns(db, "session_shares", [
+    ["trace_types", "TEXT NOT NULL DEFAULT ''"],
+    ["node_key", "TEXT"],
+    ["child_session_id", "TEXT"],
+  ]);
+}
+
 /** 增量迁移：索引等 SCHEMA_SQL 之后执行 */
 function migrateSchema(db: Database): void {
   const exists = db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='sessions'").get();
@@ -315,14 +325,15 @@ function backfillSessionModelsFromTurns(db: Database): void {
 function seedPricing(db: Database): void {
   // 启动时与 DEFAULT_PRICING 对齐（含官方 API 调价）；自定义价可再 PUT /v1/pricing 覆盖
   const stmt = db.query(`
-    INSERT INTO pricing (provider, model, input_price, output_price, cache_read_price, cache_write_price, reasoning_price, updated_at)
-    VALUES ($provider, $model, $input_price, $output_price, $cache_read_price, $cache_write_price, $reasoning_price, $updated_at)
+    INSERT INTO pricing (provider, model, input_price, output_price, cache_read_price, cache_write_price, reasoning_price, context_tiers, updated_at)
+    VALUES ($provider, $model, $input_price, $output_price, $cache_read_price, $cache_write_price, $reasoning_price, $context_tiers, $updated_at)
     ON CONFLICT(provider, model) DO UPDATE SET
       input_price = excluded.input_price,
       output_price = excluded.output_price,
       cache_read_price = excluded.cache_read_price,
       cache_write_price = excluded.cache_write_price,
       reasoning_price = excluded.reasoning_price,
+      context_tiers = excluded.context_tiers,
       updated_at = excluded.updated_at
   `);
 
@@ -336,11 +347,13 @@ function seedPricing(db: Database): void {
       $cache_read_price: p.cache_read_price ?? null,
       $cache_write_price: p.cache_write_price ?? null,
       $reasoning_price: p.reasoning_price ?? null,
+      $context_tiers: p.context_tiers ? JSON.stringify(p.context_tiers) : null,
       $updated_at: now,
     });
   }
 }
 
 export function getPricing(db: Database): ModelPricing[] {
-  return db.query(`SELECT * FROM pricing`).all() as ModelPricing[];
+  const rows = db.query(`SELECT * FROM pricing`).all() as Array<Omit<ModelPricing, "context_tiers"> & { context_tiers: string | null }>;
+  return rows.map((row) => ({ ...row, context_tiers: row.context_tiers ? JSON.parse(row.context_tiers) : undefined }));
 }

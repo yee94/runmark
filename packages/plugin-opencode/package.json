@@ -1,6 +1,6 @@
 {
   "name": "@runmarks/opencode-plugin",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -20,6 +20,7 @@
   "devDependencies": {
     "@agent-tracker/shared": "workspace:*",
     "@opencode-ai/plugin": "latest",
+    "@opencode-ai/sdk": "1.17.15",
     "@types/bun": "latest",
     "tsdown": "^0.17.0",
     "typescript": "^5.5.0"

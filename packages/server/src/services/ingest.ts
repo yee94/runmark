@@ -230,12 +230,14 @@ class IngestService {
               model: e.model,
               started_at: e.created_at,
             });
+            const sessionAgent = db.query("SELECT agent FROM sessions WHERE id = ?").get(e.session_id) as { agent: string };
             const cost = costService.resolveTurnCost(e.provider, e.model, {
               input_tokens: e.input_tokens,
               output_tokens: e.output_tokens,
               cache_read_tokens: e.cache_read_tokens,
               cache_write_tokens: e.cache_write_tokens,
               reasoning_tokens: e.reasoning_tokens,
+              output_includes_reasoning: sessionAgent.agent === "codex",
             }, e.cost_usd);
 
             insertTurnStmt.run({
@@ -327,11 +329,24 @@ class IngestService {
               model: e.model ?? null,
               started_at: e.created_at,
             });
+            const contentStr =
+              typeof e.content === "string" ? e.content : JSON.stringify(e.content ?? {});
+            // UserPromptSubmit hook 与 transcript user 行 id 不同；按同 session 同 content 去重
+            if (e.role === "user" && contentStr) {
+              const dup = db
+                .query(
+                  `SELECT 1 AS ok FROM messages
+                   WHERE session_id = $session_id AND role = 'user' AND content = $content
+                   LIMIT 1`,
+                )
+                .get({ $session_id: e.session_id, $content: contentStr });
+              if (dup) break;
+            }
             insertMessageStmt.run({
               $id: e.message_id,
               $session_id: e.session_id,
               $role: e.role,
-              $content: typeof e.content === "string" ? e.content : JSON.stringify(e.content ?? {}),
+              $content: contentStr,
               $model: e.model ?? null,
               $provider: e.provider ?? null,
               $parent_message_id: e.parent_message_id ?? null,

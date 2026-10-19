@@ -65,7 +65,7 @@ describe("Agent API", () => {
     app.route("/", createAgentsRoute(db, config));
   });
 
-  it("seeds default agents and the default DeepSeek models", async () => {
+  it("seeds default agents and the default Astra models", async () => {
     const agentsRes = await app.request("/v1/agents");
     const agents = await agentsRes.json();
     expect(agentsRes.status).toBe(200);
@@ -374,7 +374,7 @@ describe("Agent API", () => {
   it("reruns a session summary through the Session Summary Agent", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary)
-      VALUES ('s-summary-1', 'codex', '旧标题', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
+      VALUES ('s-summary-1', 'codex', '旧标题', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-summary-1', 's-summary-1', 'user', '请实现会话摘要重新生成', '2026-07-08T01:01:00.000Z');
     `);
@@ -429,7 +429,7 @@ describe("Agent API", () => {
   it("rejects concurrent runs for the same agent across runtime and API entry points", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary)
-      VALUES ('s-summary-lock-1', 'codex', '并发互斥', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
+      VALUES ('s-summary-lock-1', 'codex', '并发互斥', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-summary-lock-1', 's-summary-lock-1', 'user', '验证同一 Agent 只能运行一个任务。', '2026-07-08T01:01:00.000Z');
     `);
@@ -489,7 +489,7 @@ describe("Agent API", () => {
   it("retries HTTP 498 three times with backoff before continuing the ReAct loop", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary)
-      VALUES ('s-summary-498-1', 'codex', '498 重试', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
+      VALUES ('s-summary-498-1', 'codex', '498 重试', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-summary-498-1', 's-summary-498-1', 'user', '验证 LLM 498 后可以退避重试并继续总结。', '2026-07-08T01:01:00.000Z');
     `);
@@ -540,7 +540,7 @@ describe("Agent API", () => {
   it("recovers truncated session.summary.write JSON instead of storing protocol payload", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary)
-      VALUES ('s-summary-trunc-1', 'codex', '旧标题', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
+      VALUES ('s-summary-trunc-1', 'codex', '旧标题', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-summary-trunc-1', 's-summary-trunc-1', 'user', '请实现会话摘要重新生成', '2026-07-08T01:01:00.000Z');
     `);
@@ -579,7 +579,7 @@ describe("Agent API", () => {
   it("keeps legacy summary JSON compatible by writing through the summary tool", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary)
-      VALUES ('s-summary-legacy-1', 'codex', '旧标题', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
+      VALUES ('s-summary-legacy-1', 'codex', '旧标题', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-summary-legacy-1', 's-summary-legacy-1', 'user', '请实现会话摘要重新生成', '2026-07-08T01:01:00.000Z');
     `);
@@ -618,7 +618,7 @@ describe("Agent API", () => {
   it("starts manual resummarize requests asynchronously by default", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary)
-      VALUES ('s-summary-async-1', 'codex', '异步摘要', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
+      VALUES ('s-summary-async-1', 'codex', '异步摘要', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '旧总结');
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-summary-async-1', 's-summary-async-1', 'user', '请异步生成摘要', '2026-07-08T01:01:00.000Z');
     `);
@@ -693,9 +693,9 @@ describe("Agent API", () => {
     seedBuiltinAgentConfig(db);
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-retry-1', 'codex', '重试事项一', 'deepseek', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '第一个失败归档来源', 1200);
+      VALUES ('s-retry-1', 'codex', '重试事项一', 'astra', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '第一个失败归档来源', 1200);
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-retry-2', 'codex', '重试事项二', 'deepseek', 'deepseek-chat', '2026-07-08T02:05:00.000Z', '第二个失败归档来源', 800);
+      VALUES ('s-retry-2', 'codex', '重试事项二', 'astra', 'deepseek-chat', '2026-07-08T02:05:00.000Z', '第二个失败归档来源', 800);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-retry-1', 's-retry-1', 'user', '请重试失败事项归档。', '2026-07-08T02:01:00.000Z');
       INSERT INTO messages (id, session_id, role, content, created_at)
@@ -800,9 +800,9 @@ describe("Agent API", () => {
   it("executes planning tools and rejects plans that omit candidate sessions", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-plan-tool-1', 'codex', '事项规划工具执行', 'deepseek', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '需要执行 Tool 后归档', 1200);
+      VALUES ('s-plan-tool-1', 'codex', '事项规划工具执行', 'astra', 'deepseek-chat', '2026-07-08T01:00:00.000Z', '需要执行 Tool 后归档', 1200);
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-plan-tool-2', 'codex', '事项规划覆盖校验', 'deepseek', 'deepseek-chat', '2026-07-08T01:05:00.000Z', '需要明确跳过原因', 300);
+      VALUES ('s-plan-tool-2', 'codex', '事项规划覆盖校验', 'astra', 'deepseek-chat', '2026-07-08T01:05:00.000Z', '需要明确跳过原因', 300);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-plan-tool-1', 's-plan-tool-1', 'user', '先读取已有事项，再归档本次修复。', '2026-07-08T01:01:00.000Z');
       INSERT INTO messages (id, session_id, role, content, created_at)
@@ -1070,11 +1070,11 @@ describe("Agent API", () => {
   it("updates an existing open matter when Matter Archive returns its id", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-1', 'codex', '继续实现事项归档', 'deepseek', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '已有会话摘要', 1200);
+      VALUES ('s-matter-1', 'codex', '继续实现事项归档', 'astra', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '已有会话摘要', 1200);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-1', 's-matter-1', 'user', '继续调整事项归档，要求命中已有事项时更新。', '2026-07-08T02:01:00.000Z');
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-2', 'codex', '事项归档触发变更', 'deepseek', 'deepseek-chat', '2026-07-08T02:05:00.000Z', '同一事项的后续会话', 800);
+      VALUES ('s-matter-2', 'codex', '事项归档触发变更', 'astra', 'deepseek-chat', '2026-07-08T02:05:00.000Z', '同一事项的后续会话', 800);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-2', 's-matter-2', 'user', '用户继续说明 A/B Session 都需要作为本轮变化被 Matter Archive 关注。', '2026-07-08T02:06:00.000Z');
       INSERT INTO matter_archives (id, no, type, status, title, topic, summary, result, markdown, updated_at)
@@ -1176,7 +1176,7 @@ describe("Agent API", () => {
     const frozenUpdatedAt = "2026-07-08T02:10:00.000Z";
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-unchanged-1', 'codex', '无变化重写', 'deepseek', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '已有会话摘要', 1200);
+      VALUES ('s-matter-unchanged-1', 'codex', '无变化重写', 'astra', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '已有会话摘要', 1200);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-unchanged-1', 's-matter-unchanged-1', 'user', '用户要求验证无实质变化时不刷新 updated_at。', '2026-07-08T02:01:00.000Z');
       INSERT INTO matter_archives (id, no, type, status, title, topic, summary, result, markdown, effort_level, word_target, source_session_count, dependency_refs, timeline_points, updated_at)
@@ -1271,7 +1271,7 @@ describe("Agent API", () => {
     const frozenUpdatedAt = "2026-07-08T02:10:00.000Z";
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-changed-1', 'codex', '有变化重写', 'deepseek', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '已有会话摘要', 1200);
+      VALUES ('s-matter-changed-1', 'codex', '有变化重写', 'astra', 'deepseek-chat', '2026-07-08T02:00:00.000Z', '已有会话摘要', 1200);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-changed-1', 's-matter-changed-1', 'user', '用户要求验证有实质变化时刷新 updated_at。', '2026-07-08T02:01:00.000Z');
       INSERT INTO matter_archives (id, no, type, status, title, topic, summary, result, markdown, effort_level, word_target, source_session_count, dependency_refs, timeline_points, updated_at)
@@ -1366,7 +1366,7 @@ describe("Agent API", () => {
   it("runs Matter Archive without a selected matter", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-standalone-1', 'codex', '新增事项归档', 'deepseek', 'deepseek-chat', '2026-07-08T03:00:00.000Z', '需要按 Session 范围归档', 900);
+      VALUES ('s-matter-standalone-1', 'codex', '新增事项归档', 'astra', 'deepseek-chat', '2026-07-08T03:00:00.000Z', '需要按 Session 范围归档', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-standalone-1', 's-matter-standalone-1', 'user', '用户要求在没有选中事项时也允许重新归档。', '2026-07-08T03:01:00.000Z');
     `);
@@ -1436,11 +1436,11 @@ describe("Agent API", () => {
   it("filters routine GitHub trend report sessions before Matter Archive writes", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-routine-github-1', 'opencode', 'GitHub 技术趋势午报生成', 'deepseek', 'glm-5.1', '2026-07-08T04:00:00.000Z', '用户要求生成 GitHub/科技趋势午报，并通过 GitHub API、Twitter 搜索和配图生成完成内容产物。', 900);
+      VALUES ('s-routine-github-1', 'opencode', 'GitHub 技术趋势午报生成', 'astra', 'glm-5.1', '2026-07-08T04:00:00.000Z', '用户要求生成 GitHub/科技趋势午报，并通过 GitHub API、Twitter 搜索和配图生成完成内容产物。', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-routine-github-1', 's-routine-github-1', 'user', '生成一份 GitHub 技术趋势午报，包含项目、Twitter 讨论和配图。', '2026-07-08T04:01:00.000Z');
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-engineering-backup-1', 'opencode', '备份 SQLite 数据库到远程 ITFS 路径', 'deepseek', 'deepseek-chat', '2026-07-08T04:41:00.000Z', '用户请求将远程服务器 SQLite 数据库备份到 ITFS 路径，Agent 通过 SSH 查找数据库文件。', 900);
+      VALUES ('s-engineering-backup-1', 'opencode', '备份 SQLite 数据库到远程 ITFS 路径', 'astra', 'deepseek-chat', '2026-07-08T04:41:00.000Z', '用户请求将远程服务器 SQLite 数据库备份到 ITFS 路径，Agent 通过 SSH 查找数据库文件。', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-engineering-backup-1', 's-engineering-backup-1', 'user', '把远程服务器 SQLite 数据库备份到 ITFS 路径。', '2026-07-08T04:42:00.000Z');
     `);
@@ -1510,7 +1510,7 @@ describe("Agent API", () => {
   it("succeeds with empty matter_plan when no engineering matters are planned", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-empty-plan-1', 'codex', '概念讨论未落地', 'deepseek', 'deepseek-chat', '2026-07-08T04:00:00.000Z', '用户只是讨论概念，没有明确工程改动。', 200);
+      VALUES ('s-empty-plan-1', 'codex', '概念讨论未落地', 'astra', 'deepseek-chat', '2026-07-08T04:00:00.000Z', '用户只是讨论概念，没有明确工程改动。', 200);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-empty-plan-1', 's-empty-plan-1', 'user', '先聊聊这个想法，暂时不改代码。', '2026-07-08T04:01:00.000Z');
     `);
@@ -1563,7 +1563,7 @@ describe("Agent API", () => {
   it("succeeds when all candidate sessions are routine content", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-all-routine-1', 'opencode', 'GitHub 技术趋势午报生成', 'deepseek', 'glm-5.1', '2026-07-08T04:00:00.000Z', '用户要求生成 GitHub/科技趋势午报。', 900);
+      VALUES ('s-all-routine-1', 'opencode', 'GitHub 技术趋势午报生成', 'astra', 'glm-5.1', '2026-07-08T04:00:00.000Z', '用户要求生成 GitHub/科技趋势午报。', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-all-routine-1', 's-all-routine-1', 'user', '生成一份 GitHub 技术趋势午报。', '2026-07-08T04:01:00.000Z');
     `);
@@ -1601,7 +1601,7 @@ describe("Agent API", () => {
     for (const [index, sessionId] of sessionIds.entries()) {
       db.query(`
         INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-        VALUES ($id, 'codex', $title, 'deepseek', 'deepseek-chat', $started_at, $summary, 9000)
+        VALUES ($id, 'codex', $title, 'astra', 'deepseek-chat', $started_at, $summary, 9000)
       `).run({
         $id: sessionId,
         $title: `Runmark 归档能力实现 ${index + 1}`,
@@ -1731,7 +1731,7 @@ describe("Agent API", () => {
   it("does not write a matter when ReAct stops before matter.archive.write", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-incomplete-1', 'codex', '未完成 ReAct 事项归档', 'deepseek', 'deepseek-chat', '2026-07-08T04:00:00.000Z', '需要归档', 900);
+      VALUES ('s-matter-incomplete-1', 'codex', '未完成 ReAct 事项归档', 'astra', 'deepseek-chat', '2026-07-08T04:00:00.000Z', '需要归档', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-incomplete-1', 's-matter-incomplete-1', 'user', '用户要求验证 ReAct 未写入时不能生成脏 matter。', '2026-07-08T04:01:00.000Z');
     `);
@@ -1785,7 +1785,7 @@ describe("Agent API", () => {
   it("reprompts Matter Archive when ReAct returns final before matter.archive.write", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-repair-1', 'codex', '修复事项归档写入', 'deepseek', 'deepseek-chat', '2026-07-08T04:30:00.000Z', '需要归档', 900);
+      VALUES ('s-matter-repair-1', 'codex', '修复事项归档写入', 'astra', 'deepseek-chat', '2026-07-08T04:30:00.000Z', '需要归档', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-repair-1', 's-matter-repair-1', 'user', '用户要求验证 ReAct final 不能替代 matter.archive.write。', '2026-07-08T04:31:00.000Z');
     `);
@@ -1867,7 +1867,7 @@ describe("Agent API", () => {
   it("keeps Matter Archive in the ReAct loop when write schema validation fails", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, provider, model, started_at, AISummary, total_tokens)
-      VALUES ('s-matter-schema-1', 'codex', '校验事项归档参数', 'deepseek', 'deepseek-chat', '2026-07-08T04:45:00.000Z', '需要归档', 900);
+      VALUES ('s-matter-schema-1', 'codex', '校验事项归档参数', 'astra', 'deepseek-chat', '2026-07-08T04:45:00.000Z', '需要归档', 900);
       INSERT INTO messages (id, session_id, role, content, created_at)
       VALUES ('m-matter-schema-1', 's-matter-schema-1', 'user', '用户要求验证 matter.archive.write 参数错误后可以继续 ReAct loop。', '2026-07-08T04:46:00.000Z');
     `);
@@ -2099,6 +2099,50 @@ describe("Agent API", () => {
     expect(keyUpdateRes.status).toBe(200);
     const rotated = db.query("SELECT api_key FROM agent_providers WHERE id = $id").get({ $id: created.providerId }) as any;
     expect(rotated.api_key).toBe("sk-rotated");
+  });
+
+  it("provider test sends X-API-Key when base URL matches AGENT_TRACKER_LLM_X_API_KEY_HOST_MARKERS", async () => {
+    const captured: Array<Record<string, string>> = [];
+    const originalFetch = globalThis.fetch;
+    const envKey = "AGENT_TRACKER_LLM_X_API_KEY_HOST_MARKERS";
+    const prevMarkers = process.env[envKey];
+    globalThis.fetch = (async (_url: string, init?: RequestInit) => {
+      captured.push({ ...(init?.headers as Record<string, string> || {}) });
+      return new Response(JSON.stringify({ choices: [{ message: { content: "OK" } }] }), { status: 200 });
+    }) as typeof fetch;
+    try {
+      delete process.env[envKey];
+      const defaultRes = await app.request("/v1/system-config/providers/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_url: "http://127.0.0.1:15721/tencent/v1/chat/completions",
+          api_key: "ttsw-test",
+          model: "hy3-ioa",
+        }),
+      });
+      expect(defaultRes.status).toBe(200);
+      expect(captured[0].Authorization).toBe("Bearer ttsw-test");
+      expect(captured[0]["X-API-Key"]).toBeUndefined();
+
+      process.env[envKey] = "api.example.com";
+      const markedRes = await app.request("/v1/system-config/providers/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          base_url: "https://api.example.com/v1/chat/completions",
+          api_key: "ac:test",
+          model: "deepseek-chat",
+        }),
+      });
+      expect(markedRes.status).toBe(200);
+      expect(captured[1].Authorization).toBe("Bearer ac:test");
+      expect(captured[1]["X-API-Key"]).toBe("ac:test");
+    } finally {
+      if (prevMarkers === undefined) delete process.env[envKey];
+      else process.env[envKey] = prevMarkers;
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("creates and deletes standalone models under an existing provider", async () => {

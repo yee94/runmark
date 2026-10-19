@@ -64,15 +64,17 @@ jobs:
           printf '%s\n' "registry=https://registry.npmjs.org/" >> "$HOME/.npmrc"
           printf '%s\n' "always-auth=true" >> "$HOME/.npmrc"
 
-          # Prefer changesets when available (skips already-published versions)
+          # Prefer changesets when available (skips already-published versions).
+          # Do not npm publish the same versions in parallel: npm leaves them "staged" and the second PUT 409s.
           if [ -x node_modules/.bin/changeset ]; then
             echo "==> changeset publish"
-            npx changeset publish || {
-              echo "changeset publish failed or nothing to publish; falling back to per-package npm publish"
-            }
+            npx changeset publish || echo "changeset publish failed; reconciling missing versions"
           fi
 
-          # First-time / fallback: publish each public package if its version is not on the registry
+          echo "==> waiting for the registry to list new versions"
+          sleep 15
+
+          # Reconcile anything changeset reported but npmjs does not list yet.
           pkgs=(
             packages/runmark
             packages/plugin-opencode
@@ -89,8 +91,24 @@ jobs:
               continue
             fi
             echo "==> npm publish ${name}@${ver}"
-            # --ignore-scripts: dist already built; avoid re-running workspace builds on CI
-            npm publish "./${dir}" --access public --ignore-scripts --registry=https://registry.npmjs.org/
+            published=0
+            for attempt in 1 2 3; do
+              if npm publish "./${dir}" --access public --ignore-scripts --registry=https://registry.npmjs.org/; then
+                published=1
+                break
+              fi
+              echo "==> publish attempt ${attempt} failed for ${name}@${ver}; retrying"
+              sleep 10
+              if npm view "${name}@${ver}" version --registry=https://registry.npmjs.org/ >/dev/null 2>&1; then
+                echo "==> ${name}@${ver} is on npm"
+                published=1
+                break
+              fi
+            done
+            if [ "$published" -ne 1 ]; then
+              echo "ERROR: failed to publish ${name}@${ver}"
+              exit 1
+            fi
           done
 
           echo "==> published versions:"

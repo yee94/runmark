@@ -105,10 +105,17 @@ function coerceSessionSummaryMarkdown(raw) {
 export function createSessionDetailView(ctx) {
   const {
     apiFetch,
-    sessions, sessionDetails, routeSessionId, selectedTraceKey, traceAutoFocusKey, expandedSubagents,
+    sessions, sessionDetails, routeSessionId, routeTraceChild, selectedTraceKey, traceAutoFocusKey, expandedSubagents,
+    traceTypes, traceDeepLinkFocus,
+    publicShareTraceItems, publicShareTraceLoading, publicShareTraceLoadingMore,
+    publicShareTraceError, publicShareTraceNextOffset, routeShareToken, fetchPublicShareTrace,
+    sanitizeHtml,
     navigate, openSession, toggleSubagent,
-    formatDateTime, formatSessionDuration, formatTokens, formatCost,
-    forkParentSessionId, mergeForkTraceItems, ChevronIcon,
+    selectTraceItem, toggleTraceCategory,
+    formatDateTime, formatSessionDuration, formatDuration, formatTokens, formatCost,
+    forkParentSessionId, mergeForkTraceItems,
+    TRACE_CATEGORIES, TRACE_FILTER_LABELS, TRACE_FILTER_DOTS,
+    filterTraceItems, ChevronIcon,
     Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Button,
   } = ctx
 
@@ -138,8 +145,72 @@ export function createSessionDetailView(ctx) {
     { value: '7d', label: '7 天' },
   ]
 
-  const SessionDetailView = component(({ sessionId, readOnly = false, shareMode = false, agentPrompt = '' }) => {
+  function sharedTraceItem(item, index) {
+    const category = item.category || 'user'
+    const role = item.kind === 'turn'
+      ? (category === 'abort' ? 'turn-abort' : category === 'error' ? 'turn-fail' : 'turn')
+      : item.kind === 'tool' || item.kind === 'subagent' ? item.kind : (item.role || category)
+    let summary = item.key || ''
+    let fullText = ''
+    if (item.kind === 'message') {
+      fullText = String(item.content || '')
+      summary = fullText.length > 120 ? fullText.slice(0, 120) + '…' : (fullText || role)
+    } else if (item.kind === 'turn') {
+      const suffix = category === 'abort' ? ' · Abort' : category === 'error' ? ' · Error' : (item.finish_reason ? ' · ' + item.finish_reason : '')
+      summary = (item.model || 'Turn') + suffix
+      fullText = [
+        'Model: ' + (item.model || '—') + ' (' + (item.provider || '—') + ')',
+        'Tokens: in ' + formatTokens(item.input_tokens) + ' · out ' + formatTokens(item.output_tokens)
+          + (item.cache_read_tokens ? ' · cache读 ' + formatTokens(item.cache_read_tokens) : '')
+          + (item.reasoning_tokens ? ' · reason ' + formatTokens(item.reasoning_tokens) : ''),
+        'Duration: ' + formatDuration(item.duration_ms),
+        'Cost: ' + formatCost(item.cost_cny),
+        item.finish_reason ? 'Finish: ' + item.finish_reason : '',
+        item.error ? 'Error: ' + item.error : '',
+      ].filter(Boolean).join('\n')
+    } else if (item.kind === 'tool') {
+      summary = (item.tool_name || 'tool') + (item.output_title ? ': ' + item.output_title : '')
+      fullText = [
+        item.file_path ? 'File: ' + item.file_path : '',
+        item.args || '',
+        item.output_text || item.output_title || '',
+        item.error ? 'Error: ' + item.error : '',
+      ].filter(Boolean).join('\n\n')
+    } else if (item.kind === 'subagent') {
+      summary = item.summary || item.title || item.id || 'Subagent'
+      fullText = [
+        item.agent ? 'Agent: ' + item.agent : '',
+        item.model ? 'Model: ' + item.model + (item.provider ? ' (' + item.provider + ')' : '') : '',
+        item.id ? 'Session: ' + item.id : '',
+      ].filter(Boolean).join('\n')
+    }
+    return {
+      ...item,
+      role,
+      summary,
+      fullText,
+      tokens: item.total_tokens,
+      cost_cny: item.cost_cny,
+      childSessionId: item.kind === 'subagent' ? item.id : null,
+      childSession: item.kind === 'subagent' ? item : null,
+      seq: index + 1,
+      depth: 0,
+    }
+  }
+
+  function escapeTraceKeySelector(key) {
+    const text = String(key || '')
+    if (typeof CSS !== 'undefined' && typeof CSS.escape === 'function') return CSS.escape(text)
+    return text.replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+  }
+
+  function displayedShareUrl(share) {
+    return share?.share_url || ''
+  }
+
+  const SessionDetailView = component(({ sessionId, readOnly = false, shareMode = false, shareCategories = [], shareRestricted = false, agentPrompt = '' }) => {
     let traceListEl = null
+    let traceAreaEl = null
     let autoSummarySessionId = null
     const summaryStatus = signal(SESSION_SUMMARY_STATUS.Idle)
     const summaryCopied = signal(false)
@@ -147,6 +218,7 @@ export function createSessionDetailView(ctx) {
 
     const detail = computed(() => sessionDetails.value[sessionId] || null)
     const session = computed(() => {
+      if (shareMode) return detail.value?.session || null
       return sessions.value.find(s => s.id === sessionId) || detail.value?.session || null
     })
     const forkParentId = computed(() => forkParentSessionId(session.value))
@@ -170,7 +242,19 @@ export function createSessionDetailView(ctx) {
       if (!p) return ''
       return p.title || p.summary || p.id?.slice(0, 12) || ''
     })
-    const traceItems = computed(() => mergeForkTraceItems(session.value, detail.value))
+    const traceItems = computed(() => shareMode
+      ? (publicShareTraceItems?.value || []).map(sharedTraceItem)
+      : mergeForkTraceItems(session.value, detail.value))
+    const visibleTraceItems = computed(() => filterTraceItems(traceItems.value, traceTypes.value))
+    const filterCategories = computed(() => {
+      if (!shareMode) return TRACE_CATEGORIES
+      if (shareCategories.length) return shareCategories
+      if (shareRestricted) {
+        return TRACE_CATEGORIES.filter((category) => traceItems.value.some((item) => item.category === category))
+      }
+      return TRACE_CATEGORIES
+    })
+    const activeTraceCategory = computed(() => traceTypes.value[0] || null)
     const actualSummaryMarkdown = computed(() => {
       const raw = session.value?.AISummary
         || session.value?.ai_summary
@@ -184,32 +268,89 @@ export function createSessionDetailView(ctx) {
     const summaryMarkdown = computed(() => {
       return actualSummaryMarkdown.value || '暂无 AI 总结'
     })
-    const summaryHtml = computed(() => marked.parse(summaryMarkdown.value))
+    const summaryHtml = computed(() => sanitizeHtml(marked.parse(summaryMarkdown.value)))
     const summaryThinking = computed(() => summaryStatus.value === SESSION_SUMMARY_STATUS.Thinking)
     const duration = computed(() => formatSessionDuration(session.value?.duration_ms))
     const endedAt = computed(() => session.value?.ended_at || session.value?.last_activity_at || null)
     const endedAtLabel = computed(() => session.value?.ended_at ? 'Ended' : 'Last')
     const selected = computed(() => {
-      const items = traceItems.value
+      const items = visibleTraceItems.value
       const key = selectedTraceKey.value
-      return items.find(it => it.key === key) || items[items.length - 1] || null
+      if (!key) return null
+      return items.find(it => it.key === key) || null
     })
 
+    let traceFocusRafId = 0
+    /** 焦点 rAF 最多重试帧数，等行或列表挂上 */
+    const TRACE_FOCUS_RAF_RETRY = 8
     /** 进入调用链后滚动到底部并聚焦默认选中项 */
     effect(() => {
       const focusKey = traceAutoFocusKey.value
-      if (!focusKey || selectedTraceKey.value !== focusKey) return
-      const items = traceItems.value
-      if (!items.some((it) => it.key === focusKey)) return
-      requestAnimationFrame(() => {
-        const row = traceListEl?.querySelector('[data-trace-key="' + focusKey + '"]')
+      const routeId = routeSessionId ? routeSessionId.value : null
+      if (!focusKey || selectedTraceKey.value !== focusKey) {
+        if (traceFocusRafId) {
+          cancelAnimationFrame(traceFocusRafId)
+          traceFocusRafId = 0
+        }
+        return
+      }
+      const items = visibleTraceItems.value
+      if (!items.some((it) => it.key === focusKey)) {
+        if (traceFocusRafId) {
+          cancelAnimationFrame(traceFocusRafId)
+          traceFocusRafId = 0
+        }
+        return
+      }
+      const deepLink = !!(traceDeepLinkFocus && traceDeepLinkFocus.value)
+      if (traceFocusRafId) cancelAnimationFrame(traceFocusRafId)
+      const expectedSessionId = sessionId
+      const expectedRouteId = routeId
+      const expectedFocusKey = focusKey
+      let tries = 0
+      /** 校验当前会话/焦点 key，行未挂载则有限重试 */
+      const runTraceFocus = () => {
+        traceFocusRafId = 0
+        if (sessionId !== expectedSessionId) return
+        const currentRouteId = routeSessionId ? routeSessionId.value : null
+        if (currentRouteId !== expectedRouteId) return
+        if (traceAutoFocusKey.value !== expectedFocusKey) return
+        const row = traceListEl?.querySelector('[data-trace-key="' + escapeTraceKeySelector(expectedFocusKey) + '"]')
+        const reduceMotion = typeof window !== 'undefined' && window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches
+        const behavior = reduceMotion ? 'auto' : (deepLink ? 'smooth' : 'auto')
+        if (deepLink) {
+          const area = traceAreaEl || traceListEl
+          if (!row) {
+            if (tries < TRACE_FOCUS_RAF_RETRY) {
+              tries += 1
+              traceFocusRafId = requestAnimationFrame(runTraceFocus)
+            }
+            return
+          }
+          if (area && area.scrollIntoView) area.scrollIntoView({ block: 'start', behavior })
+          row.scrollIntoView({ block: 'center', behavior })
+          traceAutoFocusKey.value = null
+          if (traceDeepLinkFocus) traceDeepLinkFocus.value = false
+          return
+        }
         if (row) {
           row.scrollIntoView({ block: 'end' })
-        } else if (traceListEl) {
-          traceListEl.scrollTop = traceListEl.scrollHeight
+          traceAutoFocusKey.value = null
+          if (traceDeepLinkFocus) traceDeepLinkFocus.value = false
+          return
         }
-        traceAutoFocusKey.value = null
-      })
+        if (tries < TRACE_FOCUS_RAF_RETRY) {
+          tries += 1
+          traceFocusRafId = requestAnimationFrame(runTraceFocus)
+          return
+        }
+        if (traceListEl) {
+          traceListEl.scrollTop = traceListEl.scrollHeight
+          traceAutoFocusKey.value = null
+          if (traceDeepLinkFocus) traceDeepLinkFocus.value = false
+        }
+      }
+      traceFocusRafId = requestAnimationFrame(runTraceFocus)
     })
 
     effect(() => {
@@ -242,9 +383,10 @@ export function createSessionDetailView(ctx) {
         return 'Subagent' + (model ? ' · ' + model : '') + (provider ? ' (' + provider + ')' : '')
       }
       if (it.kind === 'fork-from') return 'Fork 来源'
+      if (it.role === 'reasoning') return '思考' + (it.model ? ' · ' + it.model : '')
       return (it.role || '') + (it.model ? ' · ' + it.model : '')
     })
-    const detailHtml = computed(() => marked.parse(String(selected.value?.fullText || '')))
+    const detailHtml = computed(() => sanitizeHtml(marked.parse(String(selected.value?.fullText || ''))))
 
     function updateSessionSummary(nextSession) {
       const markdown = nextSession?.AISummary || nextSession?.ai_summary || ''
@@ -380,7 +522,12 @@ export function createSessionDetailView(ctx) {
         const res = await apiFetch('/v1/sessions/' + encodeURIComponent(sessionId) + '/shares', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ duration: shareDuration.value }),
+          body: JSON.stringify({
+            duration: shareDuration.value,
+            types: traceTypes.value,
+            node: selectedTraceKey.value,
+            child: routeTraceChild?.value || null,
+          }),
         })
         const data = await res.json().catch(() => ({}))
         if (!res.ok) {
@@ -445,7 +592,7 @@ export function createSessionDetailView(ctx) {
 
     async function copyActiveShare(share, host) {
       expandedActiveShareId.value = null
-      const copied = await copyShareValue(share.share_url, copiedActiveShareId, host, share.id, null, '')
+      const copied = await copyShareValue(displayedShareUrl(share), copiedActiveShareId, host, share.id, null, '')
       if (copied) return
       expandedActiveShareId.value = share.id
       requestAnimationFrame(() => {
@@ -479,6 +626,21 @@ export function createSessionDetailView(ctx) {
       } catch (err) {
         console.error(err)
         agentPromptCopied.value = false
+      }
+    }
+
+    function handleSelectTraceItem(it) {
+      if (!shareMode && it.kind === 'fork-from' && it.parentSessionId) {
+        openSession(it.parentSessionId)
+        return
+      }
+      selectTraceItem(it, sessionId)
+    }
+
+    function handleTraceRowKeyDown(event, it) {
+      if (event.key === 'Enter' || event.key === ' ') {
+        event.preventDefault()
+        handleSelectTraceItem(it)
       }
     }
 
@@ -533,18 +695,6 @@ export function createSessionDetailView(ctx) {
                 </svg>
                 {summaryCopied.value ? '已复制' : '复制 Markdown'}
               </button>
-              {shareMode ? (
-                <button className="btn-ghost-sm" disabled={!agentPrompt} onClick={() => copyAgentPrompt()}>
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <rect width="18" height="10" x="3" y="11" rx="2" />
-                    <circle cx="8" cy="16" r="1" />
-                    <circle cx="16" cy="16" r="1" />
-                    <path d="M12 2v4" />
-                    <path d="M8 6h8" />
-                  </svg>
-                  {agentPromptCopied.value && copiedAgentPromptValue === agentPrompt ? '已复制' : '复制给 Agent'}
-                </button>
-              ) : null}
               {!readOnly && !shareMode ? (
                 <button className="btn-ghost-sm" onClick={() => openShareDialog()}>
                   <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -569,7 +719,7 @@ export function createSessionDetailView(ctx) {
             <div className="markdown-body session-summary-markdown" dangerouslySetInnerHTML={{ __html: summaryHtml.value }} />
           )}
         </section>
-        <div className="panel-card" style={{ padding: 0, overflow: 'hidden' }}>
+        <div className="panel-card" style={{ padding: 0, overflow: 'hidden' }} ref={(el) => { traceAreaEl = el }}>
           <div className="trace-meta-bar">
             {session.value?.model ? (
               <span className="trace-meta-item">
@@ -626,25 +776,58 @@ export function createSessionDetailView(ctx) {
                 </span>
               : null}
           </div>
-          {traceItems.value.length === 0
-            ? <div className="empty-state" style={{ padding: '32px 20px' }}><p>暂无调用记录</p></div>
+          {shareMode && publicShareTraceLoading?.value && traceItems.value.length === 0
+            ? <div className="empty-state" style={{ padding: '32px 20px' }}><p>正在加载共享调用链…</p></div>
+            : shareMode && publicShareTraceError?.value && traceItems.value.length === 0
+              ? <div className="empty-state" style={{ padding: '32px 20px' }}>
+                  <p>{publicShareTraceError.value}</p>
+                  <button type="button" className="btn-ghost-sm" onClick={() => fetchPublicShareTrace(routeShareToken.value)}>重试</button>
+                </div>
+              : traceItems.value.length === 0
+                ? <div className="empty-state" style={{ padding: '32px 20px' }}><p>暂无调用记录</p></div>
             : <div className="trace-shell">
                 <div className="trace-panel">
                   <div className="trace-panel-head">
-                    调用链
-                    <span style={{ float: 'right', fontWeight: 400, textTransform: 'none', letterSpacing: 0, color: 'var(--text-muted)' }}>
-                      <span className="trace-role-dot trace-role-dot--user" style={{ display: 'inline-block', verticalAlign: 'middle', marginRight: 4 }} />用户
-                      <span className="trace-role-dot trace-role-dot--assistant" style={{ display: 'inline-block', verticalAlign: 'middle', margin: '0 4px 0 10px' }} />助手
-                      <span className="trace-role-dot trace-role-dot--turn" style={{ display: 'inline-block', verticalAlign: 'middle', margin: '0 4px 0 10px' }} />Turn
-                      <span className="trace-role-dot trace-role-dot--turn-abort" style={{ display: 'inline-block', verticalAlign: 'middle', margin: '0 4px 0 10px' }} />Abort
-                      <span className="trace-role-dot trace-role-dot--turn-fail" style={{ display: 'inline-block', verticalAlign: 'middle', margin: '0 4px 0 10px' }} />Error
-                      {!shareMode ? <><span className="trace-role-dot trace-role-dot--subagent" style={{ display: 'inline-block', verticalAlign: 'middle', margin: '0 4px 0 10px' }} />Subagent</> : null}
-                    </span>
+                    <span className="trace-panel-head-title">调用链</span>
+                    <div
+                      className="trace-filter-group"
+                      role="group"
+                      aria-label={activeTraceCategory.value
+                        ? '调用链筛选，当前分类：' + (TRACE_FILTER_LABELS[activeTraceCategory.value] || activeTraceCategory.value)
+                        : '调用链筛选，当前显示全部分类'}
+                    >
+                      {filterCategories.value.map((cat) => {
+                        const pressed = activeTraceCategory.value === cat
+                        return (
+                          <button
+                            key={cat}
+                            type="button"
+                            className={'trace-filter-chip trace-filter-chip--' + cat}
+                            aria-pressed={pressed}
+                            aria-label={'按' + (TRACE_FILTER_LABELS[cat] || cat) + '筛选调用链'}
+                            onClick={() => toggleTraceCategory(cat, traceItems.value, sessionId)}
+                          >
+                            <span className={'trace-role-dot trace-role-dot--' + (TRACE_FILTER_DOTS[cat] || cat)} aria-hidden="true" />
+                            {TRACE_FILTER_LABELS[cat] || cat}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
-                  <div className="trace-list" ref={(el) => { traceListEl = el }}>
-                    {traceItems.value.map((it) => (
+                  {visibleTraceItems.value.length === 0 ? (
+                    <div className="empty-state" style={{ padding: '32px 20px' }}>
+                      <p>当前分类没有可见记录，可切换分类或再次点击取消筛选</p>
+                    </div>
+                  ) : (
+                  <div className="trace-list" role="listbox" aria-label="调用链" ref={(el) => { traceListEl = el }}>
+                    {visibleTraceItems.value.map((it, index) => (
                       <div
                         key={it.key + (it.nested ? '-n' : '')}
+                        role="option"
+                        tabIndex={selected.value ? (selected.value.key === it.key ? 0 : -1) : (index === 0 ? 0 : -1)}
+                        aria-selected={selected.value?.key === it.key}
+                        aria-label={(selected.value?.key === it.key ? '取消选择：' : '选择：') + it.summary}
+                        title={selected.value?.key === it.key ? '再次点击取消选择' : it.summary}
                         data-trace-key={it.key}
                         className={'trace-row' +
                           (selected.value?.key === it.key ? ' trace-row--sel' : '') +
@@ -652,18 +835,15 @@ export function createSessionDetailView(ctx) {
                           (it.kind === 'subagent' ? ' trace-row--subagent' : '') +
                           (it.kind === 'fork-from' ? ' trace-row--fork-from' : '')}
                         style={{ paddingLeft: (8 + (it.depth || 0) * 14) + 'px' }}
-                        onClick={() => {
-                          if (!shareMode && it.kind === 'fork-from' && it.parentSessionId) {
-                            openSession(it.parentSessionId)
-                            return
-                          }
-                          selectedTraceKey.value = it.key
-                        }}
+                        onClick={() => handleSelectTraceItem(it)}
+                        onKeyDown={(event) => handleTraceRowKeyDown(event, it)}
                       >
                         <span className="trace-seq">{it.seq || ''}</span>
                         {it.kind === 'subagent' && !shareMode ? (
                           <button
                             className="trace-expand-btn"
+                            aria-label={expandedSubagents.value[it.childSessionId] ? '收起子代理' : '展开子代理'}
+                            aria-expanded={!!expandedSubagents.value[it.childSessionId]}
                             onClick={(e) => {
                               e.stopPropagation()
                               toggleSubagent(sessionId, it.childSessionId)
@@ -672,7 +852,7 @@ export function createSessionDetailView(ctx) {
                             <ChevronIcon direction={expandedSubagents.value[it.childSessionId] ? 'down' : 'right'} />
                           </button>
                         ) : (
-                          <span className={'trace-role-dot trace-role-dot--' + it.role} />
+                          <span className={'trace-role-dot trace-role-dot--' + it.role} aria-hidden="true" />
                         )}
                         <span className="trace-summary" title={it.summary}>{it.summary}</span>
                         <span className="trace-meta trace-time" title={formatDateTime(it.created_at)}>{formatDateTime(it.created_at)}</span>
@@ -680,7 +860,18 @@ export function createSessionDetailView(ctx) {
                         <span className="trace-meta">{it.cost_cny != null ? formatCost(it.cost_cny) : ''}</span>
                       </div>
                     ))}
+                    {shareMode && publicShareTraceNextOffset?.value != null ? (
+                      <button
+                        type="button"
+                        className="trace-load-more"
+                        disabled={publicShareTraceLoadingMore?.value}
+                        onClick={() => fetchPublicShareTrace(routeShareToken.value, true)}
+                      >
+                        {publicShareTraceLoadingMore?.value ? '正在加载…' : '加载更多'}
+                      </button>
+                    ) : null}
                   </div>
+                  )}
                 </div>
                 <div className="trace-panel">
                   <div className="trace-panel-head">详情</div>
@@ -716,12 +907,27 @@ export function createSessionDetailView(ctx) {
               </div>
           }
         </div>
+        {shareMode ? (
+          <section className="panel-card share-agent-prompt-card">
+            <div>
+              <div className="session-summary-kicker">Agent prompt</div>
+              <h3>需要更深上下文时再检索</h3>
+              <p>{shareRestricted
+                ? 'Agent 可按页读取当前分享范围内经过过滤和脱敏的调用链。'
+                : 'Agent 可使用搜索与分页资源读取经过过滤和脱敏的分享内容。'}</p>
+            </div>
+            <textarea readOnly defaultValue={agentPrompt} rows={5} />
+            <button className="btn-ghost-sm" disabled={!agentPrompt} onClick={() => copyAgentPrompt()}>
+              {agentPromptCopied.value && copiedAgentPromptValue === agentPrompt ? '已复制' : '复制给 Agent'}
+            </button>
+          </section>
+        ) : null}
         {!readOnly && !shareMode && shareDialogOpen.value ? (
           <Dialog open={true} onOpenChange={(value) => { if (!value) closeShareDialog() }}>
             <DialogContent style={{ width: 'calc(100vw - 32px)', maxWidth: '700px', maxHeight: '90vh', overflowX: 'hidden', overflowY: 'auto', boxSizing: 'border-box', padding: 'clamp(18px, 3vw, 26px)' }}>
               <DialogHeader>
                 <DialogTitle>分享会话</DialogTitle>
-                <DialogDescription>生成只读链接，接收者可查看会话总结与完整调用链。</DialogDescription>
+                <DialogDescription>生成只读链接。当前调用链筛选与指定节点会固化到分享凭据，页面和 Agent 只能读取该范围内经过脱敏的内容。</DialogDescription>
               </DialogHeader>
               <div style={{ display: 'grid', gap: '18px', minWidth: 0 }}>
                 <fieldset style={{ minWidth: 0, margin: 0, padding: 0, border: 0 }}>
@@ -756,8 +962,8 @@ export function createSessionDetailView(ctx) {
                     <div style={{ display: 'grid', gap: '7px', minWidth: 0 }}>
                       <span style={{ fontSize: '12px', color: 'var(--text-secondary)' }}>分享链接</span>
                       <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px', alignItems: 'stretch', minWidth: 0 }}>
-                        <input readOnly value={shareResult.value.share_url || ''} style={{ width: '100%', minWidth: 0, flex: '1 1 360px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid var(--control-stroke)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', padding: '9px 10px', fontSize: '12px' }} />
-                        <Button variant="outline" style={{ flex: '0 0 auto' }} onClick={(event) => copyShareValue(shareResult.value.share_url, shareLinkCopied, event.currentTarget.closest('[role="dialog"]'))}>{shareLinkCopied.value ? '已复制' : '复制链接'}</Button>
+                        <input readOnly value={displayedShareUrl(shareResult.value)} style={{ width: '100%', minWidth: 0, flex: '1 1 360px', boxSizing: 'border-box', borderRadius: '8px', border: '1px solid var(--control-stroke)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', padding: '9px 10px', fontSize: '12px' }} />
+                        <Button variant="outline" style={{ flex: '0 0 auto' }} onClick={(event) => copyShareValue(displayedShareUrl(shareResult.value), shareLinkCopied, event.currentTarget.closest('[role="dialog"]'))}>{shareLinkCopied.value ? '已复制' : '复制链接'}</Button>
                       </div>
                     </div>
                     <div style={{ display: 'grid', gap: '7px', minWidth: 0 }}>
@@ -784,7 +990,7 @@ export function createSessionDetailView(ctx) {
                             <span style={{ color: 'var(--text-muted)' }}>到期 {formatDateTime(share.expires_at)} · {formatShareRemaining(share.expires_at)}</span>
                             {expandedActiveShareId.value === share.id ? (
                               <div style={{ display: 'grid', gap: '5px', minWidth: 0, marginTop: '5px' }}>
-                                <input data-active-share-link readOnly autoFocus={true} aria-label="分享链接，点击后按 ⌘C 或 Ctrl+C 复制" value={share.share_url || ''} onFocus={selectShareLinkInput} onClick={selectShareLinkInput} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', borderRadius: '7px', border: '1px solid var(--control-stroke)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', padding: '7px 8px', fontSize: '11px' }} />
+                                <input data-active-share-link readOnly autoFocus={true} aria-label="分享链接，点击后按 ⌘C 或 Ctrl+C 复制" value={displayedShareUrl(share)} onFocus={selectShareLinkInput} onClick={selectShareLinkInput} style={{ width: '100%', minWidth: 0, boxSizing: 'border-box', borderRadius: '7px', border: '1px solid var(--control-stroke)', background: 'rgba(255,255,255,0.03)', color: 'var(--text-primary)', padding: '7px 8px', fontSize: '11px' }} />
                                 <span role="status" style={{ color: '#fbbf24' }}>链接已展开，请手动按 ⌘C / Ctrl+C 复制</span>
                               </div>
                             ) : null}

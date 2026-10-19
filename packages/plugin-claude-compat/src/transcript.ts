@@ -26,6 +26,9 @@ import {
 
 type JsonObject = Record<string, unknown>;
 
+/** CodeBuddy/WorkBuddy CLI 高频工具：保留 name+args，正文截断到此长度 */
+const CLI_SKELETON_OUTPUT_LIMIT = 2_000;
+
 export interface ParseClaudeTranscriptOptions {
   session_id: string;
   agent: ClaudeCompatAgent;
@@ -37,6 +40,11 @@ export interface ParseClaudeTranscriptOptions {
    * 仍无 usage/abort 时也放出已有 assistant 正文（可无 turn），避免永久丢回复。
    */
   flushHeldAssistants?: boolean;
+  /**
+   * SessionEnd：把仍无 result 的 pending function_call 刷成骨架 tool.result（有 name/args、无 output），
+   * 避免调用永远消失。仅 JSONL / CLI 路径使用。
+   */
+  flushPendingTools?: boolean;
 }
 
 interface TranscriptState {
@@ -206,8 +214,40 @@ function contentText(content: unknown): string | undefined {
   return joined || undefined;
 }
 
-function toolResultText(content: unknown): string | undefined {
-  if (typeof content === "string") return content.slice(0, 20_000);
+/** CodeBuddy CLI type=reasoning：正文常在 rawContent，块类型 reasoning_text */
+const REASONING_CONTENT_LIMIT = 20_000;
+
+function reasoningContentText(...blobs: unknown[]): string | undefined {
+  const parts: string[] = [];
+  for (const blob of blobs) {
+    if (typeof blob === "string") {
+      const t = blob.trim();
+      if (t) parts.push(t);
+      continue;
+    }
+    if (!Array.isArray(blob)) continue;
+    for (const item of blob) {
+      const obj = objectValue(item);
+      if (!obj) continue;
+      const type = stringValue(obj.type);
+      const text = stringValue(obj.text);
+      if (
+        text &&
+        (type === "reasoning_text" || type === "reasoning" || type === "text" || !type)
+      ) {
+        parts.push(text);
+      }
+    }
+  }
+  const joined = parts.join("\n").trim();
+  if (!joined) return undefined;
+  return joined.length > REASONING_CONTENT_LIMIT
+    ? joined.slice(0, REASONING_CONTENT_LIMIT)
+    : joined;
+}
+
+function toolResultText(content: unknown, maxLen = 20_000): string | undefined {
+  if (typeof content === "string") return content.slice(0, maxLen);
   if (Array.isArray(content)) {
     const parts: string[] = [];
     for (const item of content) {
@@ -220,15 +260,72 @@ function toolResultText(content: unknown): string | undefined {
       if (text) parts.push(text);
     }
     const joined = parts.join("\n").trim();
-    return joined ? joined.slice(0, 20_000) : undefined;
+    return joined ? joined.slice(0, maxLen) : undefined;
   }
   const obj = objectValue(content);
   if (!obj) return undefined;
+  // CodeBuddy CLI function_call_result：output 常为 { type, text }
+  const nestedText = stringValue(obj.text);
+  if (nestedText) return nestedText.slice(0, maxLen);
   try {
-    return JSON.stringify(obj).slice(0, 20_000);
+    return JSON.stringify(obj).slice(0, maxLen);
   } catch {
     return undefined;
   }
+}
+
+/** 截断文本：优先头尾，中间省略（高频工具骨架） */
+function truncateToolOutput(text: string | undefined, maxLen: number): string | undefined {
+  if (!text) return undefined;
+  if (text.length <= maxLen) return text;
+  const head = Math.floor(maxLen * 0.6);
+  const tail = maxLen - head - 20;
+  if (tail <= 0) return text.slice(0, maxLen);
+  return `${text.slice(0, head)}\n…[truncated]…\n${text.slice(-tail)}`;
+}
+
+function parseToolArguments(raw: unknown): Record<string, unknown> | undefined {
+  if (raw == null) return undefined;
+  if (typeof raw === "object" && !Array.isArray(raw)) return raw as Record<string, unknown>;
+  if (typeof raw === "string") {
+    const trimmed = raw.trim();
+    if (!trimmed) return undefined;
+    try {
+      const parsed = JSON.parse(trimmed) as unknown;
+      return objectValue(parsed);
+    } catch {
+      return { raw };
+    }
+  }
+  return undefined;
+}
+
+type PendingTool = IngestToolCallPayload & { model?: string; created_at?: string };
+
+/** CodeBuddy CLI：是否走「全工具记骨架、高频截断正文」路径 */
+function isCliSkeletonAgent(agent: ClaudeCompatAgent): boolean {
+  return agent === "codebuddy" || agent === "workbuddy";
+}
+
+function flushPendingToolSkeletons(
+  opts: ParseClaudeTranscriptOptions,
+  pending: Record<string, PendingTool>,
+): IngestEvent[] {
+  const events: IngestEvent[] = [];
+  for (const [callId, call] of Object.entries(pending)) {
+    events.push({
+      type: "tool.result",
+      session_id: opts.session_id,
+      agent: opts.agent,
+      tool_name: call.name,
+      call_id: callId,
+      args: call.arguments,
+      duration_ms: 0,
+      created_at: call.created_at ?? new Date().toISOString(),
+    });
+    delete pending[callId];
+  }
+  return events;
 }
 
 function extractToolUses(content: unknown): IngestToolCallPayload[] {
@@ -289,9 +386,12 @@ function normalizeUsage(usage: JsonObject | undefined): UsageSnapshot | undefine
     numberValue(usage.inputTokens) ??
     numberValue(usage.prompt_tokens) ??
     0;
+  // CodeBuddy rawUsage：真实命中在 prompt_cache_hit_tokens；cache_read_input_tokens 常为 0
   const cacheRead =
-    numberValue(usage.cache_read_input_tokens) ??
+    numberValue(usage.prompt_cache_hit_tokens) ??
     numberValue(usage.cache_read_tokens) ??
+    numberValue(objectValue(usage.prompt_tokens_details)?.cached_tokens) ??
+    numberValue(usage.cache_read_input_tokens) ??
     numberValue(usage.cached_tokens) ??
     0;
   const cacheWrite =
@@ -350,10 +450,11 @@ function usageFromRecord(record: JsonObject): UsageSnapshot | undefined {
         }
       : undefined;
   return (
+    // CodeBuddy CLI：rawUsage 含 prompt_cache_hit_tokens；providerData.usage 常缺这些
+    normalizeUsage(objectValue(providerData?.rawUsage)) ??
     normalizeUsage(objectValue(nestedMessage?.usage)) ??
     normalizeUsage(objectValue(record.usage)) ??
     normalizeUsage(objectValue(providerData?.usage)) ??
-    normalizeUsage(objectValue(providerData?.rawUsage)) ??
     normalizeUsage(ideUsage)
   );
 }
@@ -404,12 +505,92 @@ function isCodeBuddyIdeIndex(path: string, raw: string): boolean {
 function eventsFromDialogRecord(
   record: JsonObject,
   opts: ParseClaudeTranscriptOptions,
-  pending: Record<string, IngestToolCallPayload & { model?: string; created_at?: string }>,
+  pending: Record<string, PendingTool>,
   ctx?: { lastModel?: string; lastUsage?: UsageSnapshot; abortEmitted?: boolean },
 ): IngestEvent[] {
   const events: IngestEvent[] = [];
   const timestamp = recordTimestamp(record);
   const recordType = stringValue(record.type);
+
+  // CodeBuddy/WorkBuddy CLI：顶层 function_call / function_call_result（无 role）
+  if (recordType === "function_call" && isCliSkeletonAgent(opts.agent)) {
+    const callId =
+      stringValue(record.callId) ?? stringValue(record.call_id) ?? stringValue(record.id);
+    const name = stringValue(record.name);
+    if (!callId || !name) return events;
+    const model = recordModel(record);
+    if (model !== "unknown" && ctx) ctx.lastModel = model;
+    pending[callId] = {
+      id: callId,
+      name,
+      arguments: parseToolArguments(record.arguments),
+      model: model !== "unknown" ? model : ctx?.lastModel,
+      created_at: timestamp,
+    };
+    // 工具步用量挂在 function_call.rawUsage 上（与助手正文 turn 分开）
+    const usage = usageFromRecord(record);
+    if (usage && usage.total_tokens > 0) {
+      if (ctx) ctx.lastUsage = usage;
+      const turnId =
+        stringValue(record.id) ?? stringValue(record.uuid) ?? `fc-${callId}`;
+      events.push(turnFromRecord(record, opts, turnId, usage));
+    }
+    return events;
+  }
+
+  if (recordType === "function_call_result" && isCliSkeletonAgent(opts.agent)) {
+    const callId =
+      stringValue(record.callId) ?? stringValue(record.call_id) ?? stringValue(record.id);
+    if (!callId) return events;
+    const call = pending[callId];
+    const toolName = stringValue(record.name) ?? call?.name ?? "unknown";
+    const rawOutput = toolResultText(record.output, 20_000);
+    const outputText = shouldSkipTool(toolName)
+      ? truncateToolOutput(rawOutput, CLI_SKELETON_OUTPUT_LIMIT)
+      : rawOutput;
+    const status = stringValue(record.status);
+    const tool: IngestToolResultEvent = {
+      type: "tool.result",
+      session_id: opts.session_id,
+      agent: opts.agent,
+      tool_name: toolName,
+      call_id: callId,
+      args: call?.arguments ?? parseToolArguments(objectValue(record.providerData)?.arguments),
+      output_text: outputText,
+      duration_ms: 0,
+      error: status && status !== "completed" ? status : undefined,
+      created_at: timestamp,
+    };
+    events.push(tool);
+    delete pending[callId];
+    return events;
+  }
+
+  // CodeBuddy/WorkBuddy CLI：思考过程（type=reasoning，正文多在 rawContent）
+  if (recordType === "reasoning" && isCliSkeletonAgent(opts.agent)) {
+    const text = reasoningContentText(record.content, record.rawContent);
+    if (!text) return events;
+    const messageId =
+      stringValue(record.id) ?? stringValue(record.uuid) ?? `reasoning-${opts.session_id}-${timestamp}`;
+    const model = recordModel(record);
+    if (model !== "unknown" && ctx) ctx.lastModel = model;
+    const provider = inferProvider(model);
+    const parentId = stringValue(record.parentId) ?? stringValue(record.parent_id);
+    const message: IngestMessageEvent = {
+      type: "message",
+      session_id: opts.session_id,
+      message_id: messageId,
+      role: "reasoning",
+      content: text,
+      model: model !== "unknown" ? model : undefined,
+      provider: provider !== "unknown" ? provider : undefined,
+      parent_message_id: parentId,
+      created_at: timestamp,
+    };
+    events.push(message);
+    return events;
+  }
+
   // Claude Code: type=user|assistant + message{role,content,usage}
   // CodeBuddy/WorkBuddy CLI: type=message + 顶层 role/content
   // CodeBuddy IDE: role + message 为 JSON 字符串；tool 角色承载 tool-result
@@ -420,7 +601,7 @@ function eventsFromDialogRecord(
     stringValue(nestedMessage?.role) ??
     (recordType === "assistant" ? "assistant" : recordType === "user" ? "user" : undefined);
   if (!role) return events;
-  // 跳过非对话记录（如 file-history-snapshot）
+  // 跳过非对话记录（如 file-history-snapshot / summary / ai-title；reasoning 已在上方处理）
   if (
     recordType &&
     recordType !== "message" &&
@@ -437,7 +618,7 @@ function eventsFromDialogRecord(
     for (const result of extractToolResults(content)) {
       const call = pending[result.call_id];
       const toolName = result.tool_name ?? call?.name ?? "unknown";
-      // 与 Cursor 一致：跳过 Read/Write/Shell|Bash/Grep
+      // 与 Cursor 一致：跳过 Read/Write/Shell|Bash/Grep（Claude / IDE 嵌套路径）
       if (shouldSkipTool(toolName)) {
         delete pending[result.call_id];
         continue;
@@ -455,6 +636,29 @@ function eventsFromDialogRecord(
       };
       events.push(tool);
       delete pending[result.call_id];
+    }
+
+    // CodeBuddy/WorkBuddy CLI：type=message + role=user 才发用户句（IDE 无 type=message，避免 Debounce 首轮冒出）
+    // hook 侧另有 UserPromptSubmit，ingest 按 content 去重
+    if (isCliSkeletonAgent(opts.agent) && recordType === "message") {
+      const text = contentText(content);
+      if (text) {
+        const messageId =
+          stringValue(record.id) ??
+          stringValue(record.uuid) ??
+          stringValue(nestedMessage?.id) ??
+          `msg-${opts.session_id}-${timestamp}`;
+        const parentId = stringValue(record.parentId) ?? stringValue(record.parent_id);
+        events.push({
+          type: "message",
+          session_id: opts.session_id,
+          message_id: messageId,
+          role: "user",
+          content: text,
+          parent_message_id: parentId,
+          created_at: timestamp,
+        });
+      }
     }
     return events;
   }
@@ -806,6 +1010,11 @@ export function parseClaudeTranscriptEvents(
       continue;
     }
     events.push(...eventsFromDialogRecord(record, opts, pending, ctx));
+  }
+
+  // SessionEnd：仍无 result 的 CLI function_call → 骨架 tool.result
+  if (opts.flushPendingTools && isCliSkeletonAgent(opts.agent)) {
+    events.push(...flushPendingToolSkeletons(opts, pending));
   }
 
   state.offset = raw.length;
