@@ -1,9 +1,11 @@
 import { createApp } from "./app";
 import { loadConfig } from "./config";
 import { getLogger } from "./logger";
+import { fxCachePathForDb, startFxRefresh } from "./services/fx";
 
 const config = loadConfig();
 const { app } = createApp(config);
+startFxRefresh(fxCachePathForDb(config.dbPath));
 const logger = getLogger();
 
 logger.info("server starting", {

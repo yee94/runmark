@@ -413,8 +413,8 @@ export function createMattersPage(ctx) {
   function selectSessionRange(range) {
     const rows = resummarizeSessions.value
     const now = Date.now()
-    const todayStart = new Date()
-    todayStart.setHours(0, 0, 0, 0)
+    const shifted = new Date(now + 8 * 60 * 60 * 1000)
+    const todayStartMs = Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 8 * 60 * 60 * 1000
     if (range === 'linked') {
       setSelectedSessionIds(resummarizeMatterDraft.value?.relatedSessionIds || [])
       return
@@ -424,7 +424,7 @@ export function createMattersPage(ctx) {
       return
     }
     const from = range === 'today'
-      ? todayStart.getTime()
+      ? todayStartMs
       : range === '24h'
         ? now - 24 * 60 * 60 * 1000
         : range === '7d'

@@ -277,7 +277,7 @@ paths:
   /v1/stats/daily:
     get:
       tags: [stats]
-      summary: 指定范围每日汇总（UTC 日期分组）
+      summary: 指定范围每日汇总（北京时间日期分组）
       parameters:
         - name: range
           in: query
@@ -873,7 +873,7 @@ components:
     StatsFrom:
       name: from
       in: query
-      description: 带时区 ISO 8601 起点（包含）；与 to 成对传入，优先于 range；custom 必填。省略时预设按 UTC 日历计算。
+      description: 带时区 ISO 8601 起点（包含）；与 to 成对传入，优先于 range；custom 必填。省略时预设按北京时间（UTC+8）日历计算。
       schema: { type: string, format: date-time }
     StatsTo:
       name: to

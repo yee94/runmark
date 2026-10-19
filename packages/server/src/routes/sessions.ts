@@ -1,9 +1,9 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
-import { usdToCny, type ModelPricing } from "@agent-tracker/shared";
+import { type ModelPricing } from "@agent-tracker/shared";
 import { getPricing } from "../db";
-import { withCostCny, withPricingCny, withTotalCostCny } from "../services/currency";
-import { DEFAULT_STATS_RANGE, parseModelSort, resolveStatsRange, sessionsTimeClause, turnsTimeClause } from "../services/stats";
+import { displayCny, withCostCny, withPricingCny, withTotalCostCny } from "../services/currency";
+import { DEFAULT_STATS_RANGE, beijingDateExpr, parseModelSort, resolveStatsRange, sessionsTimeClause, turnsTimeClause } from "../services/stats";
 import { forkFieldsForSession } from "../services/fork";
 import { costService } from "../services/cost";
 import { repriceTurns } from "../services/reprice";
@@ -503,7 +503,7 @@ export function createStatsRoute(db: Database) {
         reasoning: turnStats?.reasoning ?? 0,
       },
       cost_usd: costUsd,
-      cost_cny: usdToCny(costUsd),
+      cost_cny: displayCny(costUsd),
       range: c.req.query("range") ?? DEFAULT_STATS_RANGE,
       from,
       to,
@@ -571,8 +571,9 @@ export function createStatsRoute(db: Database) {
     const { from, to } = resolveStatsRange(c.req.query("range"), { from: c.req.query("from"), to: c.req.query("to") });
     const params = { $from: from, $to: to };
 
+    const beijingDate = beijingDateExpr("t.created_at");
     const rows = db.query(`
-      SELECT DATE(t.created_at) as date,
+      SELECT ${beijingDate} as date,
         COUNT(DISTINCT t.session_id) as session_count,
         COUNT(*) as turn_count,
         COALESCE(SUM(t.input_tokens), 0) as input_tokens,
@@ -585,12 +586,12 @@ export function createStatsRoute(db: Database) {
       FROM turns t
       JOIN sessions s ON s.id = t.session_id
       WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t")}
-      GROUP BY DATE(t.created_at)
+      GROUP BY ${beijingDate}
       ORDER BY date ASC
     `).all(params) as { date: string; total_cost_usd?: number }[];
 
     const modelRows = db.query(`
-      SELECT DATE(t.created_at) as date,
+      SELECT ${beijingDate} as date,
         t.provider,
         t.model,
         COUNT(*) as turn_count,
@@ -599,7 +600,7 @@ export function createStatsRoute(db: Database) {
       FROM turns t
       JOIN sessions s ON s.id = t.session_id
       WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t")}
-      GROUP BY DATE(t.created_at), t.provider, t.model
+      GROUP BY ${beijingDate}, t.provider, t.model
       ORDER BY date ASC, total_cost_usd DESC
     `).all(params) as { date: string; provider: string; model: string; turn_count: number; total_tokens: number; total_cost_usd: number }[];
 

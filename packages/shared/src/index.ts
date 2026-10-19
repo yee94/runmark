@@ -610,12 +610,15 @@ export function computeCost(
   return Math.round(cost * 1_000_000_000) / 1_000_000_000;
 }
 
-/** USD → CNY 展示换算汇率（上报与存储仍为 USD） */
+/**
+ * 离线兜底汇率。展示层优先用服务端实时汇率（见 server fx）；
+ * 上报与存储仍为 USD。
+ */
 export const USD_TO_CNY = 7;
 
-/** 将 USD 金额换算为人民币（仅用于展示层 API） */
-export function usdToCny(usd: number): number {
-  return Math.round(usd * USD_TO_CNY * 1_000_000_000) / 1_000_000_000;
+/** 将 USD 金额换算为人民币（仅用于展示层 API）。rate 缺省时用离线兜底。 */
+export function usdToCny(usd: number, rate = USD_TO_CNY): number {
+  return Math.round(usd * rate * 1_000_000_000) / 1_000_000_000;
 }
 
 // ============================================================================

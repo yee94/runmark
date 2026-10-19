@@ -5,6 +5,7 @@ import { SCHEMA_SQL } from "../src/db/schema";
 import { initializeDatabase } from "../src/db";
 import { createAgentsRoute } from "../src/routes/agents";
 import { AgentRunBusyError, getAgentRuntime, seedBuiltinAgentConfig } from "../src/services/agents";
+import { beijingDateStart, beijingParts } from "../src/services/stats";
 import type { ServerConfig } from "../src/config";
 
 function matterPlanSubmit(payload: {
@@ -2460,9 +2461,8 @@ describe("Agent API", () => {
   });
 
   it("limits vague yesterday searches to sessions inside yesterday's time window", async () => {
-    const now = new Date();
-    const today = new Date(now);
-    today.setHours(10, 0, 0, 0);
+    const { year, month, day } = beijingParts();
+    const today = new Date(beijingDateStart(year, month, day).getTime() + 10 * 60 * 60 * 1000);
     const yesterday = new Date(today.getTime() - 24 * 60 * 60 * 1000);
     db.query(`
       INSERT INTO sessions (id, agent, title, AISummary, started_at)

@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+## 0.2.37 (Server) - 2026-10-19
+
+- Stats presets `today` / `month` / `last_month` and daily grouping follow the Beijing calendar (UTC+8) instead of UTC or the browser timezone. The dashboard sends only `range` for presets; custom dates send Beijing-time full-day bounds.
+- Displayed yuan uses a live USD→CNY rate (open.er-api.com, cached 12 hours). Falls back to the last known rate, then to 7. Storage stays in USD.
+
 ## 0.2.36 (Server) - 2026-10-19
 
 Catch-up from 0.2.27. Public installs keep DeepSeek defaults (`https://api.deepseek.com`, `deepseek-chat` / `deepseek-reasoner`) and the `@runmarks/*` packages.

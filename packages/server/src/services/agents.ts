@@ -2,6 +2,7 @@ import type { Database } from "bun:sqlite";
 import type { FileLogger } from "@agent-tracker/shared";
 import type { ServerConfig } from "../config";
 import { formatSchedule, parseSchedule } from "./agentSchedule";
+import { beijingDateStart, beijingParts } from "./stats";
 import { buildLlmAuthHeaders } from "./llmHeaders";
 import { computeMatterPlanMetrics, parseMatterPlan, validateMatterPlan, type MatterPlan } from "./matterPlan";
 
@@ -2323,11 +2324,6 @@ export class AgentRuntime {
 
   private resolveSearchTimeWindow(timeRange: "today" | "yesterday" | "24h" | "7d" | "month" | "all", now = new Date()): { since: string | null; until: string | null; label: string } {
     if (timeRange === "all") return { since: null, until: null, label: "all" };
-    const startOfLocalDay = (date: Date) => {
-      const d = new Date(date);
-      d.setHours(0, 0, 0, 0);
-      return d;
-    };
     if (timeRange === "24h") {
       return {
         since: new Date(now.getTime() - 24 * 60 * 60 * 1000).toISOString(),
@@ -2342,16 +2338,15 @@ export class AgentRuntime {
         label: "7d",
       };
     }
+    const { year, month, day } = beijingParts(now);
     if (timeRange === "month") {
-      const start = new Date(now.getFullYear(), now.getMonth(), 1, 0, 0, 0, 0);
-      return { since: start.toISOString(), until: null, label: "month" };
+      return { since: beijingDateStart(year, month, 1).toISOString(), until: null, label: "month" };
     }
     if (timeRange === "today") {
-      const start = startOfLocalDay(now);
-      return { since: start.toISOString(), until: null, label: "today" };
+      return { since: beijingDateStart(year, month, day).toISOString(), until: null, label: "today" };
     }
     // yesterday
-    const todayStart = startOfLocalDay(now);
+    const todayStart = beijingDateStart(year, month, day);
     const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
     return {
       since: yesterdayStart.toISOString(),

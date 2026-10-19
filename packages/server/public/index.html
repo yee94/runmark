@@ -99,8 +99,16 @@
     function localDateString(date) {
       return date.getFullYear() + '-' + String(date.getMonth() + 1).padStart(2, '0') + '-' + String(date.getDate()).padStart(2, '0')
     }
-    const customFrom = signal(localDateString(new Date(new Date().getFullYear(), new Date().getMonth(), 1)))
-    const customTo = signal(localDateString(new Date()))
+    function beijingCalendarParts(date = new Date()) {
+      const shifted = new Date(date.getTime() + 8 * 60 * 60 * 1000)
+      return { year: shifted.getUTCFullYear(), month: shifted.getUTCMonth(), day: shifted.getUTCDate() }
+    }
+    function beijingYmdFromParts(year, month, day) {
+      return year + '-' + String(month + 1).padStart(2, '0') + '-' + String(day).padStart(2, '0')
+    }
+    const _beijingNow = beijingCalendarParts()
+    const customFrom = signal(beijingYmdFromParts(_beijingNow.year, _beijingNow.month, 1))
+    const customTo = signal(beijingYmdFromParts(_beijingNow.year, _beijingNow.month, _beijingNow.day))
     const customRangeOpen = signal(false)
     const customRangeDraft = signal(undefined)
     const customRangeAnchor = signal(null)
@@ -223,22 +231,10 @@
     function statsQueryString() {
       const range = statsRange.value
       const params = new URLSearchParams({ range, sort: modelSort.value })
-      const now = new Date()
-      let from
-      let to = now
-      if (range === 'today') from = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-      if (range === 'month') from = new Date(now.getFullYear(), now.getMonth(), 1)
-      if (range === 'last_month') {
-        from = new Date(now.getFullYear(), now.getMonth() - 1, 1)
-        to = new Date(new Date(now.getFullYear(), now.getMonth(), 1).getTime() - 1)
-      }
+      // 预设范围由服务端按北京时间计算。自定义日期按所选日历日的北京时间全天传边界。
       if (range === 'custom' && appliedCustomBounds) {
-        from = appliedCustomBounds.from
-        to = appliedCustomBounds.to
-      }
-      if (from) {
-        params.set('from', from.toISOString())
-        params.set('to', to.toISOString())
+        params.set('from', customFrom.value + 'T00:00:00.000+08:00')
+        params.set('to', customTo.value + 'T23:59:59.999+08:00')
       }
       return '?' + params.toString()
     }
@@ -433,11 +429,9 @@
     }
 
     function selectRangePreset(preset) {
-      const now = new Date()
-      const year = now.getFullYear()
-      const month = now.getMonth()
+      const { year, month, day } = beijingCalendarParts()
       const quarter = Math.floor(month / 3) * 3
-      const today = new Date(year, month, now.getDate())
+      const today = new Date(year, month, day)
       const bounds = {
         year: [new Date(year, 0, 1), today],
         quarter: [new Date(year, quarter, 1), today],
@@ -2030,7 +2024,7 @@
     let MattersPage = null
     async function loadMattersPage() {
       if (MattersPage) return
-      const mod = await loadModule('./modules/matters.eficy.js?v=agent-api-20260708-14')
+      const mod = await loadModule('./modules/matters.eficy.js?v=beijing-range-20261019')
       MattersPage = mod.createMattersPage({
         apiFetch,
         selectedMatterId,

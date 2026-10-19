@@ -8,11 +8,20 @@ import { resolveStatsRange } from "../src/services/stats";
 afterEach(() => setSystemTime());
 
 describe("stats time ranges", () => {
-  it("resolves previous month across year and leap-year boundaries", () => {
+  it("resolves calendar presets in Beijing time", () => {
     setSystemTime(new Date("2026-01-15T12:00:00Z"));
-    expect(resolveStatsRange("last_month")).toEqual({ from: "2025-12-01T00:00:00.000Z", to: "2025-12-31T23:59:59.999Z" });
+    expect(resolveStatsRange("last_month")).toEqual({ from: "2025-11-30T16:00:00.000Z", to: "2025-12-31T15:59:59.999Z" });
+    expect(resolveStatsRange("today").from).toBe("2026-01-14T16:00:00.000Z");
+    expect(resolveStatsRange("month").from).toBe("2025-12-31T16:00:00.000Z");
+
     setSystemTime(new Date("2024-03-15T12:00:00Z"));
-    expect(resolveStatsRange("last_month").to).toBe("2024-02-29T23:59:59.999Z");
+    expect(resolveStatsRange("last_month").to).toBe("2024-02-29T15:59:59.999Z");
+
+    // UTC 还在 12/31，北京时间已是 1/1，不能再按 UTC 日历切月
+    setSystemTime(new Date("2025-12-31T18:00:00Z"));
+    expect(resolveStatsRange("today")).toEqual({ from: "2025-12-31T16:00:00.000Z", to: "2025-12-31T18:00:00.000Z" });
+    expect(resolveStatsRange("month").from).toBe("2025-12-31T16:00:00.000Z");
+    expect(resolveStatsRange("last_month")).toEqual({ from: "2025-11-30T16:00:00.000Z", to: "2025-12-31T15:59:59.999Z" });
   });
 
   it("normalizes explicit local boundaries and overrides presets", () => {
@@ -58,6 +67,30 @@ describe("stats time ranges", () => {
       expect(data.tokens.total).toBe(200);
       expect(data.cost_usd).toBe(2);
       expect(data.from).toBe("2026-10-17T16:00:00.000Z");
+    } finally {
+      db.close();
+    }
+  });
+
+  it("groups daily stats by Beijing date and excludes the previous Beijing day from today", async () => {
+    setSystemTime(new Date("2026-10-19T02:00:00Z"));
+    const db = new Database(":memory:");
+    db.exec(SCHEMA_SQL);
+    db.run("INSERT INTO sessions (id, agent, started_at) VALUES ('s', 'opencode', '2026-10-18T15:00:00.000Z')");
+    for (const [id, time] of [
+      ["yesterday", "2026-10-18T15:59:59.000Z"],
+      ["today", "2026-10-18T16:00:00.000Z"],
+    ]) {
+      db.run("INSERT INTO turns (id, session_id, provider, model, total_tokens, cost_usd, created_at) VALUES (?, 's', 'test', 'test', 100, 1, ?)", [id, time]);
+    }
+    const app = new Hono().route("/", createStatsRoute(db));
+    try {
+      const summary = await (await app.request("/v1/stats/summary?range=today")).json();
+      expect(summary.from).toBe("2026-10-18T16:00:00.000Z");
+      expect(summary.turns).toBe(1);
+
+      const daily = await (await app.request("/v1/stats/daily?range=today")).json();
+      expect(daily.map((row: { date: string }) => row.date)).toEqual(["2026-10-19"]);
     } finally {
       db.close();
     }
