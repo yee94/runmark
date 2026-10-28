@@ -24,10 +24,10 @@ export function createOtlpRoute(
     }
 
     const events = spansToIngestEvents(body);
-    const result = ingestService.ingestBatch(db, events);
-    if (result.ingested > 0) {
+    const result = ingestService.ingestBatch(db, events, "otlp");
+    if (result.appliedEvents.length > 0) {
       try {
-        onIngested?.(events);
+        onIngested?.(result.appliedEvents);
       } catch (err) {
         logger?.error(`otlp ingest callback failed: ${err instanceof Error ? err.message : String(err)}`);
       }

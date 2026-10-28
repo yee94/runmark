@@ -23,7 +23,7 @@ export function createIngestRoute(
       sessions: [...new Set(body.events.map((e) => e.session_id))],
     });
 
-    const result = ingestService.ingestBatch(db, body.events);
+    const { appliedEvents, ...result } = ingestService.ingestBatch(db, body.events);
 
     if (result.errors.length > 0) {
       logger?.error("ingest partial failure", result);
@@ -31,9 +31,9 @@ export function createIngestRoute(
       logger?.info("ingest ok", { ingested: result.ingested });
     }
 
-    if (result.ingested > 0) {
+    if (appliedEvents.length > 0) {
       try {
-        onIngested?.(body.events);
+        onIngested?.(appliedEvents);
       } catch (err) {
         logger?.error(`ingest callback failed: ${err instanceof Error ? err.message : String(err)}`);
       }

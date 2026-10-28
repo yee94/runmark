@@ -2,6 +2,14 @@
 
 ## Unreleased
 
+## 0.2.39 (Server) - 2026-10-28
+
+- OpenCode native plugin and magpie OTLP can now report the same session: native data wins. Calls are matched exactly by reproducing magpie's message-hash span identity; when an exact match is missing, the session is deduplicated as soon as a valid native call (a `turn.completed` with tokens and no error) arrives.
+- Provenance and link state are persisted in `ingest_events` / `native_sessions` / `otlp_projections`, so either arrival order, retries, restarts, and late identity confirmation work. Native totals, title, and parent links are kept; suppressed OTLP events no longer trigger summaries.
+- Fix OTLP span collisions across trace IDs, cross-session revision bleed, reasoning tokens counted twice, and tool bodies being stored as user/assistant messages.
+- Identity matching is driven by the OTLP data actually received, so long sessions no longer build a cartesian product of match keys. Help center and `docs/otlp.md` updated.
+- Scope: dedup only covers OpenCode data that can be linked; unlinkable gateway calls stay separate, and pre-upgrade rows without provenance are not cleaned up automatically. Once session-level fallback kicks in, OTLP is no longer used to fill gaps in that session.
+
 ## 0.2.38 (Server) - 2026-10-27
 
 - Add an OTLP/HTTP JSON ingestion endpoint `/v1/traces` for magpie and other OpenTelemetry exporters: sessions, models, usage, and optional prompt/reply bodies, authenticated with the same API key. `/v1/metrics` is accepted and discarded (no metrics storage yet).

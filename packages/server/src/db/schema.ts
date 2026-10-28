@@ -3,6 +3,34 @@
  */
 
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS ingest_events (
+  id INTEGER PRIMARY KEY,
+  source TEXT NOT NULL,
+  event_key TEXT NOT NULL,
+  session_id TEXT NOT NULL,
+  trace_id TEXT,
+  span_id TEXT,
+  linked_session TEXT,
+  native_turn_id TEXT,
+  event_json TEXT NOT NULL,
+  UNIQUE(source, event_key, event_json)
+);
+CREATE INDEX IF NOT EXISTS idx_ingest_events_session ON ingest_events(source, session_id);
+CREATE INDEX IF NOT EXISTS idx_ingest_events_link ON ingest_events(linked_session);
+CREATE INDEX IF NOT EXISTS idx_ingest_events_trace ON ingest_events(trace_id, span_id);
+CREATE TABLE IF NOT EXISTS native_sessions (
+  session_id TEXT PRIMARY KEY,
+  confirmed INTEGER NOT NULL DEFAULT 0,
+  active INTEGER NOT NULL DEFAULT 0,
+  metadata_baseline TEXT NOT NULL DEFAULT '{}'
+);
+CREATE TABLE IF NOT EXISTS otlp_projections (
+  event_key TEXT PRIMARY KEY,
+  session_id TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  entity_id TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS sessions (
   id TEXT PRIMARY KEY,
   agent TEXT NOT NULL,

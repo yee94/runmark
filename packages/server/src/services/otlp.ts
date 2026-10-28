@@ -1,4 +1,5 @@
-import type { IngestEvent, IngestSessionEvent, IngestTurnEvent } from "@agent-tracker/shared";
+import type { IngestSessionEvent, IngestTurnEvent } from "@agent-tracker/shared";
+import type { SourcedEvent } from "./provenance";
 
 /**
  * OTLP/HTTP（JSON）接入：把 OpenTelemetry span 摊平成既有 IngestEvent。
@@ -90,12 +91,20 @@ function isGenerationSpan(attrs: Record<string, string | number | boolean>): boo
 }
 
 /** OTLP 请求体 → IngestEvent[]；无法识别的 span 忽略 */
-export function spansToIngestEvents(payload: unknown): IngestEvent[] {
-  const events: IngestEvent[] = [];
+export function spansToIngestEvents(payload: unknown): SourcedEvent[] {
+  const events: SourcedEvent[] = [];
   for (const { span, serviceName } of collectSpans(payload)) {
+    const traceId = firstString(span.traceId);
+    const rawSpanId = firstString(span.spanId);
+    if (!traceId || !rawSpanId) continue;
     const attrs = attributesOf(span.attributes);
-    const sessionId = firstString(attrs["langfuse.session.id"], span.traceId);
+    const sessionId = firstString(attrs["langfuse.session.id"], traceId);
     if (!sessionId) continue;
+    const otlp = {
+      traceId, spanId: rawSpanId,
+      magpieOpenCode: attrs["magpie.agent"] === "opencode",
+      nativeSession: attrs["magpie.agent"] === "opencode" ? firstString(attrs["langfuse.session.id"]) : undefined,
+    };
 
     const model = firstString(attrs["gen_ai.request.model"]);
     const provider = firstString(attrs["gen_ai.provider.name"], attrs["gen_ai.system"]);
@@ -113,14 +122,25 @@ export function spansToIngestEvents(payload: unknown): IngestEvent[] {
       provider,
       model,
     };
-    events.push(sessionEvent);
+    events.push({ ...sessionEvent, otlp });
 
     // 正文：magpie 的 MAGPIE_OTEL_BODIES=true 才发，缺省只有元数据
-    const spanId = String(span.spanId ?? `${sessionId}-${createdAt}`);
+    const spanId = `otlp:${traceId}:${rawSpanId}`;
+    if (firstString(attrs["langfuse.observation.type"])?.toLowerCase() === "tool") {
+      events.push({
+        type: "tool.result", otlp, session_id: sessionId, call_id: spanId,
+        tool_name: firstString(attrs["gen_ai.tool.name"], span.name) ?? "unknown",
+        args: attrs["langfuse.observation.input"] != null ? { input: attrs["langfuse.observation.input"] } : undefined,
+        output_text: firstString(attrs["langfuse.observation.output"]),
+        duration_ms: durationMs, created_at: createdAt,
+      });
+    }
+    if (!isGenerationSpan(attrs)) continue;
     const promptText = firstString(attrs["langfuse.observation.input"]);
     if (promptText) {
       events.push({
         type: "message",
+        otlp,
         session_id: sessionId,
         message_id: `${spanId}-input`,
         role: "user",
@@ -134,6 +154,7 @@ export function spansToIngestEvents(payload: unknown): IngestEvent[] {
     if (replyText) {
       events.push({
         type: "message",
+        otlp,
         session_id: sessionId,
         message_id: `${spanId}-output`,
         role: "assistant",
@@ -152,6 +173,7 @@ export function spansToIngestEvents(payload: unknown): IngestEvent[] {
     const cacheRead = Number(attrs["gen_ai.usage.cache_read.input_tokens"] ?? 0);
     const cacheWrite = Number(attrs["gen_ai.usage.cache_creation.input_tokens"] ?? 0);
     const reasoning = Number(attrs["gen_ai.usage.reasoning.output_tokens"] ?? 0);
+    const textOutput = Math.max(0, output - reasoning);
     // OTel GenAI semconv / magpie 的 input_tokens 是「含缓存」的提示词总量
     // （otel_wire.go: r.Input+r.CacheRead+r.CacheWrite），Runmark 的 input_tokens
     // 是非缓存输入，必须扣掉两项缓存，否则输入侧翻倍计价
@@ -164,21 +186,21 @@ export function spansToIngestEvents(payload: unknown): IngestEvent[] {
     const turnEvent: IngestTurnEvent = {
       type: failed ? "turn.error" : "turn.completed",
       session_id: sessionId,
-      turn_id: String(span.spanId ?? `${sessionId}-${createdAt}`),
+      turn_id: spanId,
       model: model ?? "unknown",
       provider: provider ?? "unknown",
       input_tokens: uncachedInput,
-      output_tokens: output,
+      output_tokens: textOutput,
       cache_read_tokens: cacheRead,
       cache_write_tokens: cacheWrite,
       reasoning_tokens: reasoning,
-      total_tokens: uncachedInput + output + cacheRead + cacheWrite + reasoning,
+      total_tokens: uncachedInput + textOutput + cacheRead + cacheWrite + reasoning,
       duration_ms: durationMs,
       cost_usd: reportedCost(attrs["langfuse.observation.cost_details"]),
       error: failed ? (errorType ?? "otlp span error") : undefined,
       created_at: createdAt,
     };
-    events.push(turnEvent);
+    events.push({ ...turnEvent, otlp });
   }
   return events;
 }

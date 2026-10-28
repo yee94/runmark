@@ -6,7 +6,7 @@ Runmark 提供 OTLP/HTTP 接收端点，任意 OpenTelemetry exporter（magpie�
 
 | 方法 | 路径 | 行为 |
 |------|------|------|
-| POST | `/v1/traces` | 解析 span，落成 session / message / turn |
+| POST | `/v1/traces` | 解析 span，落成 session / message / turn / tool |
 | POST | `/v1/metrics` | 接收后返回 200 并丢弃，不落库 |
 
 - 编码：只支持 OTLP/HTTP 的 **JSON**（`Content-Type: application/json`），不支持 protobuf 编码。
@@ -27,12 +27,12 @@ Runmark 提供 OTLP/HTTP 接收端点，任意 OpenTelemetry exporter（magpie�
 | `gen_ai.usage.input_tokens` | `turns.input_tokens` | 需减去两项 cache，见下文 |
 | `gen_ai.usage.cache_read.input_tokens` | `cache_read_tokens` | |
 | `gen_ai.usage.cache_creation.input_tokens` | `cache_write_tokens` | |
-| `gen_ai.usage.output_tokens` | `output_tokens` | |
+| `gen_ai.usage.output_tokens` | `output_tokens` | 扣除 reasoning，避免重复计数和计价 |
 | `gen_ai.usage.reasoning.output_tokens` | `reasoning_tokens` | |
 | span start / end 纳秒时间 | `created_at` / `duration_ms` | |
 | `error.type` 或 `status.code == 2` | `turns.error` | 落成 `turn.error` |
 | `langfuse.observation.cost_details` 的 `total` | `turns.cost_usd` | 缺失时按服务端定价表估算 |
-| `langfuse.observation.input` / `.output` | user / assistant 消息 | 需 exporter 开启正文，默认不发 |
+| generation 的 `langfuse.observation.input` / `.output` | user / assistant 消息 | 需 exporter 开启正文，默认不发；tool 正文进入工具记录 |
 
 ## 关键设计
 
@@ -46,21 +46,43 @@ uncached_input = max(0, gen_ai.usage.input_tokens - cache_read - cache_creation)
 
 不扣减会让输入侧翻倍计价：缓存 token 既算进 `input_tokens` 又单独算一次 `cache_read_tokens` / `cache_write_tokens`。
 
+输出同理：OTel 的输出总量包含 reasoning，转换为 `output_tokens = max(0, output - reasoning)`，再将 reasoning 单独存储。正常输入下总量等于 OTLP 的 input + output。
+
 ### 只把 generation span 落成 turn
 
 magpie 开启 Sessions 后，一次交互会发出 agent root span + 若干 tool span + generation span 的分层结构，只有 generation span 带 `gen_ai.usage.*` 与模型名。实现里按 `langfuse.observation.type == "generation"` 判断，属性缺失时回落看 span 是否带 `gen_ai.usage.*` 或 `gen_ai.request.model`。
 
-root span 与 tool span 只用于建立会话（`sessions.agent` / `title` / 分组键），不产生 turn。否则每次交互会多出一堆 0-token 空 turn，污染会话数与模型统计。
+root span 用于建立会话，tool span 额外产生工具记录，二者都不产生 turn 或对话消息。这样不会把 root 的汇总输出、tool 的执行结果再次当成 assistant 正文。
 
 ### 同一 spanId 的修订版会覆盖
 
-magpie 流式期间先发未完成的 span，结束后用**同一个 spanId** 重发修订版（magpie 源码 `internal/sessions/traces_snapshot.go:41-52` 的 `Update` 逻辑）。`turn_id` 直接取 `span.spanId`，因此修订版命中同一行。
+magpie 流式期间先发未完成的 span，结束后用**同一个 spanId** 重发修订版（magpie 源码 `internal/sessions/traces_snapshot.go:41-52` 的 `Update` 逻辑）。`turn_id` 使用 `otlp:<traceId>:<spanId>`，同一 trace 内的修订命中同一行，不同 trace 的同名 span 不会互相覆盖。消息与工具也使用该命名空间。原生 turn 的全局 ID 若被其它 session 重用，不得修订原会话数据或增加新会话累计。
 
 ingest 层对已存在的 turn 按差值校正 token / cost，且仅在新 `total_tokens` 更大时执行：
 
 - 重复上报同值 → 空操作
 - 修订版 token 变大 → `turns` 更新为新值，session 累计只加差值
 - 修订版 token 更小或为 0 → 忽略，不会把已有数据改小，也不会把会话累计扣成负数
+
+### OpenCode 原生优先的跨渠道去重
+
+`/v1/ingest` 标记为 native，`/v1/traces` 标记为 otlp；来源由服务端接入路径决定，不通过 session ID 形状推断。OpenCode 身份必须由原生 session 事件中的 `agent=opencode` 确认，单独收到 OTLP 的 `magpie.agent=opencode` 不算确认。
+
+1. **精确匹配优先**：对已确认原生会话，根据原生 user message ID 与 assistant message ID 复现 Magpie 的确定性标识：
+   - trace：`SHA256(NUL-join(["opencode", sessionId, userMessageId]))` 的前 32 位十六进制。
+   - generation span：在同一列表末尾追加 assistant message ID，取 SHA256 的前 16 位十六进制。
+   - 只对显式 `magpie.agent=opencode` 的数据应用此关联。记录匹配的原生 turn；同 trace 的辅助记录随之关联到原生会话。
+2. **会话级兜底**：Magpie Sessions 的 `langfuse.session.id` 与已确认原生 session ID 相同，且收到已成功入库、token 总量大于 0、无 error 的原生 `turn.completed` 后，该会话采用原生数据。只有 `session.created`、零用量占位或失败事件都不会触发切换。原生 turn 先于身份确认到达也支持。
+3. 切换后，同一已关联会话的 OTLP 调用、正文及工具记录只保留为辅助来源，不再参与展示或统计；后续 OTLP 重报、流式修订不会重新增加用量。原生只采到部分调用时，也不会再用该会话的 OTLP 数据补齐，避免再次重复计数。
+4. 没有会话关联且无法精确匹配的网关 trace 保持独立。**不使用时间、模型、token 或正文相似性跨渠道合并**。V2 user inbox ID 不保证等于原生 message ID，无法精确匹配时使用上述会话兜底。
+
+实现集中在 ingest 层：`ingest_events` 持久化来源事件及修订版本、trace/span 和已验证的原生关联；`native_sessions` 持久化身份及接入前的元数据基线。只针对实际收到的 OTLP trace 匹配 user hash，再对该 trace 的实际 span 匹配 assistant 候选，不预生成 user × turn 组合。`otlp_projections` 只登记本版本实际创建的可见行。切换时仅撤下有来源凭据的 OTLP 可见投影，原始来源档案保留；仅由 OTLP 创建且没有剩余内容或原生事件的会话空壳可移除。
+
+会话累计取 **原生 session 快照与剩余 turns 累计的最大值**。快照只从 native 来源的原始 session 事件提取，不把已混合 OTLP 的 sessions 累计当作原生快照。恢复旧会话时，快照可能大于已采集明细；统计保留既有口径（summary/by-model 基于 turns，by-agent 用量基于 sessions），不凭累计快照伪造模型调用。原生明确上报的 title/provider/parent 等字段在切换时恢复；历史无来源的元数据保留为基线，原生 metadata 只覆盖同名键。
+
+ingest 内部结果另提供 `appliedEvents`，只包含实际可见更改，路由据此触发摘要等后续任务；同批内又被撤下的投影不会通知。被抑制的 OTLP 事件仍正常归档并确认接收，不算失败，也不因重报触发摘要。HTTP ingest 响应格式不变，OTLP suppression 仍返回 `{"partialSuccess":{}}`。
+
+每个事件的归档、投影和累计更新在同一 SQLite 事务中完成，支持双到达顺序、重报及进程重启。升级会自动创建辅助表；历史没有 source 的行不做推测性清理，也不凭十六进制 ID 判定为 OTLP。旧数据可能仍需另行核对，单纯重报不会自动迁移旧标识。
 
 ## magpie 配置示例
 
@@ -159,5 +181,6 @@ curl -sS -X POST http://localhost:3456/v1/metrics \
 
 - `/v1/metrics` 只返回 200，不落库，metrics 数据不会出现在 Dashboard。
 - 只支持 OTLP/HTTP 的 JSON 编码，不支持 protobuf；exporter 需显式配置为 JSON（collector 用 `encoding: json`）。
+- span 必须携带非空 `traceId` 与 `spanId`；缺失时忽略，不用时间戳生成替代身份。
 - 不开 `MAGPIE_OTEL_BODIES` 时只有元数据遥测，没有对话内容。
 - `magpie.agent` 是 magpie 私有扩展属性，标准 OTel GenAI semconv 没有 agent 概念。换用 openllmetry / Langtrace / opentelemetry-js 等通用 exporter 时，只能靠 resource 的 `service.name` 推断 agent 名，需要用户把 `service.name` 配成 `opencode` / `codex` 这类值。模型识别是标准的，没有此问题。

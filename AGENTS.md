@@ -279,6 +279,16 @@ cd packages/plugin-grok && bun run build && bash install.sh
 - **generation 过滤**：开启 Sessions 的 magpie 会发 agent root + tool + generation 的分层 span，只有 generation span（`langfuse.observation.type == "generation"`，缺失时看是否有 `gen_ai.usage.*` / 模型名）落成 turn，root 与 tool span 只用于建会话。
 - **修订版覆盖**：magpie 流式先发未完成 span，结束后用同一 `spanId` 重发修订版；ingest 层按差值校正 token / cost（仅新 `total_tokens` 更大时），重复上报同值为空操作。
 
+### 来源去重（`services/provenance.ts`，0.2.39）
+
+`/v1/ingest` 记为 `native`，`/v1/traces` 记为 `otlp`，来源由接入路径决定。OpenCode 原生插件与 magpie 同时上报时按原生优先去重：
+
+- **身份确认**：原生 session 事件 `agent=opencode`，或入库了 `total_tokens > 0` 且无 error 的原生 `turn.completed`。只有 OTLP 的 `magpie.agent=opencode` 不算确认。
+- **精确关联优先**：用原生 user / assistant message ID 复现 magpie 的 `SHA256` trace / span 标识，命中即关联该 trace 到原生会话。
+- **会话级兜底**：`langfuse.session.id` 等于已确认原生 session ID，且收到有效原生调用后，该会话采用原生数据；已投影的 OTLP 正文 / turn / 工具记录被撤下，原始事件仍保留在 `ingest_events`。
+- **辅助表**：`ingest_events`（来源事件与关联）、`native_sessions`（身份与元数据基线）、`otlp_projections`（本版本创建的可见行，只撤有凭据的投影）。
+- **路由通知**：`ingestBatch` 返回 `appliedEvents`（实际可见的变更），路由据此触发摘要等后续任务；被抑制的 OTLP 事件仍返回 200。
+
 ## Dashboard（`public/index.html`）
 
 **改 UI 前必读 Skill**：`.cursor/skills/eficy-shadcn/SKILL.md`

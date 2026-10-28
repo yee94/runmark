@@ -10,6 +10,7 @@ import type {
 import { isHiddenSessionTitle } from "@agent-tracker/shared";
 import { costService } from "./cost";
 import { enrichForkSessionMetadata, parseSessionMetadataJson } from "./fork";
+import { ingestWithProvenance, type SourcedEvent, type AppliedIngestResult } from "./provenance";
 
 /** 将 sessions.model 按逗号拆成去重列表（大小写不敏感，保留首次写法） */
 export function splitSessionModels(value: string | null | undefined): string[] {
@@ -38,7 +39,11 @@ export function mergeSessionModels(
 }
 
 class IngestService {
-  ingestBatch(db: Database, events: IngestEvent[]): IngestBatchResponse {
+  ingestBatch(db: Database, events: SourcedEvent[], source: "native" | "otlp" = "native"): AppliedIngestResult {
+    return ingestWithProvenance(db, events, source, (batch) => this.applyBatch(db, batch, source));
+  }
+
+  private applyBatch(db: Database, events: IngestEvent[], source: "native" | "otlp"): IngestBatchResponse {
     const result: IngestBatchResponse = { ingested: 0, errors: [] };
 
     const insertSessionStmt = db.query(`
@@ -233,11 +238,11 @@ class IngestService {
             const sessionAgent = db.query("SELECT agent FROM sessions WHERE id = ?").get(e.session_id) as { agent: string };
             const cost = costService.resolveTurnCost(e.provider, e.model, {
               input_tokens: e.input_tokens,
-              output_tokens: e.output_tokens,
+              output_tokens: e.output_tokens + (source === "otlp" ? e.reasoning_tokens ?? 0 : 0),
               cache_read_tokens: e.cache_read_tokens,
               cache_write_tokens: e.cache_write_tokens,
               reasoning_tokens: e.reasoning_tokens,
-              output_includes_reasoning: sessionAgent.agent === "codex",
+              output_includes_reasoning: source === "otlp" || sessionAgent.agent === "codex",
             }, e.cost_usd);
 
             insertTurnStmt.run({
@@ -270,6 +275,11 @@ class IngestService {
                 $cost_usd: cost,
               });
             } else {
+              const owner = db.query("SELECT session_id FROM turns WHERE id = ?").get(e.turn_id) as { session_id: string } | null;
+              if (owner && owner.session_id !== e.session_id) {
+                db.query("UPDATE sessions SET parent_session_id = ? WHERE id = ? AND parent_session_id IS NULL").run(owner.session_id, e.session_id);
+                break;
+              }
               // 已有 turn：按差值校正 token / cost。
               // OTLP exporter（magpie）流式结束后会用同一 spanId 重发修订版 span，
               // 只用 INSERT OR IGNORE 会把修订版丢掉、token 停在流式中的旧值。
@@ -391,11 +401,12 @@ class IngestService {
             const contentStr =
               typeof e.content === "string" ? e.content : JSON.stringify(e.content ?? {});
             // UserPromptSubmit hook 与 transcript user 行 id 不同；按同 session 同 content 去重
-            if (e.role === "user" && contentStr) {
+            if (e.role === "user" && contentStr && source === "native") {
               const dup = db
                 .query(
                   `SELECT 1 AS ok FROM messages
-                   WHERE session_id = $session_id AND role = 'user' AND content = $content
+                    WHERE session_id = $session_id AND role = 'user' AND content = $content
+                    AND NOT EXISTS (SELECT 1 FROM otlp_projections p WHERE p.kind = 'messages' AND p.entity_id = messages.id AND p.session_id = messages.session_id)
                    LIMIT 1`,
                 )
                 .get({ $session_id: e.session_id, $content: contentStr });
