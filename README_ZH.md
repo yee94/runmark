@@ -62,11 +62,17 @@
 [CodeBuddy Plugin]   ─┤
 [WorkBuddy Plugin]   ─┤
 [Grok Build Hooks]   ─┘
+[magpie / OTLP 工具] ── POST /v1/traces ─▶ [Runmark Server]
 ```
 
 ## 快速开始
 
-分两步：**先部署服务端**，再在本机安装客户端插件。分产品说明与排障见 Dashboard 帮助中心：`http://<服务地址>:3456/#/help`。
+分两步：**先部署服务端**，再选择安装客户端插件，或配置 magpie 等 OTLP 工具上报。分产品说明与排障见 Dashboard 帮助中心：`http://<服务地址>:3456/#/help`。
+
+| 接入方式 | 使用入口 |
+|----------|----------|
+| Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build | [本机安装客户端](#2-本机安装客户端) |
+| magpie / OTLP 工具 | [配置 magpie 等工具](#3-配置-magpie-等-otlp-工具)，无需安装 Runmark 插件 |
 
 ### 1. 部署服务端
 
@@ -202,6 +208,26 @@ npx -p @runmarks/runmark runmark
 4. 打开 Dashboard 会话页，确认对应 `agent=cursor|opencode|codex|claude|codebuddy|workbuddy|grok`。
 
 可选客户端：`cursor` · `opencode` · `codex` · `claude` · `codebuddy` · `workbuddy` · `grok` · `all` · `installed` · `detected`。无参数时默认探测并交互勾选（有已装则预选已装并更新）。
+
+### 3. 配置 magpie 等 OTLP 工具
+
+打开 Dashboard **帮助中心 → OTLP 接入（magpie 等）**：`http://<服务地址>:3456/#/help/otlp`。页面会自动填入当前服务地址和 API Key，可直接复制。
+
+magpie 中打开 **Settings → Observability**，按下表配置：
+
+| 项目 | 填写内容 |
+|------|----------|
+| Collector | OTLP |
+| OTLP endpoint | Runmark 服务根地址，例如 `http://<服务地址>:3456` |
+| OTLP headers | `X-API-Key=<你的 API Key>` |
+| OTLP export | On |
+| Trace agent conversations | 建议 On |
+| Request and response content | 需要查看提示词和回复时开启正文 |
+| Export metrics | Off（当前不展示指标数据） |
+
+其他工具若要求填写完整 Traces 地址，使用 `http://<服务地址>:3456/v1/traces`，选择 **OTLP/HTTP JSON** 编码，并配置 `X-API-Key` 请求头。当前不支持直接使用 Langfuse SDK 默认的 protobuf / Basic 配置。
+
+配置后新产生一次调用，再到 Dashboard 会话页查看，并按工具上报的 Agent 名称筛选。可显示的内容取决于工具实际上报的数据。详细操作见[用户接入说明](packages/server/public/help/otlp.md)，协议说明见 [OTLP 文档](docs/otlp.md)。
 
 ## 开发
 

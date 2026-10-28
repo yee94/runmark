@@ -2,6 +2,15 @@
 
 ## Unreleased
 
+## 0.2.38 (Server) - 2026-10-27
+
+- Add an OTLP/HTTP JSON ingestion endpoint `/v1/traces` for magpie and other OpenTelemetry exporters: sessions, models, usage, and optional prompt/reply bodies, authenticated with the same API key. `/v1/metrics` is accepted and discarded (no metrics storage yet).
+- OTLP input tokens are `input + cache_read + cache_write` on the wire; they are normalized to uncached input so cached tokens are not billed twice.
+- Only `generation` spans become turns; agent root and tool spans just create the session. A revised span with the same `spanId` updates token/cost by delta when `total_tokens` grows.
+- The session model list no longer includes the `unknown` placeholder.
+- README and the Dashboard help center gain an OTLP / magpie setup section (`#/help/otlp`).
+- Known limits: Langfuse SDK default protobuf / Basic auth is not supported, `/v1/metrics` is not stored, and body content requires the exporter to enable it.
+
 ## 0.2.37 (Server) - 2026-10-19
 
 - Stats presets `today` / `month` / `last_month` and daily grouping follow the Beijing calendar (UTC+8) instead of UTC or the browser timezone. The dashboard sends only `range` for presets; custom dates send Beijing-time full-day bounds.

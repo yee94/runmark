@@ -60,6 +60,13 @@ const ARTICLES = [
     eyebrow: 'Grok Build Hooks',
     summary: '安装 Grok Build 用户级 Hooks；上报地址与 API Key 请先参考统一接入配置。',
   },
+  {
+    id: 'otlp',
+    title: 'OTLP 接入（magpie 等）',
+    path: '/help/otlp.md',
+    eyebrow: 'OpenTelemetry',
+    summary: '任意 OTLP/HTTP exporter 把 endpoint 指向本服务即可上报，无需安装插件。',
+  },
 ]
 
 function shellSingleQuote(value) {

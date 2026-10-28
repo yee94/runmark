@@ -270,6 +270,15 @@ cd packages/plugin-grok && bun run build && bash install.sh
 - 插件可带 `cost_usd`（OpenCode 计算值）
 - 否则 server 用 `shared` 的 `DEFAULT_PRICING` + `computeCost()` 按 provider/model 估算
 
+### OTLP 接入（`routes/otlp.ts` + `services/otlp.ts`）
+
+任意 OpenTelemetry exporter（magpie、collector 等）把 endpoint 指向本服务即可上报，落库/计价/统计复用现有 ingest，Dashboard 无需改动。完整接入说明见 `docs/otlp.md`。
+
+- **端点**：`POST /v1/traces` 解析落库，`POST /v1/metrics` 返回 200 后丢弃；仅支持 OTLP/HTTP 的 JSON 编码（不支持 protobuf）。鉴权沿用同一个 API Key，始终返回 200 + `{"partialSuccess": {}}` 避免 exporter 重投。
+- **token 换算**：OTel GenAI semconv / magpie 的 `gen_ai.usage.input_tokens` 是含缓存的提示词总量，Runmark 的 `input_tokens` 是非缓存输入，解析时会减去 `cache_read` 与 `cache_creation`，否则输入侧翻倍计价。
+- **generation 过滤**：开启 Sessions 的 magpie 会发 agent root + tool + generation 的分层 span，只有 generation span（`langfuse.observation.type == "generation"`，缺失时看是否有 `gen_ai.usage.*` / 模型名）落成 turn，root 与 tool span 只用于建会话。
+- **修订版覆盖**：magpie 流式先发未完成 span，结束后用同一 `spanId` 重发修订版；ingest 层按差值校正 token / cost（仅新 `total_tokens` 更大时），重复上报同值为空操作。
+
 ## Dashboard（`public/index.html`）
 
 **改 UI 前必读 Skill**：`.cursor/skills/eficy-shadcn/SKILL.md`
@@ -326,6 +335,8 @@ Turn 与统计 API 区分五类 token（与 OpenCode `msg.tokens` 对齐）：
 | 方法 | 路径 | 鉴权 |
 |------|------|------|
 | POST | `/v1/ingest` | API Key |
+| POST | `/v1/traces` | API Key（OTLP/HTTP JSON） |
+| POST | `/v1/metrics` | API Key（接收后丢弃） |
 | GET | `/v1/sessions` | 公开（默认） |
 | GET | `/v1/sessions/:id/messages` | 公开 |
 | GET | `/v1/sessions/:id/turns` | 公开 |

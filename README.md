@@ -62,11 +62,17 @@
 [CodeBuddy Plugin]   ─┤
 [WorkBuddy Plugin]   ─┤
 [Grok Build Hooks]   ─┘
+[magpie / OTLP tool] ── POST /v1/traces ─▶ [Runmark Server]
 ```
 
 ## Quick Start
 
-Two steps: **deploy the server first**, then **install the client plugins** on each machine. Per-product instructions and troubleshooting live in the Dashboard help center: `http://<server-address>:3456/#/help`.
+Two steps: **deploy the server first**, then **install the client plugins** on each machine, or point an OTLP tool such as magpie at the server. Per-product instructions and troubleshooting live in the Dashboard help center: `http://<server-address>:3456/#/help`.
+
+| Path | Where to start |
+|------|----------------|
+| Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build | [Install clients](#2-install-clients) |
+| magpie / OTLP tools | [Configure magpie and other OTLP tools](#3-configure-magpie-or-any-otlp-tool) — no Runmark plugin needed |
 
 ### 1. Deploy the server
 
@@ -202,6 +208,26 @@ npx -p @runmarks/runmark runmark
 4. Open the Dashboard sessions page and confirm `agent=cursor|opencode|codex|claude|codebuddy|workbuddy|grok`.
 
 Available clients: `cursor` · `opencode` · `codex` · `claude` · `codebuddy` · `workbuddy` · `grok` · `all` · `installed` · `detected`. With no arguments it auto-detects and prompts interactively (preselecting and updating what's already installed).
+
+### 3. Configure magpie or any OTLP tool
+
+Open **Dashboard → Help center → OTLP ingestion (magpie and others)**: `http://<server-address>:3456/#/help/otlp`. The page fills in the current server address and API key for you.
+
+In magpie, open **Settings → Observability** and configure:
+
+| Field | Value |
+|-------|-------|
+| Collector | OTLP |
+| OTLP endpoint | Runmark root address, e.g. `http://<server-address>:3456` |
+| OTLP headers | `X-API-Key=<your API key>` |
+| OTLP export | On |
+| Trace agent conversations | Recommended: On |
+| Request and response content | On if you want prompts and replies |
+| Export metrics | Off (metrics are not shown yet) |
+
+Other tools that need a full Traces URL use `http://<server-address>:3456/v1/traces`, pick the **OTLP/HTTP JSON** encoding, and send the `X-API-Key` header. The default Langfuse SDK setup (protobuf / Basic auth) is not supported.
+
+After one new call, open the Dashboard sessions page and filter by the agent name reported by the tool. What you see depends on what the tool actually reports. See the [user guide](packages/server/public/help/otlp.md) and the [protocol notes](docs/otlp.md).
 
 ## Development
 

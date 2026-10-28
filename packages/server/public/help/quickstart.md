@@ -38,3 +38,7 @@ npx @runmarks/runmark
 也可按产品分篇手动安装：Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build。
 
 插件安装完成后需要重启对应客户端（或 `/reload-plugins`），让插件重新读取 `~/.config/agent-tracker/env`。
+
+## 使用 magpie 等 OTLP 工具
+
+如果使用 magpie 等已有上报能力的工具，无需安装 Runmark 插件。请打开 [OTLP 接入（magpie 等）](#/help/otlp)，按页面给出的服务地址和 API Key 配置。magpie 的配置需在工具内单独填写，不会读取上述客户端配置文件。

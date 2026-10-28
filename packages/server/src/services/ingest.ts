@@ -270,6 +270,65 @@ class IngestService {
                 $cost_usd: cost,
               });
             } else {
+              // 已有 turn：按差值校正 token / cost。
+              // OTLP exporter（magpie）流式结束后会用同一 spanId 重发修订版 span，
+              // 只用 INSERT OR IGNORE 会把修订版丢掉、token 停在流式中的旧值。
+              // 仅在新值严格更大时校正，重复上报同值即为空操作，也不会把已有 token 归零。
+              const prior = db.query(
+                "SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, cost_usd FROM turns WHERE id = $turn_id",
+              ).get({ $turn_id: e.turn_id }) as
+                | {
+                    input_tokens: number;
+                    output_tokens: number;
+                    cache_read_tokens: number;
+                    cache_write_tokens: number;
+                    reasoning_tokens: number;
+                    total_tokens: number;
+                    cost_usd: number;
+                  }
+                | null;
+              if (prior && e.total_tokens > Number(prior.total_tokens ?? 0)) {
+                const delta = {
+                  input: e.input_tokens - Number(prior.input_tokens ?? 0),
+                  output: e.output_tokens - Number(prior.output_tokens ?? 0),
+                  cacheRead: (e.cache_read_tokens ?? 0) - Number(prior.cache_read_tokens ?? 0),
+                  cacheWrite: (e.cache_write_tokens ?? 0) - Number(prior.cache_write_tokens ?? 0),
+                  reasoning: (e.reasoning_tokens ?? 0) - Number(prior.reasoning_tokens ?? 0),
+                  total: e.total_tokens - Number(prior.total_tokens ?? 0),
+                  cost: cost - Number(prior.cost_usd ?? 0),
+                };
+                db.query(`
+                  UPDATE turns SET
+                    input_tokens = $input_tokens,
+                    output_tokens = $output_tokens,
+                    cache_read_tokens = $cache_read_tokens,
+                    cache_write_tokens = $cache_write_tokens,
+                    reasoning_tokens = $reasoning_tokens,
+                    total_tokens = $total_tokens,
+                    cost_usd = $cost_usd,
+                    duration_ms = $duration_ms
+                  WHERE id = $turn_id
+                `).run({
+                  $turn_id: e.turn_id,
+                  $input_tokens: e.input_tokens,
+                  $output_tokens: e.output_tokens,
+                  $cache_read_tokens: e.cache_read_tokens ?? 0,
+                  $cache_write_tokens: e.cache_write_tokens ?? 0,
+                  $reasoning_tokens: e.reasoning_tokens ?? 0,
+                  $total_tokens: e.total_tokens,
+                  $cost_usd: cost,
+                  $duration_ms: e.duration_ms,
+                });
+                bumpSessionStmt.run({
+                  $id: e.session_id,
+                  $request_count: 0,
+                  $input_tokens: delta.input,
+                  $output_tokens: delta.output,
+                  $total_tokens: delta.total,
+                  $cost_usd: delta.cost,
+                });
+              }
+
               // 已有 turn：回写 Abort / Error 终态（Cursor stop 与 afterAgentResponse 同 turn_id）
               if (e.error || e.finish_reason) {
                 db.query(`

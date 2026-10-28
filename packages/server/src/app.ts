@@ -6,6 +6,7 @@ import { getDatabase } from "./db";
 import { getLogger, initLogger } from "./logger";
 import { isRequestAuthenticated } from "./auth";
 import { createIngestRoute } from "./routes/ingest";
+import { createOtlpRoute } from "./routes/otlp";
 import { createAuthRoute } from "./routes/auth";
 import { createSessionsRoute, createTurnsRoute, createPricingRoute, createStatsRoute } from "./routes/sessions";
 import { createSessionSharesRoute, createPublicSessionSharesRoute } from "./routes/session-shares";
@@ -22,6 +23,17 @@ function requireAuth(cfg: ServerConfig, validKeys: Set<string>) {
   return async (c: Context, next: Next) => {
     if (!isRequestAuthenticated(c, validKeys, cfg.publicDashboard)) {
       return c.json({ error: "Unauthorized" }, 401);
+    }
+    await next();
+  };
+}
+
+/** OTLP exporter 的凭据来自配置的 headers，按 X-API-Key / Bearer 两种写法校验 */
+function otlpAuth(validKeys: Set<string>) {
+  return async (c: Context, next: Next) => {
+    const key = c.req.header("X-API-Key") ?? c.req.header("Authorization")?.replace(/^Bearer\s+/i, "");
+    if (!key || !validKeys.has(key)) {
+      return c.json({ error: "Unauthorized: valid API key required" }, 401);
     }
     await next();
   };
@@ -48,6 +60,10 @@ export function createApp(config?: ServerConfig) {
     }
     await next();
   });
+
+  // OTLP 接入：exporter 通常只能配 headers，兼容 X-API-Key 与 Bearer
+  app.use("/v1/traces", otlpAuth(validKeys));
+  app.use("/v1/metrics", otlpAuth(validKeys));
 
   app.use("/v1/pricing", async (c, next) => {
     if (c.req.method === "PUT" || c.req.method === "POST") {
@@ -93,7 +109,7 @@ export function createApp(config?: ServerConfig) {
   const agentRuntime = getAgentRuntime(db, cfg, getLogger());
   const agentScheduler = new AgentThrottleScheduler(agentRuntime, cfg, getLogger());
 
-  const ingestRoute = createIngestRoute(db, getLogger(), (events: IngestEvent[]) => {
+  const onIngested = (events: IngestEvent[]) => {
     const sessionIds = [...new Set(
       events
         .filter((e) => {
@@ -110,7 +126,10 @@ export function createApp(config?: ServerConfig) {
     )];
     if (sessionIds.length) cursorService.scheduleSyncAfterIngest(sessionIds);
     agentScheduler.scheduleAfterIngest(events);
-  });
+  };
+
+  const ingestRoute = createIngestRoute(db, getLogger(), onIngested);
+  const otlpRoute = createOtlpRoute(db, getLogger(), onIngested);
   const authRoute = createAuthRoute(cfg, validKeys);
   const sessionsRoute = createSessionsRoute(db);
   // 创建分享走 /v1/sessions/*，受上方 sessions authGuard 保护
@@ -126,6 +145,7 @@ export function createApp(config?: ServerConfig) {
   const updateRoute = createUpdateRoute(cfg, getLogger());
 
   app.route("/", ingestRoute);
+  app.route("/", otlpRoute);
   app.route("/", authRoute);
   app.route("/", publicSessionSharesRoute);
   app.route("/", sessionsRoute);
