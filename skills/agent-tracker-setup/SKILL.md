@@ -157,5 +157,5 @@ EOF
 - `README.md` — 项目简介、AI 部署提示词、折叠的人工步骤
 - `packages/server/public/help/*.md` — Dashboard 帮助中心（客户端接入主入口）
 - `skills/agent-tracker-clients/` — 本机 Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build 新装与更新
-- `skills/agent-tracker-api/` — curl + OpenAPI 查询 Skill
+- `skills/runmark/` — 历史搜索 + curl/OpenAPI 查询 Skill
 - `AGENTS.md` — 开发协作、Dashboard 约定和调试说明

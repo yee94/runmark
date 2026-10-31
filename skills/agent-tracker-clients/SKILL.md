@@ -11,7 +11,7 @@ description: >-
 
 # Runmark — 客户端安装 / 更新 Skill
 
-本 Skill 让 Agent **在本机完成 Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build 客户端接入或升级**。服务端部署请用 [`agent-tracker-setup`](../agent-tracker-setup/SKILL.md)；查会话数据请用 [`agent-tracker-api`](../agent-tracker-api/SKILL.md)。
+本 Skill 让 Agent **在本机完成 Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build 客户端接入或升级**。服务端部署请用 [`agent-tracker-setup`](../agent-tracker-setup/SKILL.md)；查会话数据请用 [`runmark`](../runmark/SKILL.md)。
 
 ## 统一入口（优先）
 
