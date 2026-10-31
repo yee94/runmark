@@ -11,7 +11,7 @@ import {
 import { homedir } from "node:os";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
-import { defaultPluginEnvPath } from "@agent-tracker/shared";
+import { defaultPluginEnvPath, legacyPluginEnvPath } from "@agent-tracker/shared";
 import { HOOK_ENTRY_FILE, HOOK_INSTALL_DIR, HOOK_SCRIPT_NAME, HOOK_WRAPPER_FILE, TRACKED_HOOK_EVENTS } from "./constants";
 
 export interface InitOptions {
@@ -33,10 +33,10 @@ interface HooksFile {
 }
 
 const ENV_TEMPLATE = `# Runmark 全局上报配置（OpenCode 插件与 Cursor Hook 共用）
-endpoint="http://localhost:3456"
-apiKey="dev-key-change-me"
-includeMessages=true
-includeToolOutput=true
+RUNMARK_ENDPOINT="http://localhost:3456"
+RUNMARK_API_KEY="dev-key-change-me"
+RUNMARK_INCLUDE_MESSAGES=true
+RUNMARK_INCLUDE_TOOL_OUTPUT=true
 `;
 
 function resolvePackageDistDir(): string {
@@ -73,6 +73,10 @@ function ensureEnvFile(): { created: boolean; path: string } {
   const envPath = defaultPluginEnvPath();
   if (existsSync(envPath)) {
     return { created: false, path: envPath };
+  }
+  const legacyPath = legacyPluginEnvPath();
+  if (existsSync(legacyPath)) {
+    return { created: false, path: legacyPath };
   }
   mkdirSync(dirname(envPath), { recursive: true });
   writeFileSync(envPath, ENV_TEMPLATE, "utf-8");

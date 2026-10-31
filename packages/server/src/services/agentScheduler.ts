@@ -1,6 +1,6 @@
 import type { IngestEvent, FileLogger } from "@agent-tracker/shared";
 import type { ServerConfig } from "../config";
-import { AgentRunBusyError, type AgentRuntime } from "./agents";
+import { AgentRunBusyError, MEMORY_EXTRACTION_AGENT_ID, type AgentRuntime } from "./agents";
 import {
   parseSchedule,
   type ScheduleMode,
@@ -66,7 +66,13 @@ export class AgentThrottleScheduler {
       if (!agent.enabled) continue;
       const trigger = this.chatEventTrigger(agent.triggers);
       if (!trigger) continue;
-      this.scheduleAgent(agent.id, sessionIds, trigger);
+      const targets = agent.id === MEMORY_EXTRACTION_AGENT_ID
+        ? [...new Set(events.filter((event) => event.type === "message"
+          && (event.role === "user" || event.role === "assistant")
+          && typeof event.content === "string" && event.content.trim())
+          .map((event) => event.session_id))]
+        : sessionIds;
+      if (targets.length) this.scheduleAgent(agent.id, targets, trigger);
     }
   }
 

@@ -1,5 +1,11 @@
 # @runmarks/grok-plugin
 
+## 0.1.4
+
+### Patch Changes
+
+- Read `~/.config/runmark/env` and `RUNMARK_*`; the legacy path and `AGENT_TRACKER_*` names remain read-only fallbacks. Default logs move to the Runmark config directory.
+
 ## 0.1.2
 
 ### Patch Changes

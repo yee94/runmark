@@ -1,17 +1,25 @@
 {
   "name": "@runmarks/opencode-plugin",
-  "version": "0.2.8",
+  "version": "0.2.12",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.mts",
+      "import": "./dist/index.mjs"
+    }
+  },
   "files": [
     "dist"
   ],
   "scripts": {
     "build": "tsdown",
+    "prepack": "bun run build",
     "dev": "tsdown --watch",
     "clean": "rm -rf dist",
     "test": "bun test",
+    "test:host": "bun run build && RUNMARK_HOST_TEST=1 bun test __tests__/memory-host.test.ts",
     "typecheck": "tsc -b ../shared && tsc --noEmit"
   },
   "peerDependencies": {
@@ -23,7 +31,8 @@
     "@opencode-ai/sdk": "1.17.15",
     "@types/bun": "latest",
     "tsdown": "^0.17.0",
-    "typescript": "^5.5.0"
+    "typescript": "^5.5.0",
+    "yaml": "^2.8.1"
   },
   "license": "MIT",
   "publishConfig": {

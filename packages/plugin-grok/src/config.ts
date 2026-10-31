@@ -19,19 +19,19 @@ export function loadGrokConfig(fileEnvPath?: string): PluginConfig {
 
   return {
     endpoint:
-      env("AGENT_TRACKER_ENDPOINT", "endpoint") ?? "http://localhost:3456",
+      env("RUNMARK_ENDPOINT", "endpoint") ?? "http://localhost:3456",
     apiKey:
-      env("AGENT_TRACKER_API_KEY", "apiKey", "api_key") ??
+      env("RUNMARK_API_KEY", "apiKey", "api_key") ??
       "dev-key-change-me",
     includeMessageContent:
-      (env("AGENT_TRACKER_INCLUDE_MESSAGES", "includeMessages") ?? "true") ===
+      (env("RUNMARK_INCLUDE_MESSAGES", "includeMessages") ?? "true") ===
       "true",
     includeToolOutput:
-      (env("AGENT_TRACKER_INCLUDE_TOOL_OUTPUT", "includeToolOutput") ??
+      (env("RUNMARK_INCLUDE_TOOL_OUTPUT", "includeToolOutput") ??
         "true") === "true",
-    debug: (env("AGENT_TRACKER_DEBUG", "debug") ?? "false") === "true",
+    debug: (env("RUNMARK_DEBUG", "debug") ?? "false") === "true",
     logFile:
-      env("AGENT_TRACKER_LOG_FILE", "logFile", "log_file") ??
+      env("RUNMARK_LOG_FILE", "logFile", "log_file") ??
       defaultPluginLogPath(),
   };
 }

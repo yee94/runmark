@@ -37,7 +37,7 @@ OpenCode 插件 0.2.7 的 V2 适配器会跳过 `finish=tool-calls` 的模型轮
 部署新服务端后，先预览指定会话：
 
 ```bash
-source skills/agent-tracker-api/runmark-api.sh
+source skills/runmark/runmark-api.sh
 runmark_post /v1/pricing/reprice \
   -H 'Content-Type: application/json' \
   -d '{"session_id":"ses_eb242bdf4ffeCafw9mS6KggPPM","model_contains":"gpt-6-astra","dry_run":true}'

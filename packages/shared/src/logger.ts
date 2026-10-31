@@ -1,6 +1,6 @@
 import { appendFileSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
-import { expandUserPath } from "./env-file";
+import { expandUserPath, resolveEnvValue } from "./env-file";
 
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
@@ -19,7 +19,7 @@ export class FileLogger {
   constructor(opts: FileLoggerOptions) {
     this.filePath = expandUserPath(opts.filePath);
     this.enabled = opts.enabled ?? false;
-    this.component = opts.component ?? "agent-tracker";
+    this.component = opts.component ?? "runmark";
     if (this.enabled) {
       mkdirSync(dirname(this.filePath), { recursive: true });
     }
@@ -60,22 +60,22 @@ export class FileLogger {
 
 export function defaultPluginLogPath(): string {
   const home = process.env.HOME || process.env.USERPROFILE || ".";
-  return `${home}/.config/agent-tracker/plugin.log`;
+  return `${home}/.config/runmark/plugin.log`;
 }
 
 export function defaultCursorHookLogPath(): string {
   const home = process.env.HOME || process.env.USERPROFILE || ".";
-  return `${home}/.config/agent-tracker/cursor-hook.log`;
+  return `${home}/.config/runmark/cursor-hook.log`;
 }
 
 export function defaultServerLogPath(): string {
-  return "data/agent-tracker.log";
+  return "data/runmark.log";
 }
 
 export function isDebugEnabled(): boolean {
-  return (process.env.AGENT_TRACKER_DEBUG ?? "false") === "true";
+  return (resolveEnvValue({}, "RUNMARK_DEBUG") ?? "false") === "true";
 }
 
 export function isFileLogMode(): boolean {
-  return (process.env.AGENT_TRACKER_LOG_MODE ?? "file") === "file";
+  return (resolveEnvValue({}, "RUNMARK_LOG_MODE") ?? "file") === "file";
 }

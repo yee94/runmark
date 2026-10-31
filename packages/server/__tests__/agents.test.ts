@@ -70,7 +70,10 @@ describe("Agent API", () => {
     const agentsRes = await app.request("/v1/agents");
     const agents = await agentsRes.json();
     expect(agentsRes.status).toBe(200);
-    expect(agents.map((a: any) => a.id).sort()).toEqual(["agent-matter-archive", "agent-matter-search", "agent-session-search", "agent-session-summary"]);
+    expect(agents.map((a: any) => a.id).sort()).toEqual(["agent-matter-archive", "agent-matter-search", "agent-memory-extraction", "agent-session-search", "agent-session-summary"]);
+    const memoryAgent = agents.find((a: any) => a.id === "agent-memory-extraction");
+    expect(memoryAgent.enabled).toBe(false);
+    expect(memoryAgent.triggers[0].schedule).toBe("session:debounce:5m");
     const matterAgent = agents.find((a: any) => a.id === "agent-matter-archive");
     const matterSearchAgent = agents.find((a: any) => a.id === "agent-matter-search");
     const sessionSearchAgent = agents.find((a: any) => a.id === "agent-session-search");
@@ -121,14 +124,14 @@ describe("Agent API", () => {
     expect(provider.base_url).toBe("https://api.deepseek.com");
     expect(provider.api_key).toBeNull();
     expect(models.map((m) => m.model).sort()).toEqual(["deepseek-chat", "deepseek-reasoner"]);
-    expect(agents.map((a) => a.id)).toEqual(["agent-matter-archive", "agent-matter-search", "agent-session-search", "agent-session-summary"]);
+    expect(agents.map((a) => a.id)).toEqual(["agent-matter-archive", "agent-matter-search", "agent-memory-extraction", "agent-session-search", "agent-session-summary"]);
     expect(agents.find((a) => a.id === "agent-session-summary").model_id).toBe("model-deepseek-flash");
     expect(agents.find((a) => a.id === "agent-matter-archive").model_id).toBe("model-deepseek-pro");
     expect(JSON.parse(agents.find((a) => a.id === "agent-session-summary").triggers)[0].schedule).toBe("session:debounce:5m");
     expect(JSON.parse(agents.find((a) => a.id === "agent-matter-archive").triggers)[0].schedule).toBe("throttle:10m");
     expect(agents.every((a) => a.system_prompt.includes("agent-tracker-react-tools-v10"))).toBe(true);
     expect(agents.every((a) => a.task_brief.length > 0)).toBe(true);
-    expect(promptRows.map((a) => a.agent_id)).toEqual(["agent-matter-archive", "agent-matter-search", "agent-session-search", "agent-session-summary"]);
+    expect(promptRows.map((a) => a.agent_id)).toEqual(["agent-matter-archive", "agent-matter-search", "agent-memory-extraction", "agent-session-search", "agent-session-summary"]);
     expect(promptRows.every((a) => a.system_prompt.includes("agent-tracker-react-tools-v10"))).toBe(true);
     expect(promptRows.every((a) => a.task_brief.length > 0)).toBe(true);
     expect(agents.filter((a) => JSON.parse(a.triggers).length).every((a) => JSON.parse(a.triggers)[0].scope == null)).toBe(true);
@@ -223,7 +226,7 @@ describe("Agent API", () => {
     expect(provider.api_key).toBe("dirty-token");
     expect(model.model).toBe("custom-model");
     expect(models.some((m) => m.id === "model-deepseek-pro" && m.model === "deepseek-reasoner")).toBe(true);
-    expect(agents.map((a) => a.id)).toEqual(["agent-matter-archive", "agent-matter-search", "agent-session-search", "agent-session-summary"]);
+    expect(agents.map((a) => a.id)).toEqual(["agent-matter-archive", "agent-matter-search", "agent-memory-extraction", "agent-session-search", "agent-session-summary"]);
     expect(agents.find((a) => a.id === "agent-session-summary").model_id).toBe("model-deepseek-flash");
     expect(agents.find((a) => a.id === "agent-matter-archive").model_id).toBe("model-deepseek-flash");
     expect(agents.every((a) => a.name.length > 0 && a.system_prompt.length > 0)).toBe(true);
@@ -2117,7 +2120,7 @@ describe("Agent API", () => {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          base_url: "http://127.0.0.1:15721/tencent/v1/chat/completions",
+          base_url: "http://127.0.0.1:15721/proxy/v1/chat/completions",
           api_key: "ttsw-test",
           model: "hy3-ioa",
         }),

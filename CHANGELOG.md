@@ -2,6 +2,26 @@
 
 ## Unreleased
 
+## 0.2.42 (Server) - 2026-10-31
+
+Catch-up from 0.2.39 (includes 0.2.40 and 0.2.41).
+
+- Layered long-term memory: global and project scopes plus optional named-Agent memories, shared across machines. Types: user preference, collaboration feedback, project constraint, reference pointer.
+- Short index discovery, on-demand reads, source tracing, revisions, forget, and explicit restore. Incremental extraction with atomic cross-scope commits; the extraction agent (`agent-memory-extraction`) is off by default and only processes new content once enabled.
+- Extraction requires a quote from the real user message plus retention and scope reasons, records skip reasons, and avoids promoting one-off tasks, scheduled jobs, or existing Skill procedures into long-term preferences. Memory details show the reasoning; review scripts live in `scripts/memory/`.
+- Dashboard memory page with searchable project / Agent / type / status filters, cross-project browsing, paging and search.
+- Server config prefers `RUNMARK_*` variables and still reads the legacy `AGENT_TRACKER_*` names; the default server log is `data/runmark.log`. Docker start-up checks and health checks accept both. Help center and copied config commands write `~/.config/runmark/env`.
+- Help center Markdown tables are restyled for readability.
+
+## Clients (npm) - 2026-10-31
+
+- All clients read `~/.config/runmark/env` and `RUNMARK_*`; the old path and names are read-only fallbacks. Process env wins; when the new file exists the old one is not mixed in. Installers no longer create a default config that would shadow existing legacy credentials.
+- OpenCode plugin 0.2.12: layered memory tools (global / project / named Agent) with per-session, per-Agent index snapshots, enabled with `options.memoryEnabled` in the `opencode.jsonc` plugin entry (plugin options beat the env file, real environment variables still win). Ingest is isolated by the real session directory, and stale repository identity is cleared for sessions without a Git remote. The bundled `runmark` Skill is registered by the plugin.
+- The installer migrates the legacy OpenCode plugin entry, de-duplicates, and keeps JSONC comments, plugin options, other settings, and symlinks.
+- Versions: `@runmarks/runmark` 0.1.10, cursor-hooks 0.2.8, opencode-plugin 0.2.12, codex-plugin 0.2.8, claude-compat-plugin 0.2.22, grok-plugin 0.1.4.
+
+## Unreleased
+
 ## 0.2.39 (Server) - 2026-10-28
 
 - OpenCode native plugin and magpie OTLP can now report the same session: native data wins. Calls are matched exactly by reproducing magpie's message-hash span identity; when an exact match is missing, the session is deduplicated as soon as a valid native call (a `turn.completed` with tokens and no error) arrives.

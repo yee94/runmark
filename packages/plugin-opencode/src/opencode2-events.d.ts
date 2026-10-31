@@ -1,4 +1,4 @@
-import type { IngestEvent } from "@agent-tracker/shared";
+import type { IngestEvent, IngestMessageEvent } from "@agent-tracker/shared";
 export type OpenCode2Event = {
     type: string;
     id?: string;
@@ -6,6 +6,8 @@ export type OpenCode2Event = {
     data?: Record<string, unknown>;
 };
 export type OpenCode2TrackerState = {
+    userMessages: Map<string, IngestMessageEvent>;
+    deliveredUsers: Set<string>;
     hidden: Set<string>;
     forkCutoffMs: Map<string, number>;
     pending: Map<string, {
@@ -13,6 +15,7 @@ export type OpenCode2TrackerState = {
         provider: string;
         startTime: number;
         messageID?: string;
+        agentKey?: string;
     }>;
     texts: Map<string, Map<number, string>>;
     tools: Map<string, {

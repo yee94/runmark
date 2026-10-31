@@ -15,7 +15,7 @@
 #
 set -euo pipefail
 
-VERSION="0.1.8"
+VERSION="0.1.10"
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_OPENCODE_PY="${SCRIPT_DIR}/lib/patch_opencode_config.py"
 REGISTRY="${NPM_CONFIG_REGISTRY:-https://registry.npmjs.org/npm/}"
@@ -80,7 +80,7 @@ Examples:
   # 卸载 CodeBuddy
   npx @runmarks/runmark --clients codebuddy --uninstall
 
-安装前请配置 ~/.config/agent-tracker/env（AGENT_TRACKER_ENDPOINT / API_KEY）。
+安装前请配置 ~/.config/runmark/env（RUNMARK_ENDPOINT / RUNMARK_API_KEY）。
 装完后重启对应客户端（Claude 系可用 /reload-plugins）。
 EOF
 }
@@ -149,10 +149,11 @@ client_installed() {
       ;;
     opencode)
       if [ -f "$HOME/.config/opencode/opencode.jsonc" ] \
-        && grep -q 'agent-tracker-opencode-plugin' "$HOME/.config/opencode/opencode.jsonc" 2>/dev/null; then
+        && grep -Eq '(runmark|agent-tracker)-opencode-plugin' "$HOME/.config/opencode/opencode.jsonc" 2>/dev/null; then
         return 0
       fi
       [ -d "$HOME/.config/opencode/node_modules/@runmarks/agent-tracker-opencode-plugin" ] && return 0
+      [ -d "$HOME/.config/opencode/node_modules/@runmarks/opencode-plugin" ] && return 0
       return 1
       ;;
     codex)
@@ -551,9 +552,12 @@ run_npx() {
 }
 
 check_env() {
-  local env_file="${HOME}/.config/agent-tracker/env"
+  local env_file="${HOME}/.config/runmark/env"
+  if [ ! -f "$env_file" ] && [ -f "${HOME}/.config/agent-tracker/env" ]; then
+    env_file="${HOME}/.config/agent-tracker/env"
+  fi
   if [ ! -f "$env_file" ]; then
-    echo "WARN: $env_file 不存在。请先写入 AGENT_TRACKER_ENDPOINT / AGENT_TRACKER_API_KEY。"
+    echo "WARN: $env_file 不存在。请先写入 RUNMARK_ENDPOINT / RUNMARK_API_KEY。"
     echo "      参考 Dashboard 帮助中心「统一接入配置」。"
   else
     echo "OK: 找到统一配置 $env_file"
@@ -596,12 +600,12 @@ check_runtime() {
 
 install_cursor() {
   local ref
-  ref="$(pkg_ref "@runmarks/agent-tracker-cursor-hooks" "$CURSOR_VER")"
+  ref="$(pkg_ref "@runmarks/cursor-hooks" "$CURSOR_VER")"
   echo "→ Cursor: $ref init"
   if command -v bunx >/dev/null 2>&1; then
     bunx --bun "$ref" init
   else
-    npx --yes -p "$ref" agent-tracker-cursor init
+    npx --yes -p "$ref" runmark-cursor init
   fi
 }
 
@@ -623,9 +627,9 @@ patch_opencode_jsonc() {
 
 install_opencode() {
   local ref ver_pin
-  ref="$(pkg_ref "@runmarks/agent-tracker-opencode-plugin" "$OPENCODE_VER")"
+  ref="$(pkg_ref "@runmarks/opencode-plugin" "$OPENCODE_VER")"
   if [ "$OPENCODE_VER" = "latest" ]; then
-    ver_pin="$(npm view @runmarks/agent-tracker-opencode-plugin version --registry="$REGISTRY" 2>/dev/null || echo "")"
+    ver_pin="$(npm view @runmarks/opencode-plugin version --registry="$REGISTRY" 2>/dev/null || echo "")"
   else
     ver_pin="$OPENCODE_VER"
   fi
@@ -634,10 +638,11 @@ install_opencode() {
   mkdir -p "$oc_dir"
 
   if [ -z "$ver_pin" ]; then
-    echo "WARN: 无法解析 opencode plugin 版本，跳过配置 patch；仍尝试 bun add $ref"
+    echo "ERROR: 无法解析 OpenCode 插件版本，请检查 registry 或指定 --opencode-version" >&2
+    return 1
   else
     # 已有文件：文本级 patch；不存在：才创建最小骨架。绝不整文件覆写已有配置。
-    patch_opencode_jsonc "$oc_cfg" "@runmarks/agent-tracker-opencode-plugin@${ver_pin}"
+    patch_opencode_jsonc "$oc_cfg" "@runmarks/opencode-plugin@${ver_pin}"
   fi
 
   if command -v bun >/dev/null 2>&1; then
@@ -645,7 +650,7 @@ install_opencode() {
       cd "$oc_dir"
       bun remove @runmarks/agent-tracker-opencode-plugin >/dev/null 2>&1 || true
       bun add "$ref" --registry="$REGISTRY"
-      python3 -c 'import json,pathlib; p=pathlib.Path("node_modules/@runmarks/agent-tracker-opencode-plugin/package.json"); print("installed", json.loads(p.read_text())["version"] if p.exists() else "missing")'
+      python3 -c 'import json,pathlib; p=pathlib.Path("node_modules/@runmarks/opencode-plugin/package.json"); print("installed", json.loads(p.read_text())["version"] if p.exists() else "missing")'
     )
   else
     echo "WARN: 未找到 bun，已尽量 patch opencode.jsonc；请自行在 ~/.config/opencode 安装 $ref"
@@ -656,18 +661,18 @@ uninstall_opencode() {
   local oc_dir="${HOME}/.config/opencode"
   local oc_cfg="${oc_dir}/opencode.jsonc"
   if [ -d "$oc_dir" ] && command -v bun >/dev/null 2>&1; then
-    (cd "$oc_dir" && bun remove @runmarks/agent-tracker-opencode-plugin >/dev/null 2>&1 || true)
+    (cd "$oc_dir" && bun remove @runmarks/opencode-plugin @runmarks/agent-tracker-opencode-plugin >/dev/null 2>&1 || true)
   fi
   if [ -f "$oc_cfg" ] && [ -f "$PATCH_OPENCODE_PY" ]; then
     python3 "$PATCH_OPENCODE_PY" "$oc_cfg" --remove
   else
-    echo "→ OpenCode: 请从 ~/.config/opencode/opencode.jsonc 的 plugin 数组删除 agent-tracker-opencode-plugin"
+    echo "→ OpenCode: 请从 ~/.config/opencode/opencode.jsonc 的 plugins / plugin 数组删除 Runmark 新旧插件条目"
   fi
 }
 
 install_codex() {
   local ref
-  ref="$(pkg_ref "@runmarks/agent-tracker-codex-plugin" "$CODEX_VER")"
+  ref="$(pkg_ref "@runmarks/codex-plugin" "$CODEX_VER")"
   echo "→ Codex: $ref"
   run_npx "$ref"
 }
@@ -687,7 +692,7 @@ uninstall_codex() {
 install_claude_compat() {
   local runtime="$1"
   local ref
-  ref="$(pkg_ref "@runmarks/agent-tracker-claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
+  ref="$(pkg_ref "@runmarks/claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
   echo "→ ${runtime}: $ref --runtime $runtime"
   run_npx "$ref" --runtime "$runtime"
 }
@@ -695,21 +700,21 @@ install_claude_compat() {
 uninstall_claude_compat() {
   local runtime="$1"
   local ref
-  ref="$(pkg_ref "@runmarks/agent-tracker-claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
+  ref="$(pkg_ref "@runmarks/claude-compat-plugin" "$CLAUDE_COMPAT_VER")"
   echo "→ ${runtime}: uninstall"
   run_npx "$ref" --uninstall --runtime "$runtime"
 }
 
 install_grok() {
   local ref
-  ref="$(pkg_ref "@runmarks/agent-tracker-grok-plugin" "$GROK_VER")"
+  ref="$(pkg_ref "@runmarks/grok-plugin" "$GROK_VER")"
   echo "→ Grok Build: $ref"
   run_npx "$ref"
 }
 
 uninstall_grok() {
   local ref
-  ref="$(pkg_ref "@runmarks/agent-tracker-grok-plugin" "$GROK_VER")"
+  ref="$(pkg_ref "@runmarks/grok-plugin" "$GROK_VER")"
   echo "→ Grok Build: uninstall"
   run_npx "$ref" --uninstall
 }
@@ -788,11 +793,11 @@ fi
 echo ""
 if [ "$DO_UNINSTALL" != "1" ]; then
   echo "下一步："
-  echo "  1. 确认 Server: curl \"\${AGENT_TRACKER_ENDPOINT:-http://localhost:3456}/health\""
+  echo "  1. 确认 Server: curl \"\${RUNMARK_ENDPOINT:-http://localhost:3456}/health\""
   echo "  2. 重启已安装的客户端（Claude 系可用 /reload-plugins）"
   echo "  3. Codex / Claude 系若提示：在 App 内信任 Runmark plugin hooks"
   echo "  4. Dashboard 会话页确认 agent=cursor|opencode|codex|claude|codebuddy|workbuddy|grok"
-  echo "  5. 自检：跑一次会话后看 ~/.config/agent-tracker/plugin.log；若有 \"no bun/node runtime\" 说明宿主 PATH 无运行时"
+  echo "  5. 自检：跑一次会话后看 ~/.config/runmark/plugin.log；若有 \"no bun/node runtime\" 说明宿主 PATH 无运行时"
 fi
 
 [ "${#FAILED[@]}" -eq 0 ]

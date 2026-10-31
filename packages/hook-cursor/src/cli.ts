@@ -6,7 +6,7 @@ function printHelp(): void {
 
 用法:
   npx @runmarks/cursor-hooks init [选项]
-  agent-tracker-cursor init [选项]
+  runmark-cursor init [选项]
 
 选项:
   --project    安装到当前项目的 .cursor/（默认：用户级 ~/.cursor/）
@@ -16,7 +16,7 @@ function printHelp(): void {
 说明:
   1. 复制 Hook 脚本到 .cursor/hooks/${"agent-tracker-hook.mjs"}
   2. 合并 ~/.cursor/hooks.json（或项目 .cursor/hooks.json）
-  3. 若不存在则创建 ~/.config/agent-tracker/env（与 OpenCode 插件共用）
+  3. 新建配置使用 ~/.config/runmark/env（与 OpenCode 插件共用）
 
 配置后重启 Cursor IDE，会话数据将以 agent=cursor 写入 Runmark。
 `);

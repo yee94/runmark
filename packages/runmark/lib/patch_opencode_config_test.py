@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import os
+import json
 import pathlib
 import sys
 import tempfile
@@ -19,6 +20,7 @@ from patch_opencode_config import (  # noqa: E402
 
 SPEC = "@runmarks/opencode-plugin@0.2.10"
 SPEC_OLD = "@runmarks/opencode-plugin@0.2.3"
+LEGACY = "@runmarks/agent-tracker-opencode-plugin@0.2.9"
 
 
 class PatchOpencodeConfigTest(unittest.TestCase):
@@ -36,6 +38,7 @@ class PatchOpencodeConfigTest(unittest.TestCase):
         text = path.read_text()
         self.assertIn(SPEC, text)
         self.assertIn("$schema", text)
+        self.assertEqual(json.loads(text)["plugins"], [SPEC])
 
     def test_bump_version_preserves_other_plugins_and_comments(self) -> None:
         path = self.dir / "opencode.jsonc"
@@ -142,9 +145,49 @@ class PatchOpencodeConfigTest(unittest.TestCase):
         msg = remove_opencode_plugin(path)
         self.assertIn("移除", msg)
         text = path.read_text()
-        self.assertNotIn("agent-tracker-opencode-plugin", text)
+        self.assertNotIn("runmark-opencode-plugin", text)
         self.assertIn("keep-a", text)
         self.assertIn("keep-b", text)
+
+    def test_migrate_v2_object_and_deduplicate_legacy(self) -> None:
+        path = self.dir / "opencode.jsonc"
+        path.write_text(json.dumps({
+            "plugins": ["keep-a", {"package": LEGACY, "options": {"enabled": True}}, SPEC_OLD, "keep-b"],
+            "plugin": [LEGACY],
+        }))
+        patch_opencode_config(path, SPEC)
+        data = json.loads(path.read_text())
+        self.assertEqual(data["plugins"], ["keep-a", {"package": SPEC, "options": {"enabled": True}}, "keep-b"])
+        self.assertEqual(data["plugin"], [])
+        self.assertIn("已是", patch_opencode_config(path, SPEC))
+        remove_opencode_plugin(path)
+        self.assertEqual(json.loads(path.read_text())["plugins"], ["keep-a", "keep-b"])
+
+    def test_package_names_in_comments_and_other_fields_are_preserved(self) -> None:
+        path = self.dir / "opencode.jsonc"
+        comment = f'// "plugins": ["{LEGACY}"], {{}}'
+        path.write_text(f'{{\n{comment}\n"note":"{LEGACY}","plugins":["keep"]\n}}')
+        patch_opencode_config(path, SPEC)
+        text = path.read_text()
+        self.assertIn(comment, text)
+        self.assertIn(f'"note":"{LEGACY}"', text)
+        self.assertEqual(text.count(SPEC), 1)
+
+    def test_remove_inline_entries_keeps_separators(self) -> None:
+        path = self.dir / "opencode.jsonc"
+        for entries in [[LEGACY, "a", "b"], ["a", LEGACY, "b"], ["a", "b", LEGACY], ["a", LEGACY, SPEC], [LEGACY, SPEC], [SPEC]]:
+            path.write_text(json.dumps({"plugins": entries}))
+            remove_opencode_plugin(path)
+            self.assertEqual(json.loads(path.read_text())["plugins"], [e for e in entries if e not in (LEGACY, SPEC)])
+
+    def test_migration_follows_symlink(self) -> None:
+        real = self.dir / "real.jsonc"
+        link = self.dir / "opencode.jsonc"
+        real.write_text(json.dumps({"plugin": [LEGACY, "keep"]}))
+        link.symlink_to(real)
+        patch_opencode_config(link, SPEC)
+        self.assertTrue(link.is_symlink())
+        self.assertEqual(json.loads(real.read_text())["plugin"], [SPEC, "keep"])
 
 
 if __name__ == "__main__":

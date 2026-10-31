@@ -152,7 +152,7 @@ fi
 if [ "$SERVER_MODE" = false ]; then
 step "6/8 配置客户端"
 
-CLIENT_CONFIG_DIR="${HOME}/.config/agent-tracker"
+CLIENT_CONFIG_DIR="${HOME}/.config/runmark"
 CLIENT_CONFIG="${CLIENT_CONFIG_DIR}/env"
 
 mkdir -p "$CLIENT_CONFIG_DIR"
@@ -162,10 +162,12 @@ if [ -f "$CLIENT_CONFIG" ]; then
   warn "请确认 endpoint 和 apiKey 是否与服务器一致"
   echo -e "  当前内容:"
   echo -e "  ${CYAN}$(cat "$CLIENT_CONFIG")${NC}"
+elif [ -f "${HOME}/.config/agent-tracker/env" ]; then
+  ok "沿用旧客户端配置（只读兼容）；更新配置请写入 ${CLIENT_CONFIG}"
 else
   cat > "$CLIENT_CONFIG" <<EOF
-endpoint="http://localhost:3456"
-apiKey="${GENERATED_API_KEY}"
+RUNMARK_ENDPOINT="http://localhost:3456"
+RUNMARK_API_KEY="${GENERATED_API_KEY}"
 EOF
 
   ok "客户端配置已生成: ${CLIENT_CONFIG}"

@@ -1,4 +1,4 @@
-import { env } from "bun";
+import { defaultServerLogPath, resolveEnvValue } from "@agent-tracker/shared";
 import serverPkg from "../package.json" assert { type: "json" };
 
 export function getServerVersion(): string {
@@ -51,34 +51,33 @@ function parseKeyBytes(raw?: string): Uint8Array | undefined {
 }
 
 export function loadConfig(): ServerConfig {
-  const apiKey = env.AGENT_TRACKER_API_KEY ?? "dev-key-change-me";
+  const env = (key: string) => resolveEnvValue({}, key);
+  const apiKey = env("RUNMARK_API_KEY") ?? "dev-key-change-me";
   return {
-    port: Number(env.AGENT_TRACKER_PORT ?? 3456),
+    port: Number(env("RUNMARK_PORT") ?? 3456),
     apiKey,
-    dbPath: env.AGENT_TRACKER_DB_PATH ?? "data/agent-tracker.db",
-    publicDir: env.AGENT_TRACKER_PUBLIC_DIR ?? "./public",
-    publicDashboard: (env.AGENT_TRACKER_PUBLIC_DASHBOARD ?? "false") === "true",
-    extraApiKeys: (env.AGENT_TRACKER_EXTRA_API_KEYS ?? "")
+    dbPath: env("RUNMARK_DB_PATH") ?? "data/agent-tracker.db",
+    publicDir: env("RUNMARK_PUBLIC_DIR") ?? "./public",
+    publicDashboard: (env("RUNMARK_PUBLIC_DASHBOARD") ?? "false") === "true",
+    extraApiKeys: (env("RUNMARK_EXTRA_API_KEYS") ?? "")
       .split(",")
       .map((k) => k.trim())
       .filter(Boolean),
-    debug: (env.AGENT_TRACKER_DEBUG ?? "false") === "true",
-    logFile: env.AGENT_TRACKER_LOG_FILE ?? "data/agent-tracker.log",
-    cursorSyncEnabled: (env.AGENT_TRACKER_CURSOR_SYNC_ENABLED ?? "true") === "true",
-    cursorApiKey: env.AGENT_TRACKER_CURSOR_API_KEY ?? apiKey,
-    cursorCryptoKey: parseKeyBytes(env.AGENT_TRACKER_CURSOR_CRYPTO_KEY),
-    llmBaseUrl: env.AGENT_TRACKER_LLM_BASE_URL ?? "https://api.deepseek.com",
-    llmApiKey: env.AGENT_TRACKER_LLM_API_KEY ?? "",
-    llmModel: env.AGENT_TRACKER_LLM_MODEL ?? "deepseek-chat",
-    agentThrottleMs: Number(env.AGENT_TRACKER_AGENT_THROTTLE_MS ?? 10 * 60 * 1000),
-    agentAutoRunEnabled: (env.AGENT_TRACKER_AGENT_AUTO_RUN_ENABLED ?? "true") === "true",
+    debug: (env("RUNMARK_DEBUG") ?? "false") === "true",
+    logFile: env("RUNMARK_LOG_FILE") ?? defaultServerLogPath(),
+    cursorSyncEnabled: (env("RUNMARK_CURSOR_SYNC_ENABLED") ?? "true") === "true",
+    cursorApiKey: env("RUNMARK_CURSOR_API_KEY") ?? apiKey,
+    cursorCryptoKey: parseKeyBytes(env("RUNMARK_CURSOR_CRYPTO_KEY")),
+    llmBaseUrl: env("RUNMARK_LLM_BASE_URL") ?? "https://api.deepseek.com",
+    llmApiKey: env("RUNMARK_LLM_API_KEY") ?? "",
+    llmModel: env("RUNMARK_LLM_MODEL") ?? "deepseek-chat",
+    agentThrottleMs: Number(env("RUNMARK_AGENT_THROTTLE_MS") ?? 10 * 60 * 1000),
+    agentAutoRunEnabled: (env("RUNMARK_AGENT_AUTO_RUN_ENABLED") ?? "true") === "true",
     // 默认开启自动更新；仅当显式设为 false 时关闭
-    updateEnabled: (env.AGENT_TRACKER_UPDATE_ENABLED ?? "true") === "true",
-    // 默认指向 GitHub Release 上的 server-manifest.json（由 server-v* 流水线上传）
-    updateManifestUrl:
-      env.AGENT_TRACKER_UPDATE_MANIFEST_URL ??
+    updateEnabled: (env("RUNMARK_UPDATE_ENABLED") ?? "true") === "true",
+    updateManifestUrl: env("RUNMARK_UPDATE_MANIFEST_URL") ?? 
       "https://github.com/yee94/runmark/releases/latest/download/server-manifest.json",
-    updateScript: env.AGENT_TRACKER_UPDATE_SCRIPT ?? "/opt/runmark-updater/update.sh",
-    updateStatePath: env.AGENT_TRACKER_UPDATE_STATE_PATH ?? "/opt/runmark-updater/update-state.json",
+    updateScript: env("RUNMARK_UPDATE_SCRIPT") ?? "/opt/runmark-updater/update.sh",
+    updateStatePath: env("RUNMARK_UPDATE_STATE_PATH") ?? "/opt/runmark-updater/update-state.json",
   };
 }

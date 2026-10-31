@@ -6,6 +6,7 @@ import { displayCny, withCostCny, withPricingCny, withTotalCostCny } from "../se
 import { DEFAULT_STATS_RANGE, beijingDateExpr, parseModelSort, resolveStatsRange, sessionsTimeClause, turnsTimeClause } from "../services/stats";
 import { forkFieldsForSession } from "../services/fork";
 import { costService } from "../services/cost";
+import { splitSessionModels } from "../services/ingest";
 import { repriceTurns } from "../services/reprice";
 
 type SessionRow = Record<string, unknown> & {
@@ -169,19 +170,9 @@ function enrichSessionModelHints(db: Database, row: SessionRow): SessionRow {
   };
 }
 
-/** 将 sessions.model（逗号分隔）拆成展示用 models[] */
+/** 将 sessions.model（逗号分隔）拆成展示用 models[]，丢掉 unknown 占位 */
 function splitStoredModels(value: string | null | undefined): string[] {
-  const parts: string[] = [];
-  const seen = new Set<string>();
-  for (const raw of String(value || "").split(",")) {
-    const name = raw.trim();
-    if (!name) continue;
-    const key = name.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    parts.push(name);
-  }
-  return parts;
+  return splitSessionModels(value);
 }
 
 /** 会话列表/详情序列化：summary 优先 title，duration_ms 为 started_at 至最后活动时间 */

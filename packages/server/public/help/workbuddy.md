@@ -2,7 +2,7 @@
 
 WorkBuddy 通过 **Plugin Marketplace** 安装 Runmark 插件。安装包为 `@runmarks/claude-compat-plugin`，使用 `--runtime workbuddy`。`Stop` 阶段读取 `~/.workbuddy/projects/...` 下的 transcript JSONL，补齐 assistant、tool、token，并由服务端估算费用。
 
-安装前请先完成“统一接入配置”，确保 `~/.config/agent-tracker/env` 中已经配置 `endpoint` 和 `apiKey`。
+安装前请先完成“统一接入配置”，确保 `~/.config/runmark/env` 中已经配置 `RUNMARK_ENDPOINT` 和 `RUNMARK_API_KEY`。
 
 ## 一键安装
 
@@ -12,7 +12,7 @@ npx @runmarks/claude-compat-plugin --runtime workbuddy
 
 安装脚本会（可重复执行，幂等升级）：
 
-1. 构建插件并整目录刷新本地 marketplace：`~/.config/agent-tracker/claude-compat-marketplace/`。
+1. 构建插件并整目录刷新本地 Runmark marketplace。
 2. WorkBuddy Desktop 内嵌 CLI（注入 `ACC_PRODUCT_CONFIG_PATH` + `CODEBUDDY_CONFIG_DIR=~/.workbuddy`）执行 `plugin marketplace remove/add` + `install` + `enable`。
 3. 合并 `enabledPlugins["runmark-tracker@runmark"]=true`（保留用户其它插件）。
 
@@ -47,7 +47,7 @@ workbuddy plugin uninstall runmark
 
 - 没有 token / cost：确认 `transcript_path` 存在，且 Stop 后 JSONL 中含 usage。
 - 重复 turn：插件会按 transcript offset 增量读取。
-- ingest 401：对齐 `~/.config/agent-tracker/env` 的 `apiKey` 与服务端 `AGENT_TRACKER_API_KEY`。
+- ingest 401：对齐 `~/.config/runmark/env` 的 `RUNMARK_API_KEY` 与服务端 `RUNMARK_API_KEY`。
 - 本机无独立 `workbuddy` CLI 时，安装脚本会使用 WorkBuddy.app 内嵌 CLI（`ACC_PRODUCT_CONFIG_PATH` + `CODEBUDDY_CONFIG_DIR=~/.workbuddy`）。
 - 需要 Claude Code：见帮助中心「Claude Code」一文。
 - 需要 CodeBuddy：见帮助中心「CodeBuddy」一文。

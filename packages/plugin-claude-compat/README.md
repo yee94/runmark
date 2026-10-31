@@ -52,7 +52,7 @@ codebuddy plugin uninstall runmark
 
 ## 配置
 
-与其它客户端共用 `~/.config/agent-tracker/env`：
+与其它客户端共用 `~/.config/runmark/env`：
 
 ```bash
 endpoint="http://localhost:3456"

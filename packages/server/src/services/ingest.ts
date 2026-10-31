@@ -12,13 +12,19 @@ import { costService } from "./cost";
 import { enrichForkSessionMetadata, parseSessionMetadataJson } from "./fork";
 import { ingestWithProvenance, type SourcedEvent, type AppliedIngestResult } from "./provenance";
 
-/** 将 sessions.model 按逗号拆成去重列表（大小写不敏感，保留首次写法） */
+/** 采集没取到模型名时的占位串，不是真实模型 */
+export function isPlaceholderModel(model: string | null | undefined): boolean {
+  const name = String(model || "").trim().toLowerCase();
+  return !name || name === "unknown";
+}
+
+/** 将 sessions.model 按逗号拆成去重列表（大小写不敏感，保留首次写法，丢掉 unknown 占位） */
 export function splitSessionModels(value: string | null | undefined): string[] {
   const parts: string[] = [];
   const seen = new Set<string>();
   for (const raw of String(value || "").split(",")) {
     const name = raw.trim();
-    if (!name) continue;
+    if (isPlaceholderModel(name)) continue;
     const key = name.toLowerCase();
     if (seen.has(key)) continue;
     seen.add(key);
@@ -93,8 +99,8 @@ class IngestService {
 
     const insertMessageStmt = db.query(`
       INSERT OR IGNORE INTO messages
-      (id, session_id, role, content, model, provider, parent_message_id, tool_calls, tool_call_id, created_at)
-      VALUES ($id, $session_id, $role, $content, $model, $provider, $parent_message_id, $tool_calls, $tool_call_id, $created_at)
+      (id, session_id, role, content, model, provider, parent_message_id, tool_calls, tool_call_id, created_at, agent_key)
+      VALUES ($id, $session_id, $role, $content, $model, $provider, $parent_message_id, $tool_calls, $tool_call_id, $created_at, $agent_key)
     `);
 
     const insertToolStmt = db.query(`
@@ -401,18 +407,19 @@ class IngestService {
             const contentStr =
               typeof e.content === "string" ? e.content : JSON.stringify(e.content ?? {});
             // UserPromptSubmit hook 与 transcript user 行 id 不同；按同 session 同 content 去重
-            if (e.role === "user" && contentStr && source === "native") {
+            if (e.role === "user" && contentStr && source === "native" && !e.agent_key?.trim()) {
               const dup = db
                 .query(
                   `SELECT 1 AS ok FROM messages
-                    WHERE session_id = $session_id AND role = 'user' AND content = $content
+                    WHERE session_id = $session_id AND role = 'user' AND content = $content AND COALESCE(agent_key, '') = $agent_key
                     AND NOT EXISTS (SELECT 1 FROM otlp_projections p WHERE p.kind = 'messages' AND p.entity_id = messages.id AND p.session_id = messages.session_id)
                    LIMIT 1`,
                 )
-                .get({ $session_id: e.session_id, $content: contentStr });
+                .get({ $session_id: e.session_id, $content: contentStr, $agent_key: e.agent_key ?? "" });
               if (dup) break;
             }
             insertMessageStmt.run({
+              $agent_key: e.agent_key ?? null,
               $id: e.message_id,
               $session_id: e.session_id,
               $role: e.role,

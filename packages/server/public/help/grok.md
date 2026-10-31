@@ -2,7 +2,7 @@
 
 Grok Build（`grok` CLI）通过用户级 Hooks 接入 Runmark。安装包为 `@runmarks/grok-plugin`，写入 `~/.grok/hooks/runmark-tracker.json`，与 Orca / Asymptote 等其它 hook 文件共存。`Stop` 阶段读取 `~/.grok/sessions/...` 补齐 assistant、tool、token 与费用。
 
-安装前请先完成“统一接入配置”，确保 `~/.config/agent-tracker/env` 中已经配置 `endpoint` 和 `apiKey`。
+安装前请先完成“统一接入配置”，确保 `~/.config/runmark/env` 中已经配置 `RUNMARK_ENDPOINT` 和 `RUNMARK_API_KEY`。
 
 ## 一键安装
 
@@ -20,7 +20,7 @@ npx @runmarks/grok-plugin
 
 安装脚本会（可重复执行，幂等升级）：
 
-1. 构建 / 复制 `dist/index.mjs` 到 `~/.config/agent-tracker/grok-plugin/`。
+1. 构建 / 复制 `dist/index.mjs` 到本机 Runmark Grok 插件目录。
 2. 生成可执行 wrapper：`grok-tracker-hook`。
 3. 写入用户级 hook：`~/.grok/hooks/runmark-tracker.json`。
 
@@ -63,7 +63,7 @@ grok inspect --json
 ## 常见问题
 
 - 没有 token / cost：确认 `Stop` 后 `~/.grok/sessions/<cwd>/<sessionId>/updates.jsonl` 含 `usage`（`inputTokens` / `costUsdTicks`）。
-- Hook 无响应：确认本机有 Bun 或 Node；`~/.config/agent-tracker/grok-plugin/grok-tracker-hook` 可执行。
+- Hook 无响应：确认本机有 Bun 或 Node；可重新执行安装命令修复 Runmark Hook 启动器。
 - 与 Orca 冲突：不会。各自独立 JSON 文件（`runmark-tracker.json` vs `orca-status.json`）。
-- ingest 401：对齐 `~/.config/agent-tracker/env` 的 `apiKey` 与服务端 `AGENT_TRACKER_API_KEY`。
+- ingest 401：对齐 `~/.config/runmark/env` 的 `RUNMARK_API_KEY` 与服务端 `RUNMARK_API_KEY`。
 - Dashboard：会话页筛选 `agent=grok`。

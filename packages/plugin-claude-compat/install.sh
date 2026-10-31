@@ -13,7 +13,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="0.2.20"
+VERSION="0.2.22"
 RUNTIME_ARG="all"
 DO_UNINSTALL=0
 # 归属：plugin@marketplace → runmark-tracker@runmark
@@ -110,7 +110,7 @@ if RUNTIME="$(resolve_runtime)"; then
 fi
 
 # fail-open 保留，但必须留痕，避免「装了却静默不上报」
-LOG="${AGENT_TRACKER_LOG_FILE:-${HOME}/.config/agent-tracker/plugin.log}"
+LOG="${RUNMARK_LOG_FILE:-${AGENT_TRACKER_LOG_FILE:-${HOME}/.config/runmark/plugin.log}}"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 printf '{"ts":"%s","level":"error","component":"tracker-hook","message":"no bun/node runtime; telemetry disabled"}\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG" 2>/dev/null || true
@@ -441,7 +441,7 @@ echo "  # 或：codebuddy plugin uninstall runmark-tracker"
 echo ""
 echo "下一步："
 echo "  1. 确认 Server: curl localhost:3456/health"
-echo "  2. 配置 ~/.config/agent-tracker/env（与其它客户端共用）"
+echo "  2. 配置 ~/.config/runmark/env（与其它客户端共用）"
 echo "  3. 重启对应客户端（或 /reload-plugins）"
 echo "  4. 如有提示，在客户端信任 plugin hooks"
 echo ""

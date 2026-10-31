@@ -92,15 +92,15 @@ Codex 的 hook 需要用户审查后才能运行。在 Codex 中使用 `/hooks` 
 
 ### 配置上报地址
 
-插件与 OpenCode 共用 `~/.config/agent-tracker/env`：
+插件与 OpenCode 共用 `~/.config/runmark/env`：
 
 ```bash
-# ~/.config/agent-tracker/env
-endpoint="http://<服务地址>:3456"
-apiKey="<API Key>"
+# ~/.config/runmark/env
+RUNMARK_ENDPOINT="http://<服务地址>:3456"
+RUNMARK_API_KEY="<API Key>"
 ```
 
-> 也兼容 `AGENT_TRACKER_ENDPOINT` / `AGENT_TRACKER_API_KEY` 环境变量格式。
+> 短键 `endpoint` / `apiKey` 与旧变量前缀保留读取兼容；新配置统一使用 `RUNMARK_*`。
 
 ## 验证
 
@@ -131,9 +131,9 @@ bash install.sh      # 自动 build + 安装到 ~/.codex/plugins/
 启用 debug 日志：
 
 ```bash
-# ~/.config/agent-tracker/env
-debug=true
-logFile=~/.config/agent-tracker/codex-hook.log
+# ~/.config/runmark/env
+RUNMARK_DEBUG=true
+RUNMARK_LOG_FILE=~/.config/runmark/codex-hook.log
 ```
 
 ### 包结构

@@ -1,6 +1,6 @@
 {
   "name": "agent-tracker",
-  "version": "0.2.5",
+  "version": "0.2.8",
   "description": "Tracks AI coding session telemetry (sessions, messages, tools, cost) to a centralized Runmark server.",
   "author": {
     "name": "Runmark"

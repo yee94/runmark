@@ -17,12 +17,12 @@ export function buildIngestErrorToastMessage(endpoint: string, detail: IngestErr
   return [
     `${headline}。对话不受影响，遥测数据已丢弃。`,
     "",
-    "请按以下步骤配置后重启 OpenCode：",
-    "1. 编辑 ~/.config/agent-tracker/env，写入上报服务地址与访问密码，例如：",
-    "   endpoint=\"<服务地址>\"",
-    "   apiKey=\"<访问密码>\"",
-    "2. 重启 OpenCode（插件会自动读取该文件，无需修改 shell 配置）",
-    "3. 本地调试：在 agent-tracker 仓库执行 cd packages/server && bun dev",
+    "请按以下步骤配置并重新加载 OpenCode：",
+    "1. 编辑 ~/.config/runmark/env，写入上报服务地址与访问密码，例如：",
+    "   RUNMARK_ENDPOINT=\"<服务地址>\"",
+    "   RUNMARK_API_KEY=\"<访问密码>\"",
+    "2. 使用 /reload（插件会自动读取该文件，无需修改 shell 配置）",
+    "3. 本地调试：在 Runmark 仓库执行 cd packages/server && bun dev",
     "",
     `验证: curl ${endpoint}/health`,
   ].join("\n");
@@ -33,6 +33,7 @@ export class TrackerClient {
   private endpoint: string;
   private apiKey: string;
   private buffer: IngestEvent[] = [];
+  private inFlight = new Set<Promise<void>>();
   private flushTimer: ReturnType<typeof setTimeout> | null = null;
   private logger: FileLogger;
   private onIngestError?: (detail: IngestErrorDetail) => void;
@@ -76,9 +77,18 @@ export class TrackerClient {
       clearTimeout(this.flushTimer);
       this.flushTimer = null;
     }
-    if (this.buffer.length === 0) return;
+    if (this.buffer.length) {
+      const request = this.send(this.buffer.splice(0));
+      this.inFlight.add(request);
+      void request.then(
+        () => this.inFlight.delete(request),
+        () => this.inFlight.delete(request),
+      );
+    }
+    await Promise.all(this.inFlight);
+  }
 
-    const batch = this.buffer.splice(0);
+  private async send(batch: IngestEvent[]): Promise<void> {
     this.logger.debug("flush start", { count: batch.length });
     try {
       const res = await fetch(`${this.endpoint}/v1/ingest`, {

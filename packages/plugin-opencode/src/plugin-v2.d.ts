@@ -1,5 +1,25 @@
+import { type MemoryHost } from "./memory";
 import { type OpenCode2Event } from "./opencode2-events";
-type V2Context = {
+import { type SkillHost } from "./skill";
+type V2Context = Omit<MemoryHost, "session"> & SkillHost & {
+    /** opencode.jsonc 对象形式插件条目的 options；字符串条目为 undefined。 */
+    options?: unknown;
+    session?: Omit<NonNullable<MemoryHost["session"]>, "get"> & {
+        get?: (input: {
+            sessionID: string;
+        }) => Promise<{
+            id: string;
+            title?: string;
+            parentID?: string;
+            location: {
+                directory: string;
+            };
+            model?: {
+                id: string;
+                providerID: string;
+            };
+        }>;
+    };
     location?: {
         directory?: string;
     };

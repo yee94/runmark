@@ -104,8 +104,8 @@ describe("TrackerClient", () => {
 
   it("buildIngestErrorToastMessage includes config steps", () => {
     const message = buildIngestErrorToastMessage("http://example.com:3456", { kind: "network" });
-    expect(message).toContain("~/.config/agent-tracker/env");
-    expect(message).toContain('endpoint="<服务地址>"');
+    expect(message).toContain("~/.config/runmark/env");
+    expect(message).toContain('RUNMARK_ENDPOINT="<服务地址>"');
     expect(message).toContain("无需修改 shell 配置");
     expect(message).toContain("curl http://example.com:3456/health");
   });

@@ -3,6 +3,7 @@ import { SCHEMA_SQL } from "./schema";
 import { DEFAULT_PRICING, type ModelPricing } from "@agent-tracker/shared";
 import { seedBuiltinAgentConfig } from "../services/agents";
 import { mergeSessionModels } from "../services/ingest";
+import { MemoryService } from "../services/memory";
 
 export type { Database };
 
@@ -19,6 +20,7 @@ export function getDatabase(path: string): Database {
 
 export function initializeDatabase(db: Database): void {
   db.exec("PRAGMA foreign_keys = ON;");
+  const migrateMemoryCursor = !db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_message_arrivals'").get();
   // 先补齐旧表缺失的列，确保 SCHEMA_SQL 中的索引/约束能成功执行。
   ensureSessionsColumns(db);
   ensureMessagesColumns(db);
@@ -29,7 +31,17 @@ export function initializeDatabase(db: Database): void {
   ensureCursorColumns(db);
   ensureAgentColumns(db);
   ensureSessionSharesColumns(db);
+  ensureTableColumns(db, "memories", [["forgotten_sequence", "INTEGER"], ["scope", "TEXT NOT NULL DEFAULT 'project'"], ["agent_key", "TEXT NOT NULL DEFAULT ''"], ["context_json", "TEXT NOT NULL DEFAULT '{}'"]]);
+  ensureTableColumns(db, "messages", [["agent_key", "TEXT"]]);
+  ensureTableColumns(db, "memory_sources", [["assessment_json", "TEXT"]]);
   db.exec(SCHEMA_SQL);
+  new MemoryService(db).migrateWorkspaceMemories();
+  if (migrateMemoryCursor) {
+    // 首次迁移按现存 rowid 初始化到达序列；已删除尾部消息的旧水位收敛到现存最大序列。
+    db.exec(`UPDATE memory_extraction_progress SET cursor=MIN(cursor, COALESCE((SELECT MAX(sequence) FROM memory_message_arrivals),0))`);
+  }
+  db.exec(`UPDATE memories SET forgotten_sequence=COALESCE((SELECT MAX(sequence) FROM memory_message_arrivals),0)
+    WHERE forgotten_at IS NOT NULL AND forgotten_sequence IS NULL`);
   migrateSchema(db);
   seedBuiltinAgentConfig(db);
   seedPricing(db);

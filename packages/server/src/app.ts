@@ -12,6 +12,7 @@ import { createSessionsRoute, createTurnsRoute, createPricingRoute, createStatsR
 import { createSessionSharesRoute, createPublicSessionSharesRoute } from "./routes/session-shares";
 import { createCursorRoute } from "./routes/cursor";
 import { createAgentsRoute } from "./routes/agents";
+import { createMemoriesRoute } from "./routes/memories";
 import { createHelpRoute } from "./routes/help";
 import { createUpdateRoute } from "./routes/update";
 import { startCursorScheduler } from "./services/cursorScheduler";
@@ -51,6 +52,8 @@ export function createApp(config?: ServerConfig) {
 
   const validKeys = new Set([cfg.apiKey, ...cfg.extraApiKeys]);
   const authGuard = requireAuth(cfg, validKeys);
+  app.use("/v1/memories", authGuard);
+  app.use("/v1/memories/*", authGuard);
 
   // API key auth middleware for ingest and admin routes
   app.use("/v1/ingest/*", async (c, next) => {
@@ -155,6 +158,7 @@ export function createApp(config?: ServerConfig) {
   app.route("/", statsRoute);
   app.route("/", cursorRoute);
   app.route("/", agentsRoute);
+  app.route("/", createMemoriesRoute(db));
   app.route("/", helpRoute);
   app.route("/", updateRoute);
 

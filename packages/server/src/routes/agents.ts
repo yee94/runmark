@@ -2,7 +2,8 @@ import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import type { FileLogger } from "@agent-tracker/shared";
 import type { ServerConfig } from "../config";
-import { AgentRunBusyError, MATTER_ARCHIVE_AGENT_ID, MATTER_SEARCH_AGENT_ID, SESSION_SEARCH_AGENT_ID, SESSION_SUMMARY_AGENT_ID, getAgentRuntime } from "../services/agents";
+import { AgentRunBusyError, MATTER_ARCHIVE_AGENT_ID, MATTER_SEARCH_AGENT_ID, MEMORY_EXTRACTION_AGENT_ID, SESSION_SEARCH_AGENT_ID, SESSION_SUMMARY_AGENT_ID, getAgentRuntime } from "../services/agents";
+import { MemoryService } from "../services/memory";
 import { buildLlmAuthHeaders } from "../services/llmHeaders";
 
 async function testOpenAiCompatible(baseUrl: string, apiKey: string, model: string): Promise<{ ok: boolean; message: string }> {
@@ -78,26 +79,31 @@ export function createAgentsRoute(db: Database, config: ServerConfig, logger?: F
     }>();
     const existing = runtime.listAgents().find((a) => a.id === id);
     if (!existing) return c.json({ error: "Agent not found" }, 404);
-    db.query(`
-      UPDATE agents SET
-        enabled = COALESCE($enabled, enabled),
-        model_id = COALESCE($model_id, model_id),
-        tools = COALESCE($tools, tools),
-        triggers = COALESCE($triggers, triggers),
-        system_prompt = COALESCE($system_prompt, system_prompt),
-        task_brief = COALESCE($task_brief, task_brief),
-        updated_at = $updated_at
-      WHERE id = $id
-    `).run({
-      $id: id,
-      $enabled: typeof body.enabled === "boolean" ? (body.enabled ? 1 : 0) : null,
-      $model_id: body.model_id ?? null,
-      $tools: body.tools ? JSON.stringify(body.tools) : null,
-      $triggers: body.triggers ? JSON.stringify(body.triggers) : null,
-      $system_prompt: body.system_prompt ?? null,
-      $task_brief: body.task_brief ?? null,
-      $updated_at: new Date().toISOString(),
-    });
+    db.transaction(() => {
+      if (id === MEMORY_EXTRACTION_AGENT_ID && !existing.enabled && body.enabled === true) {
+        new MemoryService(db).initializeExtraction();
+      }
+      db.query(`
+        UPDATE agents SET
+          enabled = COALESCE($enabled, enabled),
+          model_id = COALESCE($model_id, model_id),
+          tools = COALESCE($tools, tools),
+          triggers = COALESCE($triggers, triggers),
+          system_prompt = COALESCE($system_prompt, system_prompt),
+          task_brief = COALESCE($task_brief, task_brief),
+          updated_at = $updated_at
+        WHERE id = $id
+      `).run({
+        $id: id,
+        $enabled: typeof body.enabled === "boolean" ? (body.enabled ? 1 : 0) : null,
+        $model_id: body.model_id ?? null,
+        $tools: body.tools ? JSON.stringify(body.tools) : null,
+        $triggers: body.triggers ? JSON.stringify(body.triggers) : null,
+        $system_prompt: body.system_prompt ?? null,
+        $task_brief: body.task_brief ?? null,
+        $updated_at: new Date().toISOString(),
+      });
+    })();
     if (body.system_prompt || body.task_brief) {
       db.query(`
         INSERT INTO agent_prompts (agent_id, system_prompt, task_brief, updated_at)

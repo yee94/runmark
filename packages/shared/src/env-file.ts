@@ -1,7 +1,12 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 
 /** 插件客户端配置文件默认路径 */
 export function defaultPluginEnvPath(): string {
+  const home = process.env.HOME || process.env.USERPROFILE || ".";
+  return `${home}/.config/runmark/env`;
+}
+
+export function legacyPluginEnvPath(): string {
   const home = process.env.HOME || process.env.USERPROFILE || ".";
   return `${home}/.config/agent-tracker/env`;
 }
@@ -40,9 +45,10 @@ export function parseEnvFile(content: string): Record<string, string> {
 }
 
 /** 读取插件 env 文件；不存在或不可读时返回空对象 */
-export function loadEnvFile(filePath: string = defaultPluginEnvPath()): Record<string, string> {
+export function loadEnvFile(filePath?: string): Record<string, string> {
+  const path = filePath ?? (existsSync(defaultPluginEnvPath()) ? defaultPluginEnvPath() : legacyPluginEnvPath());
   try {
-    return parseEnvFile(readFileSync(filePath, "utf-8"));
+    return parseEnvFile(readFileSync(path, "utf-8"));
   } catch {
     return {};
   }
@@ -54,8 +60,15 @@ export function resolveEnvValue(
   key: string,
   ...aliases: string[]
 ): string | undefined {
-  if (process.env[key] !== undefined) return process.env[key];
-  if (fileEnv[key] !== undefined) return fileEnv[key];
+  const canonicalKey = key.replace(/^AGENT_TRACKER_/, "RUNMARK_");
+  const keys = canonicalKey.startsWith("RUNMARK_")
+    ? [canonicalKey, canonicalKey.replace(/^RUNMARK_/, "AGENT_TRACKER_")]
+    : [key];
+  for (const source of [process.env, fileEnv]) {
+    for (const name of keys) {
+      if (source[name] !== undefined) return source[name];
+    }
+  }
   for (const alias of aliases) {
     if (fileEnv[alias] !== undefined) return fileEnv[alias];
   }

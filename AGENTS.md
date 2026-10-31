@@ -39,7 +39,7 @@ agent-tracker/
 ├── AGENTS.md                 # 本文件
 ├── README.md                 # 用户向快速入门
 ├── skills/                   # Agent 查询 / 部署 / 客户端 Skills
-│   ├── agent-tracker-api/    # curl + OpenAPI：拉 session 上下文、时间段统计
+│   ├── runmark/              # curl + OpenAPI：历史全文搜索、原文取证、时间段统计
 │   ├── agent-tracker-setup/  # 服务端部署
 │   └── agent-tracker-clients/# 本机客户端新装与更新（优先 npx @runmarks/runmark）
 ├── .cursor/skills/           # 项目级 Cursor Skills
@@ -139,37 +139,39 @@ cd packages/plugin-grok && bash install.sh
 
 | 变量 | 默认 | 说明 |
 |------|------|------|
-| `AGENT_TRACKER_PORT` | `3456` | 端口 |
-| `AGENT_TRACKER_API_KEY` | `dev-key-change-me` | ingest / 写 pricing 鉴权 |
-| `AGENT_TRACKER_DB_PATH` | `data/agent-tracker.db` | SQLite 路径 |
-| `AGENT_TRACKER_PUBLIC_DASHBOARD` | `false` | 为 `true` 时 Dashboard 免登录（仅本地开发） |
-| `AGENT_TRACKER_DEBUG` | `false` | 文件日志开关 |
-| `AGENT_TRACKER_LOG_FILE` | `data/agent-tracker.log` | 服务日志 |
+| `RUNMARK_PORT` | `3456` | 端口 |
+| `RUNMARK_API_KEY` | `dev-key-change-me` | ingest / 写 pricing 鉴权 |
+| `RUNMARK_DB_PATH` | `data/agent-tracker.db` | SQLite 路径 |
+| `RUNMARK_PUBLIC_DASHBOARD` | `false` | 为 `true` 时 Dashboard 免登录（仅本地开发） |
+| `RUNMARK_DEBUG` | `false` | 文件日志开关 |
+| `RUNMARK_LOG_FILE` | `data/runmark.log` | 服务日志 |
 
-### Plugin（`~/.config/agent-tracker/env`，启动时自动读取）
+### Plugin（`~/.config/runmark/env`，启动时自动读取）
 
 | 键名 | 默认 | 说明 |
 |------|------|------|
-| `endpoint` | `http://localhost:3456` | 上报地址（兼容 `AGENT_TRACKER_ENDPOINT`） |
-| `apiKey` | `dev-key-change-me` | 访问密码（兼容 `AGENT_TRACKER_API_KEY`） |
-| `debug` | `false` | 文件日志开关 |
-| `logFile` | `~/.config/agent-tracker/plugin.log` | 插件日志 |
+| `endpoint` | `http://localhost:3456` | 上报地址（对应 `RUNMARK_ENDPOINT`） |
+| `apiKey` | `dev-key-change-me` | 访问密码（对应 `RUNMARK_API_KEY`） |
+| `debug` | `false` | 文件日志（排查时开启） |
+| `logFile` | `~/.config/runmark/plugin.log` | 插件日志 |
 | `includeMessages` | `true` | 是否上报消息正文 |
 | `includeToolOutput` | `true` | 是否上报 tool 输出 |
 
-进程环境变量若已设置，优先于配置文件。无需修改 `~/.zshrc`。
+进程环境变量优先于配置文件；同一来源内 `RUNMARK_*` 优先于旧前缀 `AGENT_TRACKER_*`。仅在新文件不存在时兼容读取 `~/.config/agent-tracker/env`，不混合两份文件。新配置统一写入 Runmark 路径，旧文件只读兼容。无需修改 `~/.zshrc`。
 
 ### OpenCode 插件注册
 
-`npx @runmarks/runmark --clients opencode` 会 **patch**（非覆写）`~/.config/opencode/opencode.jsonc` 的 `plugin` 数组；已有注释、其它插件、顶层字段与 symlink 必须保留。
+`npx @runmarks/runmark --clients opencode` 会 **patch**（非覆写）`~/.config/opencode/opencode.jsonc` 的 `plugins` 数组（兼容已有 `plugin`）；旧包名自动迁移并去重，已有注释、其它插件、顶层字段与 symlink 必须保留。
 
 `opencode.jsonc` 示例：
 
 ```jsonc
-"plugin": ["@runmarks/opencode-plugin"]
+"plugins": ["@runmarks/opencode-plugin"]
 ```
 
-改 `src/index.ts` 后必须 rebuild `dist/index.js` 并重启 OpenCode。
+Runmark Skill 唯一源在 `skills/runmark/`。OpenCode 插件构建和 `prepack` 将整个目录复制到 `dist/skills/runmark/`，从 `SKILL.md` frontmatter 生成注册元数据；V2 用 `skill.transform` 注册，V1 用配置 hook 添加技能路径。更新插件即可更新技能，修改定义只编辑源目录。
+
+改插件源码或 Skill 后重新构建；OpenCode V2 更新配置后自动重载，必要时使用 `/reload`。
 
 ### Codex 插件注册
 
@@ -263,7 +265,7 @@ cd packages/plugin-grok && bun run build && bash install.sh
 - **兜底**：`message.part.updated` 的 `step-finish` 也可产生 turn
 - **垃圾过滤**：Dashboard 侧 `isGarbageMessage()` 过滤历史元数据 JSON
 - **上报**：关键事件后 `flush()`；`session.idle` 时也会 flush
-- **配置**：启动时自动读取 `~/.config/agent-tracker/env`（`process.env` 优先），无需 shell 注入
+- **配置**：启动时自动读取 `~/.config/runmark/env`（`process.env` 优先），无需 shell 注入
 
 ### Cost
 
@@ -370,8 +372,8 @@ bun test
 ## 调试清单
 
 1. Server 是否运行：`curl localhost:3456/health`
-2. 插件日志：`~/.config/agent-tracker/plugin.log`
-3. Server 日志：`packages/server/data/agent-tracker.log`
+2. 插件日志：`~/.config/runmark/plugin.log`
+3. Server 日志：`packages/server/data/runmark.log`
 4. DB：`sqlite3 packages/server/data/agent-tracker.db`
 5. 插件是否 rebuild + OpenCode 是否重启
 6. Dashboard 硬刷新（单 HTML 无构建，改完即生效）
@@ -388,7 +390,7 @@ bun test
 | Skill | 路径 | 何时用 |
 |-------|------|--------|
 | **eficy-shadcn** | `.cursor/skills/eficy-shadcn/SKILL.md` | 改 `public/index.html`、新建 Eficy 单页 UI |
-| **agent-tracker-api** | `skills/agent-tracker-api/SKILL.md` | curl 拉 session 上下文、时间段统计、Agent 遥测分析 |
+| **runmark** | `skills/runmark/SKILL.md` | 搜索历史配置/命令并核对原文、查询会话与事项、统计用量；API 合约覆盖检查见 Skill |
 | **agent-tracker-setup** | `skills/agent-tracker-setup/SKILL.md` | 服务端部署、health 验证、交付 Dashboard |
 | **agent-tracker-clients** | `skills/agent-tracker-clients/SKILL.md` | 本机安装 / 更新；优先 `npx @runmarks/runmark --clients …` |
 

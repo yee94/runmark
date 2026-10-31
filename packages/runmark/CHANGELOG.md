@@ -1,5 +1,12 @@
 # @runmarks/runmark
 
+## 0.1.10
+
+### Patch Changes
+
+- Installers write `~/.config/runmark/env` with `RUNMARK_ENDPOINT` / `RUNMARK_API_KEY`, never create a default config that shadows existing legacy credentials, and fall back to the old path read-only.
+- OpenCode: migrate the legacy plugin entry, de-duplicate, and keep JSONC comments, plugin options, other settings, and symlinks. The plugin ships the `runmark` Skill.
+
 ## 0.1.8
 
 ### Patch Changes

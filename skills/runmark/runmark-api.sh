@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Runmark API — 静默加载鉴权、提供简洁 curl 包装
-# 用法（Agent / 终端）: source skills/agent-tracker-api/runmark-api.sh
+# 用法（Agent / 终端）: source <skill目录>/runmark-api.sh
 # 之后直接调用: runmark_get /v1/sessions?limit=10 | jq .
 #               runmark_post /v1/cursor/sync -d '{}'
 #
@@ -51,18 +51,22 @@ _runmark_init() {
   _runmark_ensure_path
 
   # 静默加载 env 文件（如果已通过 shell 环境设置则跳过）
-  local env_file="${HOME}/.config/agent-tracker/env"
-  if [[ -z "${AGENT_TRACKER_ENDPOINT:-}" ]] && [[ -f "$env_file" ]]; then
-    set -a
+  local env_file="${HOME}/.config/runmark/env"
+  local saved_endpoint="${RUNMARK_ENDPOINT-${AGENT_TRACKER_ENDPOINT-}}" saved_key="${RUNMARK_API_KEY-${AGENT_TRACKER_API_KEY-}}"
+  local has_endpoint="${RUNMARK_ENDPOINT+x}${AGENT_TRACKER_ENDPOINT+x}" has_key="${RUNMARK_API_KEY+x}${AGENT_TRACKER_API_KEY+x}"
+  if [[ ! -e "$env_file" ]]; then env_file="${HOME}/.config/agent-tracker/env"; fi
+  if [[ -f "$env_file" ]]; then
     # shellcheck source=/dev/null
     source "$env_file"
-    set +a
   fi
 
   _RM_CURL="$(_runmark_resolve_bin RUNMARK_CURL curl /usr/bin/curl)" || return 1
   _RM_JQ="$(_runmark_resolve_bin RUNMARK_JQ jq /usr/bin/jq)" || return 1
-  _RM_ENDPOINT="${AGENT_TRACKER_ENDPOINT:-http://localhost:3456}"
-  _RM_API_KEY="${AGENT_TRACKER_API_KEY:-}"
+  _RM_ENDPOINT="${RUNMARK_ENDPOINT-${AGENT_TRACKER_ENDPOINT-${endpoint-http://localhost:3456}}}"
+  _RM_API_KEY="${RUNMARK_API_KEY-${AGENT_TRACKER_API_KEY-${apiKey-${api_key-}}}}"
+  if [[ -n "$has_endpoint" ]]; then _RM_ENDPOINT="$saved_endpoint"; fi
+  if [[ -n "$has_key" ]]; then _RM_API_KEY="$saved_key"; fi
+  _RM_ENDPOINT="${_RM_ENDPOINT%/}"
 }
 
 # 核心 curl 封装
@@ -75,13 +79,15 @@ _runmark_req() {
   if [[ -n "${_RM_API_KEY:-}" ]]; then
     auth_args=(-H "X-API-Key: ${_RM_API_KEY}")
   fi
-  "$_RM_CURL" -sS "${auth_args[@]}" -X "$method" "${_RM_ENDPOINT}${path}" "$@"
+  "$_RM_CURL" --fail-with-body -sS "${auth_args[@]}" -X "$method" "${_RM_ENDPOINT}${path}" "$@"
 }
 
 # 公开 API：GET / POST / PUT / DELETE
 runmark_get()  { _runmark_req GET "$@"; }
 runmark_post() { _runmark_req POST "$@"; }
 runmark_put()  { _runmark_req PUT "$@"; }
+runmark_patch() { _runmark_req PATCH "$@"; }
+runmark_patch() { _runmark_req PATCH "$@"; }
 runmark_delete() { _runmark_req DELETE "$@"; }
 
 # 健康检查快捷方式

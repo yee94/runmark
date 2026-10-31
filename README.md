@@ -26,6 +26,7 @@
 - 🔗 **Open API & SDK** — Standard ingest and query APIs let you plug Runmark into any agent or automation workflow.
 - 📊 **Usage & cost insight** — Aggregates tokens, cost, model, and client distribution over today / this week / this month windows, so you always know where the money goes.
 - 📋 **Matter archive** — Persists work outcomes and handoff-able items across sessions. Focus on "what was done" instead of scrolling through sessions.
+- 🧠 **Layered memory** — Keep preferences and decisions per global / project scope, shared across machines, with optional named-Agent memories. A short index for discovery, details read on demand; see [Memory](docs/memory.md).
 - 🔍 **Call-chain tracing** — A dense trace view that walks back through the messages, reasoning turns, and tool calls of a single conversation.
 - 💰 **Cursor billing sync** — Integrates the Cursor Usage API and reconciles it against local telemetry for an official billing perspective.
 - 🤖 **Configurable agents** — Custom triggers (throttle on new conversations, scheduled CRON) run background jobs like summary and archiving automatically.
@@ -159,7 +160,7 @@ Server:
 
 Strictly follow skills/agent-tracker-clients/SKILL.md in this repo:
 1. List the available clients (Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build) and let me pick; do not default to all
-2. Write or verify ~/.config/agent-tracker/env (endpoint + apiKey)
+2. Write or verify ~/.config/runmark/env (RUNMARK_ENDPOINT + RUNMARK_API_KEY)
 3. Install via the unified entry: npx @runmarks/runmark --clients <my selection>
 4. Tell me which clients need a restart and how to verify on the Dashboard
 ```
@@ -171,10 +172,10 @@ Skill: [skills/agent-tracker-clients/SKILL.md](skills/agent-tracker-clients/SKIL
 1. Write the unified config (required for new installs; if the file exists, verify — don't blindly overwrite):
 
 ```bash
-mkdir -p ~/.config/agent-tracker
-cat > ~/.config/agent-tracker/env << 'EOF'
-export AGENT_TRACKER_ENDPOINT="http://<server-address>:3456"
-export AGENT_TRACKER_API_KEY="<server API key>"
+mkdir -p ~/.config/runmark
+cat > ~/.config/runmark/env << 'EOF'
+export RUNMARK_ENDPOINT="http://<server-address>:3456"
+export RUNMARK_API_KEY="<server API key>"
 EOF
 ```
 

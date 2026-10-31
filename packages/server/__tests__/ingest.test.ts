@@ -594,4 +594,39 @@ describe("ingestService", () => {
     const session = db.query("SELECT model FROM sessions WHERE id = $id").get({ $id: "multi-model-1" }) as any;
     expect(session.model).toBe("glm-5-1, deepseek-v4-pro");
   });
+
+  it("does not append placeholder unknown into sessions.model", () => {
+    const now = new Date().toISOString();
+    const events: IngestEvent[] = [
+      {
+        type: "session.created",
+        session_id: "placeholder-model-1",
+        agent: "opencode",
+        model: "deepseek-v4.1-flash",
+      },
+      {
+        type: "session.updated",
+        session_id: "placeholder-model-1",
+        agent: "opencode",
+        model: "unknown",
+      },
+      {
+        type: "turn.completed",
+        session_id: "placeholder-model-1",
+        turn_id: "t-ph-1",
+        model: "unknown",
+        provider: "unknown",
+        input_tokens: 1,
+        output_tokens: 1,
+        total_tokens: 2,
+        duration_ms: 1,
+        created_at: now,
+      },
+    ];
+
+    ingestService.ingestBatch(db, events);
+
+    const session = db.query("SELECT model FROM sessions WHERE id = $id").get({ $id: "placeholder-model-1" }) as any;
+    expect(session.model).toBe("deepseek-v4.1-flash");
+  });
 });

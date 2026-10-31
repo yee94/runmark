@@ -83,13 +83,13 @@ bash install.sh --uninstall
 
 ## 配置
 
-与其它客户端共用 `~/.config/agent-tracker/env`：
+与其它客户端共用 `~/.config/runmark/env`：
 
 ```bash
-AGENT_TRACKER_ENDPOINT="http://localhost:3456"
-AGENT_TRACKER_API_KEY="dev-key-change-me"
+RUNMARK_ENDPOINT="http://localhost:3456"
+RUNMARK_API_KEY="dev-key-change-me"
 # 可选
-AGENT_TRACKER_DEBUG=true
+RUNMARK_DEBUG=true
 ```
 
 ## 验证
@@ -107,7 +107,7 @@ echo '{"sessionId":"test","hookEventName":"UserPromptSubmit","prompt":"hi","cwd"
 
 ## 常见问题
 
-- **没有 token / cost**：确认 `Stop` 后 `~/.grok/sessions/.../updates.jsonl` 含 `usage`；开启 `AGENT_TRACKER_DEBUG=true` 看 `~/.config/agent-tracker/plugin.log`。
+- **没有 token / cost**：确认 `Stop` 后 `~/.grok/sessions/.../updates.jsonl` 含 `usage`；开启 `RUNMARK_DEBUG=true` 看 `~/.config/runmark/plugin.log`。
 - **与 Orca 冲突**：不会。各自 JSON 文件并存（`runmark-tracker.json` vs `orca-status.json`）。
-- **ingest 401**：对齐 `apiKey` 与服务端 `AGENT_TRACKER_API_KEY`。
+- **ingest 401**：对齐 `RUNMARK_API_KEY` 与服务端 `RUNMARK_API_KEY`。
 - **Dashboard 看不到**：会话页筛选 `agent=grok`。

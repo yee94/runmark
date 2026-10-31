@@ -9,11 +9,11 @@ afterEach(() => {
 
 describe("buildLlmAuthHeaders", () => {
   it("sends Bearer only when no host markers match", () => {
-    expect(buildLlmAuthHeaders("ttsw-test", "http://127.0.0.1:15721/tencent/v1/chat/completions")).toEqual({
+    expect(buildLlmAuthHeaders("ttsw-test", "http://127.0.0.1:15721/proxy/v1/chat/completions")).toEqual({
       "Content-Type": "application/json",
       Authorization: "Bearer ttsw-test",
     });
-    expect(shouldSendXApiKey("http://127.0.0.1:15721/tencent/v1/chat/completions")).toBe(false);
+    expect(shouldSendXApiKey("http://127.0.0.1:15721/proxy/v1/chat/completions")).toBe(false);
   });
 
   it("adds X-API-Key when base URL matches AGENT_TRACKER_LLM_X_API_KEY_HOST_MARKERS", () => {

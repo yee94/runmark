@@ -86,7 +86,7 @@ paths:
   /v1/sessions:
     get:
       tags: [sessions]
-      summary: 会话列表（按 started_at 倒序）
+      summary: 会话全文搜索与列表（按最后活动时间倒序，返回根会话）
       parameters:
         - name: limit
           in: query
@@ -98,6 +98,14 @@ paths:
           in: query
           schema: { type: string }
           description: 按用户邮箱过滤
+        - name: q
+          in: query
+          schema: { type: string }
+          description: 字面子串匹配标题、AISummary、消息正文（含子会话，归到根会话）；不搜索工具参数或输出
+        - name: include_imports
+          in: query
+          schema: { type: string, enum: ['0', '1'] }
+          description: 1 包含合成导入会话；不支持 range/from/to
       responses:
         "200":
           description: Session 数组
@@ -339,6 +347,16 @@ paths:
           description: from / to 缺失配对、格式非法或起点晚于终点
 
   /v1/pricing:
+    put:
+      tags: [pricing]
+      summary: 更新模型单价（USD/百万 token），未传 context_tiers 保留旧分档
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/Pricing' }
+      responses:
+        '200': { description: 更新成功 }
     get:
       tags: [pricing]
       summary: 模型单价表
@@ -354,6 +372,7 @@ paths:
     post:
       tags: [ingest]
       summary: 批量上报事件（需 API Key）
+      description: message 事件可携带实际执行的命名 agent_key（例如 opencode/build），随原始消息保存，供专属记忆校验；缺少身份时省略，不按当前会话状态回填历史消息。
       security:
         - ApiKeyAuth: []
       requestBody:
@@ -485,20 +504,33 @@ paths:
       parameters:
         - name: limit
           in: query
-          schema: { type: integer, default: 50 }
+          schema: { type: integer, default: 30, maximum: 100 }
+        - name: offset
+          in: query
+          schema: { type: integer, default: 0 }
       responses:
         "200":
           content:
             application/json:
               schema:
-                type: array
-                items: { $ref: "#/components/schemas/AgentRun" }
+                type: object
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/AgentRun' }
+                  total: { type: integer }
+                  limit: { type: integer }
+                  offset: { type: integer }
+                  has_more: { type: boolean }
 
   /v1/matters:
     get:
       tags: [matters]
       summary: 事项归档列表
       parameters:
+        - { name: q, in: query, schema: { type: string }, description: 事项关键词搜索 }
+        - { name: limit, in: query, schema: { type: integer, default: 50 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0 } }
         - name: tab
           in: query
           schema:
@@ -868,18 +900,385 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/ShareError" }
 
+  /v1/sessions/agent-search:
+    post:
+      tags: [sessions]
+      summary: 网页 AI 会话搜索
+      parameters:
+        - $ref: '#/components/parameters/SyncRun'
+      requestBody:
+        $ref: '#/components/requestBodies/SearchQuery'
+      responses:
+        '202': { description: 已启动 Job；按返回 id 查询 /v1/agent-runs/{id} }
+        '200': { description: sync=1 的完成 Job }
+        '400': { description: query 为空或超过 500 字符 }
+        '409': { description: Agent 忙 }
+        '500': { description: 同步执行失败 }
+  /v1/matters/agent-search:
+    post:
+      tags: [matters]
+      summary: 网页 AI 事项搜索
+      parameters:
+        - $ref: '#/components/parameters/SyncRun'
+      requestBody:
+        $ref: '#/components/requestBodies/SearchQuery'
+      responses:
+        '202': { description: 已启动 Job }
+        '200': { description: sync=1 的完成 Job }
+        '400': { description: query 为空或超过 500 字符 }
+        '409': { description: Agent 忙 }
+        '500': { description: 同步执行失败 }
+  /v1/agent-runs/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [agents]
+      summary: Job 状态、结果与执行记录
+      responses:
+        '200': { description: Job 详情 }
+        '404': { description: Job 不存在 }
+  /v1/agent-runs/{id}/retry:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [agents]
+      summary: 重试失败 Job，启动新任务后删除旧任务
+      parameters:
+        - $ref: '#/components/parameters/SyncRun'
+      responses:
+        '202': { description: 新 Job }
+        '200': { description: 同步完成 }
+        '409': { description: 忙或任务并非失败状态 }
+  /v1/sessions/{id}/resummarize:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [sessions]
+      summary: 清空旧摘要并重新生成；运行中任务去重
+      parameters:
+        - $ref: '#/components/parameters/SyncRun'
+      responses:
+        '202': { description: 摘要 Job，可能含 deduplicated=true }
+        '200': { description: 同步完成 }
+        '404': { description: 会话不存在 }
+  /v1/matters/resummarize:
+    post:
+      tags: [matters]
+      summary: 从选中会话生成事项总结
+      parameters:
+        - $ref: '#/components/parameters/SyncRun'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [session_ids]
+              properties:
+                session_ids: { type: array, minItems: 1, items: { type: string } }
+                append_matters: { type: boolean }
+      responses:
+        '202': { description: 事项 Job }
+        '200': { description: 同步完成 }
+  /v1/system-config/providers/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    put:
+      tags: [system-config]
+      summary: 编辑 Provider，空 api_key 保留已有密钥
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, base_url]
+              properties:
+                name: { type: string }
+                base_url: { type: string }
+                type: { type: string, default: openai }
+                api_key: { type: string }
+      responses:
+        '200': { description: '{ok,config}' }
+  /v1/system-config/providers/{id}/test:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    post:
+      tags: [system-config]
+      summary: 使用已保存配置测试连接，可覆盖 base_url/api_key/model
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                base_url: { type: string }
+                api_key: { type: string }
+                model: { type: string }
+      responses:
+        '200': { description: '{ok,message}' }
+        '400': { description: 配置不足或连通失败 }
+  /v1/pricing/reprice:
+    post:
+      tags: [pricing]
+      summary: 按当前价格重算历史，dry_run=true 只预览
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                from: { type: string }
+                to: { type: string }
+                providers: { type: array, items: { type: string } }
+                model_contains: { type: string }
+                limit: { type: integer }
+                session_id: { type: string }
+                dry_run: { type: boolean }
+      responses:
+        '200': { description: 重算结果 }
+  /v1/system-update/check:
+    get:
+      summary: 查询远端 manifest 检查更新
+      responses:
+        '200': { description: 更新检查结果 }
+  /v1/system-update/status:
+    get:
+      summary: 查询本地更新状态
+      responses:
+        '200': { description: 持久化更新状态 }
+  /v1/system-update:
+    post:
+      summary: 触发服务更新
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [version]
+              properties:
+                version: { type: string, minLength: 1 }
+      responses:
+        '202': { description: 更新已启动，查询 status 跟踪 }
+  /v1/traces:
+    post:
+      summary: OTLP HTTP JSON traces，复用 ingest 落库
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '200': { description: partialSuccess }
+        '401': { description: API Key 无效 }
+  /v1/metrics:
+    post:
+      summary: OTLP metrics 接收后丢弃
+      responses:
+        '200': { description: partialSuccess }
+        '401': { description: API Key 无效 }
+  /v1/sessions/{id}/shares:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+    get:
+      tags: [session-shares]
+      summary: 列出会话分享
+      responses:
+        '200': { description: 分享列表 }
+    post:
+      tags: [session-shares]
+      summary: 创建限时分享，可限制类型或单节点
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [duration]
+              properties:
+                duration: { type: string, enum: [1h, 6h, 12h, 3d, 7d] }
+                types:
+                  type: array
+                  items: { type: string, enum: [user, reasoning, assistant, turn, tool, abort, error, subagent] }
+                node: { type: string }
+                child: { type: string, description: 子会话 ID，需同时指定 node }
+      responses:
+        '201': { description: '{id,token,share_url,api_url,expires_at,scope,agent_prompt}' }
+  /v1/sessions/{id}/shares/{shareId}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - { name: shareId, in: path, required: true, schema: { type: string } }
+    delete:
+      tags: [session-shares]
+      summary: 撤回分享
+      responses:
+        '200': { description: 撤回成功 }
+  /v1/public/session-shares/{credential}/trace:
+    get:
+      tags: [session-shares]
+      security: []
+      summary: 按分享 scope 返回网页调用链时间线
+      parameters:
+        - $ref: '#/components/parameters/ShareCredential'
+        - { name: limit, in: query, schema: { type: integer, default: 50, maximum: 100, minimum: 1 } }
+        - { name: offset, in: query, schema: { type: integer, default: 0, minimum: 0 } }
+      responses:
+        '200': { description: 时间线 items 和分页信息 }
+  /v1/public/session-shares/{credential}/focus:
+    get:
+      tags: [session-shares]
+      security: []
+      summary: 读取指定节点，受分享 scope 限制
+      parameters:
+        - $ref: '#/components/parameters/ShareCredential'
+        - { name: node, in: query, required: true, schema: { type: string }, description: trace 返回的节点 key }
+        - { name: child, in: query, schema: { type: string }, description: 子会话 ID }
+      responses:
+        '200': { description: '{child,node,item}' }
+        '404': { description: 节点不存在或不在分享范围 }
+
+  /v1/memories/scopes:
+    get:
+      summary: 分层记忆空间目录，复用全站访问策略
+      responses:
+        '200': { description: 'items 含 id、label、context、scope、agent_key、active_count、forgotten_count；context 可直接用于 scoped 查询。包含空共享全局、可识别项目及已存 Agent 专属空间，跨机器共享。' }
+        '401': { description: 私有 Dashboard 未登录 }
+  /v1/memories/projects:
+    get:
+      summary: 项目记忆目录及有效/已遗忘计数，复用全站登录与公开访问策略
+      responses:
+        '200': { description: 'items 数组：id、label、context（用于列表和详情查询）、active_count、forgotten_count；包含来源会话已移除但仍有记忆的项目' }
+        '401': { description: 私有 Dashboard 未登录 }
+  /v1/memories/index:
+    get:
+      summary: 记忆短索引；view=effective 合并当前适用层，总计最多 200 条与 25000 字符
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - $ref: '#/components/parameters/MemorySession'
+        - $ref: '#/components/parameters/MemoryRepo'
+        - $ref: '#/components/parameters/MemoryHost'
+        - $ref: '#/components/parameters/MemoryDirectory'
+        - $ref: '#/components/parameters/MemoryProject'
+        - $ref: '#/components/parameters/MemoryScope'
+        - $ref: '#/components/parameters/MemoryAgent'
+        - $ref: '#/components/parameters/MemoryView'
+      responses:
+        '200': { description: 'markdown 短索引、namespaces、precedence、version、has_more、next_cursor 与 next_url；索引条目标注实际 scope/agent_key' }
+  /v1/memories:
+    parameters:
+      - $ref: '#/components/parameters/MemorySession'
+      - $ref: '#/components/parameters/MemoryRepo'
+      - $ref: '#/components/parameters/MemoryHost'
+      - $ref: '#/components/parameters/MemoryDirectory'
+      - $ref: '#/components/parameters/MemoryProject'
+      - $ref: '#/components/parameters/MemoryScope'
+      - $ref: '#/components/parameters/MemoryAgent'
+      - $ref: '#/components/parameters/MemoryView'
+    get:
+      summary: 搜索指定空间或 effective 记忆，游标分页
+      security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - { name: query, in: query, schema: { type: string } }
+        - { name: type, in: query, schema: { type: string, enum: [user, feedback, project, reference] }, description: 内容类型过滤，在分页前执行，与 scope 独立 }
+        - { name: status, in: query, schema: { type: string, enum: [active, forgotten], default: active }, description: 仅明确恢复时查询 forgotten 元数据，不能读取旧正文 }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: 'items 元数据（含 scope/agent_key）与 namespaces、has_more、next_cursor，不返回正文' }
+    post:
+      summary: 在精确范围创建记忆；scope 与定位也可放请求体
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        $ref: '#/components/requestBodies/MemoryWrite'
+      responses:
+        '201': { description: 新记忆 }
+        '200': { description: operation_id 幂等重放 }
+        '409': { description: 操作 ID 冲突 }
+  /v1/memories/{id}:
+    parameters:
+      - $ref: '#/components/parameters/Id'
+      - $ref: '#/components/parameters/MemorySession'
+      - $ref: '#/components/parameters/MemoryRepo'
+      - $ref: '#/components/parameters/MemoryHost'
+      - $ref: '#/components/parameters/MemoryDirectory'
+      - $ref: '#/components/parameters/MemoryProject'
+      - $ref: '#/components/parameters/MemoryScope'
+      - $ref: '#/components/parameters/MemoryAgent'
+      - $ref: '#/components/parameters/MemoryView'
+    get:
+      summary: 读取记忆详情、revision 与来源
+      security: [{ ApiKeyAuth: [] }]
+      responses:
+        '200': { description: 记忆详情 }
+        '404': { description: 未找到当前适用范围的记忆 }
+        '410': { description: 已遗忘 }
+    patch:
+      summary: 更新记忆，需要 expected_revision 乐观锁
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        $ref: '#/components/requestBodies/MemoryWrite'
+      responses:
+        '200': { description: 更新结果 }
+        '409': { description: revision 或 operation_id 冲突 }
+    delete:
+      summary: 遗忘记忆，需要 JSON 请求体与 expected_revision
+      security: [{ ApiKeyAuth: [] }]
+      requestBody:
+        $ref: '#/components/requestBodies/MemoryWrite'
+      responses:
+        '200': { description: 遗忘结果 }
+        '409': { description: revision 或 operation_id 冲突 }
+
 components:
-  parameters:
-    StatsFrom:
-      name: from
-      in: query
-      description: 带时区 ISO 8601 起点（包含）；与 to 成对传入，优先于 range；custom 必填。省略时预设按北京时间（UTC+8）日历计算。
-      schema: { type: string, format: date-time }
-    StatsTo:
-      name: to
-      in: query
-      description: 带时区 ISO 8601 终点（包含）；必须不早于 from。非法或缺失配对边界返回 400。
-      schema: { type: string, format: date-time }
+  requestBodies:
+    MemoryWrite:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [operation_id, source]
+            description: 创建时还需 name/description/type/body；更新与遗忘需 expected_revision。scope 默认 project，agent_key 默认共享；写入不接受 effective。来源必须匹配目标范围，命名 Agent 必须匹配原始消息 agent_key。定位同 query，scope/agent_key 参数冲突时拒绝。
+            properties:
+              session_id: { type: string }
+              repo_url: { type: string }
+              hostname: { type: string }
+              directory: { type: string }
+              operation_id: { type: string, maxLength: 200 }
+              scope: { type: string, enum: [global, project], default: project }
+              agent_key: { type: string, description: 为空表示共享，非空为真实命名 Agent，例如 opencode/build }
+              source:
+                type: object
+                required: [session_id, message_id]
+                properties:
+                  session_id: { type: string }
+                  message_id: { type: string }
+                  job_id: { type: string }
+                  explicit: { type: boolean }
+                  assessment:
+                    type: object
+                    description: 自动提取依据，读取详情 sources 同样返回；旧记录为空。quote 必须匹配来源消息原文。
+                    required: [quote, retention_reason, scope_reason]
+                    properties:
+                      quote: { type: string, maxLength: 2000 }
+                      retention_reason: { type: string, maxLength: 2000 }
+                      scope_reason: { type: string, maxLength: 2000 }
+              name: { type: string }
+              description: { type: string }
+              type: { type: string, enum: [user, feedback, project, reference] }
+              body: { type: string }
+              expected_revision: { type: integer }
+              restore: { type: boolean }
+    SearchQuery:
+      required: true
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [query]
+            properties:
+              query: { type: string, minLength: 1, maxLength: 500 }
   securitySchemes:
     ApiKeyAuth:
       type: apiKey
@@ -887,6 +1286,63 @@ components:
       name: X-API-Key
 
   parameters:
+    MemoryScope:
+      name: scope
+      in: query
+      description: 适用范围，默认 project，须有仓库身份；global 无需项目身份。所有记忆跨机器共享
+      schema: { type: string, enum: [global, project], default: project }
+    MemoryAgent:
+      name: agent_key
+      in: query
+      description: 命名 Agent 独立维度，空值为共享，例如 opencode/build；不是客户端产品名
+      schema: { type: string }
+    MemoryView:
+      name: view
+      in: query
+      description: 仅用于读取；scoped 为单空间，effective 合并通用及当前命名 Agent 的适用 global/project，缺失仓库身份时仅全局。projects 用于管理页跨项目浏览，仅查询指定 agent_key（默认通用）的项目记录，支持分页与类型/搜索过滤，不接受具体项目定位。写入须使用精确 scope。
+      schema: { type: string, enum: [scoped, effective, projects], default: scoped }
+    MemoryProject:
+      name: project_id
+      in: query
+      description: 通用项目空间的已有项目 ID；优先使用 session_id，尤其适用于来源会话已移除的旧项目。Agent 空间请直接使用 scopes 返回的 context。
+      schema: { type: string }
+    MemorySession:
+      name: session_id
+      in: query
+      description: 用真实会话定位仓库；或使用 repo_url，无仓库身份时使用 global
+      schema: { type: string }
+    MemoryRepo:
+      name: repo_url
+      in: query
+      schema: { type: string }
+    MemoryHost:
+      name: hostname
+      in: query
+      schema: { type: string }
+    MemoryDirectory:
+      name: directory
+      in: query
+      schema: { type: string }
+    Id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    SyncRun:
+      name: sync
+      in: query
+      schema: { type: string, enum: ['1', 'true'] }
+      description: 同步执行；省略时异步返回 202 Job
+    StatsFrom:
+      name: from
+      in: query
+      description: 带时区 ISO 8601 起点（包含）；与 to 成对传入，优先于 range；custom 必填。预设按北京时间计算。
+      schema: { type: string, format: date-time }
+    StatsTo:
+      name: to
+      in: query
+      description: 带时区 ISO 8601 终点（包含）；必须不早于 from。非法或缺失配对边界返回 400。
+      schema: { type: string, format: date-time }
     ShareCredential:
       name: credential
       in: path
@@ -941,6 +1397,7 @@ components:
         id: { type: string }
         session_id: { type: string }
         role: { type: string, enum: [user, assistant, system, tool] }
+        agent_key: { type: string, nullable: true, description: 消息实际所属命名 Agent，未知时为空 }
         content: { type: string }
         model: { type: string }
         provider: { type: string }
@@ -1143,6 +1600,19 @@ components:
         cache_read_price: { type: number }
         cache_write_price: { type: number }
         reasoning_price: { type: number }
+        context_tiers:
+          type: array
+          description: 长上下文阶梯价格；[] 清空，PUT 省略时保留
+          items:
+            type: object
+            required: [above, input_price, output_price]
+            properties:
+              above: { type: number, minimum: 0 }
+              input_price: { type: number, minimum: 0 }
+              output_price: { type: number, minimum: 0 }
+              cache_read_price: { type: number, minimum: 0 }
+              cache_write_price: { type: number, minimum: 0 }
+              reasoning_price: { type: number, minimum: 0 }
 
     ShareError:
       type: object

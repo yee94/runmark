@@ -16,6 +16,8 @@ npx @runmarks/runmark
 | Claude Code / CodeBuddy / WorkBuddy | `@runmarks/claude-compat-plugin`（`runmark-tracker@runmark`） |
 | Grok Build | `@runmarks/grok-plugin`（`~/.grok/hooks/runmark-tracker.json`） |
 
+OpenCode 插件自动注册随包附带的 `runmark` Skill，包含查询脚本、参考文档和 OpenAPI。Skill 从仓库唯一的 `skills/runmark/` 源目录打包，随插件版本更新。
+
 ## 用法
 
 ```bash
@@ -41,13 +43,18 @@ npx -p @runmarks/runmark runmark
 # 或：bunx @runmarks/runmark
 ```
 
-安装前请配置 `~/.config/agent-tracker/env`（`AGENT_TRACKER_ENDPOINT` / `AGENT_TRACKER_API_KEY`）。
+安装前请配置 `~/.config/runmark/env`（`RUNMARK_ENDPOINT` / `RUNMARK_API_KEY`）。新文件优先，缺失时只读兼容旧配置；同一来源内新变量名优先于旧前缀。
+
+## 前置条件
+
+- **Bun ≥ 1.1 或 Node ≥ 18**：Claude / CodeBuddy / WorkBuddy / Codex / Grok 的 hook 启动器会优先 bun，缺失时回退 node；两者都没有则安装期报错，运行期 fail-open 并写入 `~/.config/runmark/plugin.log`。
+- 服务端已可用：`curl "$ENDPOINT/health"` 返回 ok。
 
 ## 写配置原则（重要）
 
 宿主配置（尤其是 `~/.config/opencode/opencode.jsonc`）**必须 patch，禁止整文件覆写**：
 
-- 已有文件：只改 `plugin` 数组里的 agent-tracker 条目（或追加该字段）
+- 已有文件：迁移 `plugins` / `plugin` 数组里的 Runmark 新旧包名并去重；缺少时追加 `plugins`
 - 保留注释、其它插件、其它顶层字段、以及 Mackup 等 symlink
 - 仅当配置文件不存在时，才创建最小骨架
 

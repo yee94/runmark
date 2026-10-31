@@ -5,6 +5,22 @@ import { createOpenCode2TrackerState, mapOpenCode2Event } from "../src/opencode2
 const options = { includeMessageContent: true, includeToolOutput: true, now: 1_700_000_000_000 };
 
 describe("mapOpenCode2Event", () => {
+  it("binds only delivered prompts to their executing step across Agent switches", () => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "same", ...data } }, options);
+    for (const id of ["first", "queued"]) event("session.inbox.enqueued", { inboxID: id, item: { type: "user", payload: { text: id } } });
+    event("session.inbox.delivered", { inboxID: "first" });
+    expect(event("session.step.started", { agent: "build", assistantMessageID: "answer" })).toMatchObject([{ message_id: "first", agent_key: "opencode/build" }]);
+    event("session.agent.selected", { agent: "plan" });
+    event("session.text.ended", { assistantMessageID: "answer", text: "built" });
+    expect(event("session.step.ended", { assistantMessageID: "answer" }).find(item => item.type === "message")).toMatchObject({ agent_key: "opencode/build" });
+    event("session.inbox.delivered", { inboxID: "queued" });
+    expect(event("session.step.started", { agent: "plan", assistantMessageID: "plan-answer" })).toMatchObject([{ message_id: "queued", agent_key: "opencode/plan" }]);
+    expect(event("session.step.started", { agent: "build", assistantMessageID: "next" })).toEqual([]);
+    event("session.inbox.enqueued", { inboxID: "unknown", item: { type: "user", payload: { text: "unknown" } } });
+    event("session.inbox.delivered", { inboxID: "unknown" });
+    expect((event("session.step.started", { assistantMessageID: "unknown-answer" })[0] as any).agent_key).toBeUndefined();
+  });
   it("reports every billable model step, including tool-call continuations", () => {
     const state = createOpenCode2TrackerState();
     const events = [];
@@ -41,13 +57,15 @@ describe("mapOpenCode2Event", () => {
       type: "session.inbox.enqueued",
       data: { sessionID: "ses_1", inboxID: "in_1", item: { type: "user", payload: { text: "hello" } } },
     }, options);
-    expect(user[0]).toMatchObject({ type: "message", role: "user", content: "hello", message_id: "in_1" });
+    expect(user).toEqual([]);
+    mapOpenCode2Event(state, { type: "session.inbox.delivered", data: { sessionID: "ses_1", inboxID: "in_1" } }, options);
 
-    mapOpenCode2Event(state, {
+    const delivered = mapOpenCode2Event(state, {
       type: "session.step.started",
       created: options.now,
-      data: { sessionID: "ses_1", assistantMessageID: "msg_1", model: { id: "grok-4.7", providerID: "xai" } },
+      data: { sessionID: "ses_1", agent: "build", assistantMessageID: "msg_1", model: { id: "grok-4.7", providerID: "xai" } },
     }, options);
+    expect(delivered[0]).toMatchObject({ type: "message", role: "user", content: "hello", message_id: "in_1", agent_key: "opencode/build" });
     mapOpenCode2Event(state, {
       type: "session.text.ended",
       data: { sessionID: "ses_1", assistantMessageID: "msg_1", ordinal: 0, text: "done" },
@@ -73,7 +91,43 @@ describe("mapOpenCode2Event", () => {
       total_tokens: 8,
       cost_usd: 0.01,
     });
-    expect(step[1]).toMatchObject({ role: "assistant", content: "done" });
+    expect(step[1]).toMatchObject({ role: "assistant", content: "done", agent_key: "opencode/build" });
+  });
+
+  it("does not record placeholder unknown when a step has no model", () => {
+    const state = createOpenCode2TrackerState();
+    mapOpenCode2Event(state, {
+      type: "session.step.started",
+      created: options.now,
+      data: { sessionID: "ses_missing", assistantMessageID: "msg_missing" },
+    }, options);
+    const step = mapOpenCode2Event(state, {
+      type: "session.step.ended",
+      created: options.now + 20,
+      data: {
+        sessionID: "ses_missing",
+        assistantMessageID: "msg_missing",
+        finish: "stop",
+        tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } },
+      },
+    }, { ...options, now: options.now + 20 });
+    expect(step[0]).toMatchObject({ type: "turn.completed", model: "unknown" });
+
+    const usage = mapOpenCode2Event(state, {
+      type: "session.usage.updated",
+      data: { sessionID: "ses_missing", cost: 0.1, tokens: { input: 1, output: 1, reasoning: 0, cache: { read: 0, write: 0 } } },
+    }, options);
+    expect(usage[0]).toMatchObject({ type: "session.updated" });
+    expect((usage[0] as { model?: string }).model).toBeUndefined();
+  });
+
+  it("reads modelID when OpenCode sends the legacy model shape", () => {
+    const state = createOpenCode2TrackerState();
+    const selected = mapOpenCode2Event(state, {
+      type: "session.model.selected",
+      data: { sessionID: "ses_legacy", model: { modelID: "deepseek-v4.1-flash", providerID: "magpie-workbuddy" } },
+    }, options);
+    expect(selected[0]).toMatchObject({ model: "deepseek-v4.1-flash", provider: "magpie-workbuddy" });
   });
 
   it("skips hidden sessions and noisy tools", () => {

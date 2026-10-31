@@ -8,24 +8,43 @@
  * as JSON to our own server instead of via OTLP/protobuf.
  */
 import { FileLogger, TrackerClient, buildIngestErrorToastMessage, defaultPluginLogPath, loadEnvFile, resolveEnvValue, shouldSkipTool, forkSourceTitle, isForkReplayTurn, isForkSessionTitle, isHiddenSessionTitle, } from "@agent-tracker/shared";
+import { bundledSkillsDirectory } from "./skill";
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
+/**
+ * 读取 opencode.jsonc 中以对象形式声明的插件 options；字符串条目没有 options。
+ * memoryEnabled 兼容布尔与字符串写法，type 不合法时忽略并回落到 env 配置。
+ */
+export function resolvePluginOptions(options) {
+    if (!options || typeof options !== "object" || Array.isArray(options))
+        return {};
+    const value = options.memoryEnabled;
+    if (typeof value === "boolean")
+        return { memoryEnabled: value };
+    if (value === "true")
+        return { memoryEnabled: true };
+    if (value === "false")
+        return { memoryEnabled: false };
+    return {};
+}
 /** 加载插件配置；fileEnvPath 仅用于测试，默认 ~/.config/agent-tracker/env */
-export function loadPluginConfig(fileEnvPath) {
+export function loadPluginConfig(fileEnvPath, options) {
     const fileEnv = loadEnvFile(fileEnvPath);
     const env = (key, ...aliases) => resolveEnvValue(fileEnv, key, ...aliases);
+    const pluginOptions = resolvePluginOptions(options);
     return {
-        endpoint: env("AGENT_TRACKER_ENDPOINT", "endpoint") ?? "http://localhost:3456",
-        apiKey: env("AGENT_TRACKER_API_KEY", "apiKey", "api_key") ?? "dev-key-change-me",
-        includeMessageContent: (env("AGENT_TRACKER_INCLUDE_MESSAGES", "includeMessages") ?? "true") === "true",
-        includeToolOutput: (env("AGENT_TRACKER_INCLUDE_TOOL_OUTPUT", "includeToolOutput") ?? "true") === "true",
-        debug: (env("AGENT_TRACKER_DEBUG", "debug") ?? "false") === "true",
-        logFile: env("AGENT_TRACKER_LOG_FILE", "logFile", "log_file") ?? defaultPluginLogPath(),
+        memoryEnabled: pluginOptions.memoryEnabled ?? env("RUNMARK_MEMORY_ENABLED", "memoryEnabled") === "true",
+        endpoint: env("RUNMARK_ENDPOINT", "endpoint") ?? "http://localhost:3456",
+        apiKey: env("RUNMARK_API_KEY", "apiKey", "api_key") ?? "dev-key-change-me",
+        includeMessageContent: (env("RUNMARK_INCLUDE_MESSAGES", "includeMessages") ?? "true") === "true",
+        includeToolOutput: (env("RUNMARK_INCLUDE_TOOL_OUTPUT", "includeToolOutput") ?? "true") === "true",
+        debug: (env("RUNMARK_DEBUG", "debug") ?? "false") === "true",
+        logFile: env("RUNMARK_LOG_FILE", "logFile", "log_file") ?? defaultPluginLogPath(),
     };
 }
-function loadConfig() {
-    return loadPluginConfig();
+function loadConfig(options) {
+    return loadPluginConfig(undefined, options);
 }
 function createPluginLogger(config) {
     return new FileLogger({
@@ -62,6 +81,15 @@ function sumTokens(tokens) {
 /** OpenCode subagent 等场景 turn.cost 常为 0，留空让 server 按 token 估算 */
 function turnCostUsd(cost) {
     return cost != null && cost > 0 ? cost : undefined;
+}
+/** 采集没取到模型名时的占位，不是真实模型，不能写进会话模型列表 */
+function recordedModel(...candidates) {
+    for (const raw of candidates) {
+        const name = String(raw || "").trim();
+        if (name && name.toLowerCase() !== "unknown")
+            return name;
+    }
+    return undefined;
 }
 /** 从 OpenCode session.updated 提取累计 cost / token，用于校准 */
 function sessionSyncFields(info) {
@@ -131,9 +159,13 @@ function getHostname() {
 // Plugin entry
 // ---------------------------------------------------------------------------
 const INGEST_ERROR_TOAST_COOLDOWN_MS = 5 * 60 * 1000;
-export const AgentTrackerPlugin = async ({ project, $, directory, worktree, client }) => {
-    const config = loadConfig();
+export const AgentTrackerPlugin = async (input) => {
+    // V2 的 PluginInput 带 options；V1 类型没有该字段，按结构读取避免类型冲突。
+    const { project, $, directory, worktree, client } = input;
+    const config = loadConfig(input.options);
     const logger = createPluginLogger(config);
+    if (config.memoryEnabled)
+        logger.error("project memory requires OpenCode V2 session.hook/context; V1 telemetry remains active");
     let lastIngestErrorToastAt = 0;
     const notifyIngestError = (detail) => {
         const now = Date.now();
@@ -217,6 +249,14 @@ export const AgentTrackerPlugin = async ({ project, $, directory, worktree, clie
         void trackerClient.flush();
     };
     return {
+        config: async (hostConfig) => {
+            const config = hostConfig;
+            config.skills ??= {};
+            config.skills.paths ??= [];
+            if (!config.skills.paths.includes(bundledSkillsDirectory)) {
+                config.skills.paths.push(bundledSkillsDirectory);
+            }
+        },
         event: async ({ event }) => {
             try {
                 logger.debug("hook event", { type: event.type });
@@ -338,8 +378,9 @@ export const AgentTrackerPlugin = async ({ project, $, directory, worktree, clie
                             if (state.forkCutoffMs.has(sessionID) && !pending)
                                 break;
                             const tokens = part.tokens;
-                            const model = pending?.model ?? "unknown";
-                            const provider = pending?.provider ?? "unknown";
+                            // chat.params 没记下模型时不要写 unknown，否则会当成第二个模型进会话列表
+                            const model = recordedModel(pending?.model) ?? "unknown";
+                            const provider = recordedModel(pending?.provider) ?? "unknown";
                             const startTime = pending?.startTime ?? Date.now();
                             state.completedTurns.add(part.messageID);
                             trackerClient.push({
@@ -408,8 +449,8 @@ export const AgentTrackerPlugin = async ({ project, $, directory, worktree, clie
                             return;
                         }
                         const pending = state.pendingTurns.get(sessionID);
-                        const model = pending?.model ?? msg.modelID ?? "unknown";
-                        const provider = pending?.provider ?? msg.providerID ?? "unknown";
+                        const model = recordedModel(pending?.model, msg.modelID) ?? "unknown";
+                        const provider = recordedModel(pending?.provider, msg.providerID) ?? "unknown";
                         const startTime = pending?.startTime ?? msg.time.created;
                         state.completedTurns.add(msg.id);
                         const ev = {
@@ -470,8 +511,8 @@ export const AgentTrackerPlugin = async ({ project, $, directory, worktree, clie
                             type: "turn.error",
                             session_id: sessionID,
                             turn_id: `turn-${sessionID}-${pending.startTime}`,
-                            model: pending.model,
-                            provider: pending.provider,
+                            model: recordedModel(pending.model) ?? "unknown",
+                            provider: recordedModel(pending.provider) ?? "unknown",
                             input_tokens: 0,
                             output_tokens: 0,
                             total_tokens: 0,
@@ -528,8 +569,9 @@ export const AgentTrackerPlugin = async ({ project, $, directory, worktree, clie
                 if (isHiddenSession(input.sessionID))
                     return;
                 const sessionID = input.sessionID;
-                const modelID = input.model?.id ?? "unknown";
-                const providerID = input.provider?.info?.id ?? input.model?.providerID ?? "unknown";
+                // 取不到模型名就留空，禁止把 "unknown" 写进 pending 再追加到会话模型列表
+                const modelID = recordedModel(input.model?.id) ?? "unknown";
+                const providerID = recordedModel(input.provider?.info?.id, input.model?.providerID) ?? "unknown";
                 state.pendingTurns.set(sessionID, {
                     sessionID,
                     model: modelID,

@@ -1,10 +1,10 @@
 {
   "name": "@runmarks/cursor-hooks",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "description": "Cursor IDE hooks for Runmark telemetry (session / message / turn / tool → /v1/ingest)",
   "type": "module",
   "bin": {
-    "agent-tracker-cursor": "./dist/cli.mjs"
+    "runmark-cursor": "./dist/cli.mjs"
   },
   "files": [
     "dist",

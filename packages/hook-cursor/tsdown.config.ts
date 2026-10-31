@@ -12,5 +12,5 @@ export default defineConfig({
   clean: true,
   treeshake: true,
   minify: false,
-  noExternal: [/^@agent-tracker\//],
+  noExternal: ["@agent-tracker/shared"],
 });

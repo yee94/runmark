@@ -3,6 +3,49 @@
  */
 
 export const SCHEMA_SQL = `
+CREATE TABLE IF NOT EXISTS memories (
+  id TEXT PRIMARY KEY,
+  project_id TEXT NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'project' CHECK(scope IN ('global','project','local')),
+  agent_key TEXT NOT NULL DEFAULT '',
+  context_json TEXT NOT NULL DEFAULT '{}',
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  type TEXT NOT NULL CHECK(type IN ('user','feedback','project','reference')),
+  body TEXT NOT NULL,
+  origin_session_id TEXT NOT NULL,
+  revision INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('active','forgotten')),
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  forgotten_at TEXT,
+  forgotten_sequence INTEGER,
+  UNIQUE(project_id, name)
+);
+CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id, status, updated_at DESC, id);
+CREATE TABLE IF NOT EXISTS memory_sources (
+  memory_id TEXT NOT NULL REFERENCES memories(id),
+  revision INTEGER NOT NULL,
+  session_id TEXT NOT NULL,
+  message_id TEXT NOT NULL,
+  job_id TEXT,
+  explicit INTEGER NOT NULL DEFAULT 0,
+  action TEXT NOT NULL,
+  assessment_json TEXT,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY(memory_id, revision)
+);
+CREATE TABLE IF NOT EXISTS memory_operations (
+  project_id TEXT NOT NULL,
+  operation_id TEXT NOT NULL,
+  fingerprint TEXT NOT NULL,
+  memory_id TEXT NOT NULL REFERENCES memories(id),
+  PRIMARY KEY(project_id, operation_id)
+);
+CREATE TABLE IF NOT EXISTS memory_extraction_progress (
+  session_id TEXT PRIMARY KEY,
+  cursor INTEGER NOT NULL DEFAULT 0
+);
 CREATE TABLE IF NOT EXISTS ingest_events (
   id INTEGER PRIMARY KEY,
   source TEXT NOT NULL,
@@ -62,6 +105,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_repo_url ON sessions(repo_url);
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
+  agent_key TEXT,
   session_id TEXT NOT NULL,
   role TEXT NOT NULL,
   content TEXT,
@@ -75,6 +119,20 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+
+CREATE TABLE IF NOT EXISTS memory_message_arrivals (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  message_id TEXT NOT NULL UNIQUE,
+  session_id TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_arrivals_session ON memory_message_arrivals(session_id, sequence);
+INSERT OR IGNORE INTO memory_message_arrivals(sequence, message_id, session_id)
+  SELECT rowid, id, session_id FROM messages
+  WHERE NOT EXISTS (SELECT 1 FROM memory_message_arrivals) ORDER BY rowid;
+CREATE TRIGGER IF NOT EXISTS memory_message_arrival_insert AFTER INSERT ON messages
+BEGIN
+  INSERT OR IGNORE INTO memory_message_arrivals(message_id, session_id) VALUES (NEW.id, NEW.session_id);
+END;
 
 CREATE TABLE IF NOT EXISTS turns (
   id TEXT PRIMARY KEY,

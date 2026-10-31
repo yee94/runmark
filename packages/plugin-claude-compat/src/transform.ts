@@ -161,7 +161,7 @@ export function inferProvider(model?: string): string {
   if (m.includes("gpt") || m.includes("o3") || m.includes("o4")) return "openai";
   if (m.includes("gemini")) return "google";
   if (m.includes("deepseek")) return "codebuddy";
-  // 智谱 GLM（含 CodeBuddy 内网 glm-*-ioa）
+  // 智谱 GLM（含 CodeBuddy 渠道 glm-*-ioa）
   if (m.includes("glm")) return "zhipu";
   // 混元 hy3-ioa / hy-3
   if (m.includes("hy3") || m.includes("hy-3") || m.includes("hunyuan")) return "hunyuan";

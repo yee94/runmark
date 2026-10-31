@@ -13,5 +13,5 @@ export default defineConfig({
   minify: false,
   external: ["bun:sqlite"],
   // Bundle @agent-tracker/shared inline so the CLI runs standalone
-  onlyBundle: [/^@agent-tracker\//],
+  onlyBundle: ["@agent-tracker/shared"],
 });

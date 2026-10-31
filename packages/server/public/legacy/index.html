@@ -3045,7 +3045,7 @@
             <br />
             · 远端部署：见服务器 <code>/opt/agent-tracker/.env</code>
             <br />
-            · OpenCode 客户端：<code>~/.config/agent-tracker/env</code> 中的 <code>apiKey</code>（应与上报目标服务一致）
+            · OpenCode 客户端：<code>~/.config/runmark/env</code> 中的 <code>apiKey</code>（应与上报目标服务一致）
           </div>
         </div>
       </div>
@@ -3085,7 +3085,7 @@
                 </ol>
               </div>
               {!ready ? (
-                <p style={{ color: 'var(--accent-orange)' }}>服务端未配置 AGENT_TRACKER_CURSOR_CRYPTO_KEY，无法加密存储 Token。请联系管理员在 .env 中配置。</p>
+                <p style={{ color: 'var(--accent-orange)' }}>服务端未配置 RUNMARK_CURSOR_CRYPTO_KEY，无法加密存储 Token。请联系管理员在 .env 中配置。</p>
               ) : null}
               <div>
                 <Label htmlFor="cursor-token">WorkosCursorSessionToken</Label>

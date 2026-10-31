@@ -26,6 +26,7 @@
 - 🔗 **Open API 与 SDK** — 提供标准接口与接入能力，可把整套服务对接到你的任意 Agent 或自动化流程中。
 - 📊 **用量与费用洞察** — 按今天 / 本周 / 本月等时间窗口，聚合 token、费用、模型与客户端分布，一眼看清花在哪。
 - 📋 **事项归档** — 跨会话沉淀工作成果与可交接事项，优先回顾「做了什么」，不必逐条翻 Session。
+- 🧠 **分层记忆** — 按全局、项目保存偏好与决策，跨机器共享，也支持命名 Agent 专属记忆；短索引发现、按需读取详情，见[记忆说明](docs/memory.md)。
 - 🔍 **会话调用链追溯** — 密集 trace 视图，回溯某次对话的消息、推理 turn 与工具调用细节。
 - 💰 **Cursor 账单同步** — 对接 Cursor Usage API，与本地遥测数据对账，补齐官方账单视角。
 - 🤖 **可配置智能体** — 自定义触发器（新对话 throttle、定时 CRON），自动执行 Summary、归档等后台任务。
@@ -159,7 +160,7 @@ Dashboard：`http://localhost:3456/`。脚本幂等，重复执行不会覆盖�
 
 请严格参考仓库内 skills/agent-tracker-clients/SKILL.md：
 1. 先列出可选 Client（Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build）让我勾选，不要默认 all
-2. 写入或核对 ~/.config/agent-tracker/env（endpoint + apiKey）
+2. 写入或核对 ~/.config/runmark/env（RUNMARK_ENDPOINT + RUNMARK_API_KEY）
 3. 用统一入口安装：npx @runmarks/runmark --clients <我选的列表>
 4. 装完告诉我需要重启哪些客户端，并给出 Dashboard 验证方式
 ```
@@ -171,10 +172,10 @@ Skill 路径：[skills/agent-tracker-clients/SKILL.md](skills/agent-tracker-clie
 1. 写入统一配置（新装必做；已有文件则核对，勿盲目覆盖）：
 
 ```bash
-mkdir -p ~/.config/agent-tracker
-cat > ~/.config/agent-tracker/env << 'EOF'
-export AGENT_TRACKER_ENDPOINT="http://<服务地址>:3456"
-export AGENT_TRACKER_API_KEY="<服务端 API Key>"
+mkdir -p ~/.config/runmark
+cat > ~/.config/runmark/env << 'EOF'
+export RUNMARK_ENDPOINT="http://<服务地址>:3456"
+export RUNMARK_API_KEY="<服务端 API Key>"
 EOF
 ```
 

@@ -1,8 +1,10 @@
 # 统一接入配置
 
-所有客户端插件都读取同一个配置文件：`~/.config/agent-tracker/env`。Cursor、OpenCode、Codex、Claude Code、CodeBuddy、WorkBuddy、Grok Build 等客户端在安装插件之前，建议先完成这一处配置。
+所有客户端插件都读取同一个配置文件：`~/.config/runmark/env`。Cursor、OpenCode、Codex、Claude Code、CodeBuddy、WorkBuddy、Grok Build 等客户端在安装插件之前，建议先完成这一处配置。
 
-配置文件支持 `endpoint` / `apiKey` 这类短键别名，但本文统一使用真实环境变量名 `AGENT_TRACKER_*`。
+配置文件支持 `endpoint` / `apiKey` 这类短键别名，本文统一使用 `RUNMARK_*`。
+
+读取顺序：进程环境变量优先于配置文件；同一来源内 `RUNMARK_*` 优先于旧前缀 `AGENT_TRACKER_*`。仅当新文件不存在时兼容读取 `~/.config/agent-tracker/env`，两份文件不会混合。新建或更新配置统一写入 Runmark 路径，旧文件只读兼容。
 
 ## 一键写入配置
 
@@ -21,8 +23,8 @@
 写入后的内容等价于：
 
 ```bash
-AGENT_TRACKER_ENDPOINT="{{ENDPOINT}}"
-AGENT_TRACKER_API_KEY="{{API_KEY}}"
+RUNMARK_ENDPOINT="{{ENDPOINT}}"
+RUNMARK_API_KEY="{{API_KEY}}"
 ```
 
 ## 之后安装客户端插件
@@ -37,7 +39,7 @@ npx @runmarks/runmark
 
 也可按产品分篇手动安装：Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build。
 
-插件安装完成后需要重启对应客户端（或 `/reload-plugins`），让插件重新读取 `~/.config/agent-tracker/env`。
+插件安装完成后重新加载对应客户端，让插件读取 `~/.config/runmark/env`。OpenCode V2 可使用 `/reload`，Claude 系可使用 `/reload-plugins`。
 
 ## 使用 magpie 等 OTLP 工具
 

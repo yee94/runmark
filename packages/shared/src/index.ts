@@ -66,6 +66,7 @@ export interface IngestTurnEvent {
 }
 
 export interface IngestMessageEvent {
+  agent_key?: string;
   type: "message";
   session_id: string;
   message_id: string;
@@ -331,7 +332,7 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   { provider: "astra", model: "deepseek-v4-pro-code", input_price: 1.286, output_price: 3.857, cache_read_price: 0.043 },
   { provider: "astra", model: "glm-5.2", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
   { provider: "astra", model: "glm-5.1", input_price: 1.4, output_price: 4.4, cache_read_price: 0.26 },
-  // BoxAI（腾讯内网代理，按 Anthropic 官方定价估算）
+  // BoxAI（Anthropic 兼容渠道，按 Anthropic 官方定价估算）
   { provider: "boxai", model: "claude-sonnet-4-6", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
   { provider: "boxai", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "boxai", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
@@ -344,7 +345,7 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   { provider: "boxai", model: "gemini-3.6-flash", input_price: 1.5, output_price: 7.5 },
   { provider: "boxai", model: "gemini-3.5-flash", input_price: 1.5, output_price: 9.0 },
   { provider: "boxai", model: "kimi-k2", input_price: 2.0, output_price: 8.0 },
-  // IMate（内网代理，含 Claude / GPT / GLM / 混元）
+  // IMate（多模型聚合渠道，含 Claude / GPT / GLM / 混元）
   { provider: "imate", model: "claude-opus-5-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "imate", model: "claude-opus-5", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
   { provider: "imate", model: "claude-opus-4-6", input_price: 5.0, output_price: 25.0, cache_read_price: 0.5, cache_write_price: 6.25 },
@@ -649,6 +650,7 @@ export {
 export type { FileLoggerOptions, LogLevel } from "./logger";
 export {
   defaultPluginEnvPath,
+  legacyPluginEnvPath,
   expandUserPath,
   loadEnvFile,
   parseEnvFile,

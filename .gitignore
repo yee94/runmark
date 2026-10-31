@@ -12,6 +12,7 @@ coverage/
 *.db-journal
 *.sqlite
 *.sqlite-journal
+packages/server/data/
 .omo/
 .slim/deepwork/
 __pycache__/

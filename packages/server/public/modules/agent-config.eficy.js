@@ -1,6 +1,9 @@
 import { component, computed, effect, signal } from 'eficy'
 
 const TOOL_CATALOG = [
+  { id: 'memory.list', label: '项目记忆查询', scope: 'GET /v1/memories', description: '查询当前项目的记忆元数据，判断是否已有同一事实。' },
+  { id: 'memory.read', label: '项目记忆详情', scope: 'GET /v1/memories/:id', description: '读取记忆正文、修订号与来源。' },
+  { id: 'memory.extraction.write', label: '记忆提取写入', scope: 'WRITE memories', description: '原子提交事实变更和本批提取进度；无可保存内容时提交空变更。' },
   { id: 'sessions.query', label: '会话列表查询', scope: 'GET /v1/sessions', description: '按 limit、offset、user_email 拉取候选会话列表。' },
   { id: 'session.context.read', label: '会话上下文包', scope: 'GET /v1/sessions/:id/*', description: '读取 session、messages、turns、children 与 tool-calls。' },
   { id: 'session.summary.write', label: '会话摘要写入', scope: 'WRITE sessions/session_summaries', description: '更新 Session 标题、AISummary，并写入 session_summaries。' },

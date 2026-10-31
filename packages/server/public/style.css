@@ -29,6 +29,69 @@
 
 * { box-sizing: border-box; }
 
+.memory-page { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+.memory-heading { display: flex; align-items: center; justify-content: space-between; gap: 20px; }
+.memory-heading h1 { font-size: 24px; font-weight: 650; letter-spacing: -0.5px; margin: 0 0 4px; }
+.memory-heading p { color: var(--text-secondary); font-size: 12px; line-height: 1.8; margin: 0; }
+.memory-actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.memory-toolbar { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; margin-top: 8px; }
+.memory-scope-tabs { display: flex; gap: 2px; }
+.memory-picker { display: inline-flex; align-items: center; color: var(--text-primary); background: var(--bg-elevated); border: 1px solid var(--control-stroke); border-radius: 7px; height: 32px; max-width: 100%; padding: 0 10px; font: inherit; font-size: 12px; justify-content: space-between; gap: 8px; cursor: pointer; }
+.memory-picker:disabled { opacity: 0.5; cursor: default; }
+.memory-picker:focus-visible { outline: 2px solid var(--brand-purple); outline-offset: 2px; }
+.memory-picker > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.memory-picker > svg, .memory-picker-check { flex-shrink: 0; }
+.memory-picker-popover { width: max(240px, var(--radix-popover-trigger-width)); max-width: calc(100vw - 24px); padding: 0; }
+.memory-picker-popover [cmdk-list] { max-height: 260px; }
+.memory-picker-popover [cmdk-item] { font-size: 12px; gap: 8px; }
+.memory-picker-option { min-width: 0; overflow-wrap: anywhere; flex: 1; }
+.memory-project-label { display: block; overflow-wrap: anywhere; margin-top: 4px; }
+.memory-target { flex: 1; min-width: 180px; width: 0; }
+.memory-search { display: flex; gap: 4px; flex: 1; min-width: 180px; }
+.memory-search input { height: 32px; font-size: 12px; }
+.memory-filters { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.memory-workspace { display: grid; grid-template-columns: minmax(240px, 0.8fr) minmax(0, 1.5fr); border: 1px solid var(--panel-stroke); border-radius: 10px; background: var(--bg-elevated); overflow: hidden; min-height: 340px; }
+.memory-list { border-right: 1px solid var(--panel-stroke); max-height: 700px; overflow: auto; padding: 8px; }
+.memory-row { display: block; width: 100%; text-align: left; padding: 11px 10px; background: transparent; color: var(--text-primary); border: 1px solid transparent; border-bottom-color: var(--panel-stroke); cursor: pointer; font: inherit; border-radius: 7px; }
+.memory-row + .memory-row { margin-top: 6px; }
+.memory-row:hover { background: var(--control-fill); }
+.memory-row.selected { background: rgba(184, 109, 255, 0.09); border-color: rgba(184, 109, 255, 0.3); }
+.memory-row-title { display: flex; gap: 12px; align-items: baseline; justify-content: space-between; }
+.memory-row-title strong { font-size: 13px; overflow-wrap: anywhere; }
+.memory-row-title span { font-size: 11px; color: var(--brand-purple); white-space: nowrap; }
+.memory-row p { font-size: 12px; line-height: 1.6; color: var(--text-secondary); margin: 5px 0; overflow-wrap: anywhere; }
+.memory-row small { font-size: 11px; color: var(--text-muted); }
+.memory-detail { padding: 22px; min-width: 0; overflow-wrap: anywhere; }
+.memory-detail h2 { font-size: 18px; letter-spacing: -0.3px; margin: 12px 0 8px; }
+.memory-detail h3 { font-size: 12px; margin: 22px 0 10px; }
+.memory-detail-title { display: flex; align-items: center; gap: 12px; }
+.memory-muted { color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
+.memory-body { white-space: pre-wrap; line-height: 1.85; font-size: 13px; border-block: 1px solid var(--panel-stroke); padding: 18px 0; margin-top: 16px; }
+.memory-code { font-family: var(--font-mono); font-size: 12px; line-height: 1.9; white-space: pre-wrap; overflow-wrap: anywhere; background: var(--bg-base); padding: 18px; border-radius: 8px; }
+.memory-sources { display: flex; flex-direction: column; gap: 12px; }
+.memory-sources > div { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; font-size: 12px; color: var(--text-secondary); }
+.memory-sources a { color: var(--brand-blue); }
+.memory-assessment { width: 100%; line-height: 1.7; }
+.memory-assessment summary { cursor: pointer; }
+.memory-assessment blockquote { margin: 8px 0; border-left: 2px solid var(--panel-stroke); padding-left: 10px; white-space: pre-wrap; }
+.memory-assessment p { margin: 4px 0; }
+.memory-placeholder { color: var(--text-secondary); padding: 20px 12px; font-size: 12px; line-height: 1.8; }
+.memory-placeholder h3 { color: var(--text-primary); font-size: 13px; }
+.memory-placeholder p { margin: 8px 0; }
+.memory-help { color: var(--text-secondary); font-size: 12px; line-height: 1.8; }
+.memory-help summary { cursor: pointer; width: fit-content; }
+.memory-help p { max-width: 760px; margin: 8px 0; }
+.memory-help code { font-family: var(--font-mono); }
+.memory-error { border: 1px solid rgba(255, 107, 122, 0.3); border-radius: 10px; padding: 14px 18px; color: var(--progress-danger); font-size: 13px; line-height: 1.7; }
+.memory-page button:focus-visible, .memory-page select:focus-visible { outline: 2px solid var(--brand-purple); outline-offset: 3px; }
+@media (max-width: 1000px) {
+  .memory-workspace { grid-template-columns: minmax(0, 1fr); }
+  .memory-list { max-height: 320px; border-right: 0; border-bottom: 1px solid var(--panel-stroke); }
+  .memory-detail { padding: 18px; }
+  .memory-heading { align-items: flex-start; gap: 8px; }
+  .memory-heading > .memory-actions { gap: 0; }
+}
+
 body {
   margin: 0;
   font-family: var(--font-sans);
@@ -3410,6 +3473,27 @@ body {
   font-size: 13px;
   line-height: 1.65;
 }
+.help-markdown table {
+  width: 100%;
+  margin: 12px 0 16px;
+  border-collapse: collapse;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 1.65;
+}
+.help-markdown th,
+.help-markdown td {
+  padding: 10px 14px;
+  border: 1px solid rgba(255,255,255,0.08);
+  text-align: left;
+  vertical-align: top;
+  overflow-wrap: anywhere;
+}
+.help-markdown th {
+  background: rgba(255,255,255,0.04);
+  color: var(--text-primary);
+  font-weight: 650;
+}
 .help-markdown a {
   color: var(--brand-blue);
   text-decoration: none;
@@ -3464,7 +3548,9 @@ body {
   word-break: break-word;
 }
 .help-markdown p code,
-.help-markdown li code {
+.help-markdown li code,
+.help-markdown td code,
+.help-markdown th code {
   padding: 2px 5px;
   border-radius: 5px;
   background: rgba(255,255,255,0.06);

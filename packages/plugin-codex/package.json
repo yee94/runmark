@@ -1,11 +1,11 @@
 {
   "name": "@runmarks/codex-plugin",
-  "version": "0.2.6",
+  "version": "0.2.8",
   "private": false,
   "type": "module",
   "main": "./dist/index.mjs",
   "bin": {
-    "agent-tracker-codex-plugin": "./bin/agent-tracker-codex-install.js"
+    "runmark-codex-plugin": "./bin/agent-tracker-codex-install.js"
   },
   "files": [
     "bin",

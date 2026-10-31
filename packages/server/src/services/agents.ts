@@ -5,11 +5,14 @@ import { formatSchedule, parseSchedule } from "./agentSchedule";
 import { beijingDateStart, beijingParts } from "./stats";
 import { buildLlmAuthHeaders } from "./llmHeaders";
 import { computeMatterPlanMetrics, parseMatterPlan, validateMatterPlan, type MatterPlan } from "./matterPlan";
+import { costService } from "./cost";
+import { MemoryService, type MemoryChange, type MemoryContext } from "./memory";
 
 export const SESSION_SUMMARY_AGENT_ID = "agent-session-summary";
 export const SESSION_SEARCH_AGENT_ID = "agent-session-search";
 export const MATTER_ARCHIVE_AGENT_ID = "agent-matter-archive";
 export const MATTER_SEARCH_AGENT_ID = "agent-matter-search";
+export const MEMORY_EXTRACTION_AGENT_ID = "agent-memory-extraction";
 
 type AgentRow = {
   id: string;
@@ -102,6 +105,7 @@ type ReactRunResult = LlmResult & {
 };
 
 type ReactLoopOptions = {
+  onLlmResult?: (result: LlmResult) => void;
   maxSteps?: number;
   requiredToolRetrySteps?: number;
   requiredTool?: string;
@@ -128,6 +132,7 @@ const DEFAULT_TOOLS = {
   matter: ["sessions.query", "session.context.read", "stats.window.read", "matters.query", "matter.detail.read", "matter.plan.submit", "matter.archive.write"],
   matterSearch: ["matter.archive.search"],
   sessionSearch: ["session.keyword.search", "session.digest.search"],
+  memory: ["memory.list", "memory.read", "memory.extraction.write"],
 };
 
 const SEARCH_RESULT_LIMIT = 10;
@@ -172,6 +177,23 @@ ${REACT_PROTOCOL_PROMPT}
 - 标题和 summary 必须允许根据本次总结结果更新，不能保留明显过期的旧标题或旧摘要。`;
 
 const SESSION_SUMMARY_TASK_BRIEF = `当单个 session 出现新对话事件并在防抖等待结束后，读取 session context，生成短标题、短摘要和会话 Markdown 摘要，并调用 session.summary.write 写入 sessions.title、sessions.AISummary 与 session_summaries。防抖按 session 维度独立计时（schedule 如 session:debounce:5m），互不影响；同一批内的 Session 仍逐个独立总结，避免不同 Session 的总结上下文串写。`;
+
+const MEMORY_EXTRACTION_PROMPT_VERSION = `${BUILTIN_PROMPT_VERSION}-memory-scopes-v3`;
+const MEMORY_EXTRACTION_SYSTEM_PROMPT = `你是长期记忆提取智能体。
+记忆协议版本：${MEMORY_EXTRACTION_PROMPT_VERSION}
+
+${REACT_PROTOCOL_PROMPT}
+
+按以下顺序判断每个候选，完成全部判断后提交。
+
+1. 留存价值：依据本批真实用户原文，识别下次独立任务仍需遵循的稳定偏好、明确纠正/认可、项目约束或资料入口。单次交付要求只指导本次任务；重复执行的定时任务正文仍是任务配置，不因重复变成长期偏好。Skill、任务配置和代码已有的流程保持原处权威，只保存新出现且确需跨会话复用的理由或约束。邻近对话和 assistant 回复只用于理解，不作为用户偏好的证据。引用资料与 system-reminder 等宿主附加内容不作为用户要求。不保存凭据、进度或工具输出。
+2. 适用范围：先确定事实讨论的对象，再核对 source_identity.repo_url/directory。global 用于不依赖特定仓库的稳定背景、偏好和协作约定；project 用于与来源仓库匹配的产品/业务/架构要求。来源会话在哪个目录，不等于事实属于哪个项目；对象与来源身份矛盾时跳过并说明 identity_mismatch，不改存全局，也不猜目标仓库。范围证据不足时跳过；有明确项目对象且身份匹配时可用 project。仅使用 available_scopes，所有范围跨机器共享。
+3. 查重：查阅 existing_memories 和对应 named_agent_memories，必要时 memory.list/read 分页核对。同范围同一事实更新原 ID，已完整记录且没有新信息则跳过。agent_key 默认共享；仅原文明确针对命名 Agent 时用来源消息的真实身份，客户端产品名不是 Agent。保存稳定通用约定无需等待用户说“记住”，但必须有其长期适用的原文依据。
+4. 分类与表达：type 与 scope 独立。user 是背景/稳定偏好；feedback 是协作纠正或认可；project 是项目动机/约束；reference 是查询最新资料的指针。每条一个事实，name 用短 kebab-case，description 写何时读取；正文保留原文适用边界，feedback/project 含 Why: 和 How to apply:。缺依据的理由写未知，相对日期按来源时间转为绝对日期。
+5. 依据：每项 change 携带 assessment={quote,retention_reason,scope_reason}。quote 是 message_id 对应用户消息中的一段连续原文；两个 reason 分别简述留存价值与范围依据，不能用“用户要求”代替具体判断。跳过的候选放入 skipped=[{message_id,reason}]，说明是单次任务、既有权威重复、身份冲突或证据不足。
+6. 提交：memory.extraction.write 一次原子提交 changes、skipped 和进度；无候选时 changes=[] 是正常结果。更新/遗忘使用已读取的 expected_revision。仅本批真实用户消息可作来源，成功前不声称已保存。遗忘仅源于用户明确要求；恢复需遗忘后的新明确要求，先按原 scope/agent_key 查 forgotten 元数据，再提交 restore=true、explicit=true 与完整正文。`;
+
+const MEMORY_EXTRACTION_TASK_BRIEF = "逐个 Session 防抖读取未处理的真实对话原文，参考 effective 适用记忆，按语义选择 global/project 及可选命名 Agent，所有记忆跨机器共享，通过 memory.extraction.write 原子提交跨范围变更与进度。默认关闭；启用只处理新内容，不自动回填历史。";
 
 const MATTER_ARCHIVE_SYSTEM_PROMPT = `你是事项归档智能体。你的任务是把多个 AI 编码会话沉淀为可独立 handoff 的工作事项。
 
@@ -309,6 +331,7 @@ type BuiltinAgentInput = {
   label: string;
   description: string;
   modelId?: string;
+  enabled?: boolean;
   tools: string[];
   triggers: Array<Record<string, unknown>>;
   systemPrompt: string;
@@ -316,6 +339,17 @@ type BuiltinAgentInput = {
 };
 
 const BUILTIN_AGENTS: BuiltinAgentInput[] = [
+  {
+    id: MEMORY_EXTRACTION_AGENT_ID,
+    name: "Memory Extraction Agent",
+    label: "记忆提取",
+    description: "从新增真实对话提取全局及项目长期事实，跨机器共享，支持命名 Agent，默认关闭。",
+    enabled: false,
+    tools: DEFAULT_TOOLS.memory,
+    triggers: SESSION_SUMMARY_TRIGGERS,
+    systemPrompt: MEMORY_EXTRACTION_SYSTEM_PROMPT,
+    taskBrief: MEMORY_EXTRACTION_TASK_BRIEF,
+  },
   {
     id: SESSION_SUMMARY_AGENT_ID,
     name: "Session Summary Agent",
@@ -362,7 +396,7 @@ const BUILTIN_AGENTS: BuiltinAgentInput[] = [
 function insertBuiltinAgent(db: Database, input: BuiltinAgentInput, now: string): void {
   db.query(`
     INSERT INTO agents (id, name, label, enabled, model_id, mode, description, tools, triggers, system_prompt, task_brief, updated_at)
-    VALUES ($id, $name, $label, 1, $model_id, 'ReAct', $description, $tools, $triggers, $system_prompt, $task_brief, $updated_at)
+    VALUES ($id, $name, $label, $enabled, $model_id, 'ReAct', $description, $tools, $triggers, $system_prompt, $task_brief, $updated_at)
     ON CONFLICT(id) DO UPDATE SET
       name = CASE WHEN agents.name IS NULL OR agents.name = '' THEN excluded.name ELSE agents.name END,
       label = CASE WHEN agents.label IS NULL OR agents.label = '' THEN excluded.label ELSE agents.label END,
@@ -389,6 +423,7 @@ function insertBuiltinAgent(db: Database, input: BuiltinAgentInput, now: string)
   `).run({
     $id: input.id,
     $name: input.name,
+    $enabled: input.enabled === false ? 0 : 1,
     $label: input.label,
     $model_id: input.modelId ?? DEFAULT_MODEL_ID,
     $description: input.description,
@@ -542,6 +577,12 @@ export function seedBuiltinAgentConfig(db: Database): void {
 
   for (const agent of BUILTIN_AGENTS) {
     insertBuiltinAgent(db, agent, now);
+    if (agent.id === MEMORY_EXTRACTION_AGENT_ID) {
+      db.query("UPDATE agents SET label=?, updated_at=? WHERE id=? AND label='项目记忆提取'").run(agent.label, now, agent.id);
+      db.query("UPDATE agents SET description=?, updated_at=? WHERE id=? AND description='从新增真实对话提取项目长期事实，默认关闭。'").run(agent.description, now, agent.id);
+      db.query("UPDATE agents SET description=?, updated_at=? WHERE id=? AND description='从新增真实对话提取全局、项目及本机长期事实，支持命名 Agent，默认关闭。'").run(agent.description, now, agent.id);
+    }
+    const promptVersion = agent.id === MEMORY_EXTRACTION_AGENT_ID ? MEMORY_EXTRACTION_PROMPT_VERSION : BUILTIN_PROMPT_VERSION;
     mergeBuiltinTools(db, agent.id, agent.tools, now);
     mergeBuiltinTriggers(db, agent.id, agent.triggers, now);
     db.query(`
@@ -556,7 +597,7 @@ export function seedBuiltinAgentConfig(db: Database): void {
       $system_prompt: agent.systemPrompt,
       $task_brief: agent.taskBrief,
       $updated_at: now,
-      $version: `%${BUILTIN_PROMPT_VERSION}%`,
+      $version: `%${promptVersion}%`,
     });
     db.query(`
       UPDATE agent_prompts SET
@@ -570,7 +611,7 @@ export function seedBuiltinAgentConfig(db: Database): void {
       $system_prompt: agent.systemPrompt,
       $task_brief: agent.taskBrief,
       $updated_at: now,
-      $version: `%${BUILTIN_PROMPT_VERSION}%`,
+      $version: `%${promptVersion}%`,
     });
   }
 }
@@ -618,6 +659,37 @@ function compactText(value: unknown, max = 4000): string {
 }
 
 const TOOL_SCHEMAS: Record<string, ToolSchema> = {
+  "memory.list": {
+    name: "memory.list",
+    description: "查询当前会话适用记忆，默认 effective、active；view=scoped 配合 scope/agent_key 精确查询，省略 agent_key 表示共享。仅明确恢复时用 forgotten 查找 ID/revision，不返回已遗忘正文。支持 query 与 cursor 分页。",
+    parameters: { type: "object", properties: { query: { type: "string" }, cursor: { type: "string" }, status: { type: "string", enum: ["active", "forgotten"] }, scope: { type: "string", enum: ["global", "project"] }, agent_key: { type: "string" }, view: { type: "string", enum: ["effective", "scoped"] } } },
+  },
+  "memory.read": {
+    name: "memory.read",
+    description: "按稳定 ID 读取当前会话适用记忆正文与 revision；可指定 scope/agent_key 精确定位。",
+    parameters: { type: "object", required: ["id"], properties: { id: { type: "string" }, scope: { type: "string", enum: ["global", "project"] }, agent_key: { type: "string" }, view: { type: "string", enum: ["effective", "scoped"] } } },
+  },
+  "memory.extraction.write": {
+    name: "memory.extraction.write",
+    description: "一次原子提交全部记忆变更与本批进度；无可保存内容时 changes=[]。来源 message_id 必须来自新增用户原文。",
+    parameters: {
+      type: "object", required: ["changes"], properties: {
+        changes: { type: "array", items: {
+          type: "object", required: ["action", "message_id", "scope", "assessment"], properties: {
+            assessment: { type: "object", required: ["quote", "retention_reason", "scope_reason"], properties: { quote: {type:"string"}, retention_reason: {type:"string"}, scope_reason: {type:"string"} } },
+            action: { type: "string", enum: ["create", "update", "forget"] },
+            scope: { type: "string", enum: ["global", "project"] }, agent_key: { type: "string" },
+            id: { type: "string" }, message_id: { type: "string" },
+            name: { type: "string" }, description: { type: "string" },
+            type: { type: "string", enum: ["user", "feedback", "project", "reference"] },
+            body: { type: "string" }, expected_revision: { type: "integer" },
+            restore: { type: "boolean" }, explicit: { type: "boolean" },
+          },
+        } },
+        skipped: { type: "array", items: { type: "object", required: ["message_id", "reason"], properties: { message_id: {type:"string"}, reason: {type:"string"} } } },
+      },
+    },
+  },
   "session.context.read": {
     name: "session.context.read",
     description: "读取单个 Session 的 session、messages、turns、children 与 tool calls 上下文。",
@@ -1605,7 +1677,9 @@ export class AgentRuntime {
     });
 
     try {
-      const result = agentId === SESSION_SUMMARY_AGENT_ID
+      const result = agentId === MEMORY_EXTRACTION_AGENT_ID
+        ? await this.runMemoryExtraction(jobId, agent, effectiveProvider, model, input)
+        : agentId === SESSION_SUMMARY_AGENT_ID
         ? await this.runSessionSummary(jobId, agent, effectiveProvider, model, input)
         : agentId === MATTER_SEARCH_AGENT_ID
           ? await this.runMatterSearch(jobId, agent, effectiveProvider, model, input)
@@ -1755,6 +1829,7 @@ export class AgentRuntime {
       const hasRemainingStep = step < maxSteps - 1;
       const recovery = step >= primarySteps;
       const llm = await callOpenAiCompatible(provider, model, messages);
+      options.onLlmResult?.(llm);
       usage.input += llm.input_tokens;
       usage.output += llm.output_tokens;
       usage.total += llm.total_tokens || llm.input_tokens + llm.output_tokens;
@@ -2001,6 +2076,128 @@ export class AgentRuntime {
       `).all() as any[];
     }
     return rows;
+  }
+
+  private async runMemoryExtraction(jobId: string, agent: AgentRow, provider: ProviderRow, model: ModelRow, input: AgentRunInput): Promise<any> {
+    const memory = new MemoryService(this.db);
+    const sessionIds = normalizeStringList([...(input.session_ids ?? []), ...(input.session_id ? [input.session_id] : [])]);
+    if (!sessionIds.length) throw new Error("session_id is required for Memory Extraction Agent");
+    const allowedTools = readJson(agent.tools, DEFAULT_TOOLS.memory);
+    const total = { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    const outputs: unknown[] = [];
+    const prompts: string[] = [];
+    for (const sessionId of sessionIds) {
+      const session = this.db.query("SELECT agent, metadata FROM sessions WHERE id = ?").get(sessionId) as { agent: string; metadata: string | null } | null;
+      const meta = readJson<Record<string, unknown>>(session?.metadata, {});
+      if (!session || ["runmark", MEMORY_EXTRACTION_AGENT_ID].includes(session.agent)
+        || meta.synthetic === true || meta.background_agent === true || meta.agent_id === MEMORY_EXTRACTION_AGENT_ID
+        || meta.source === "runmark-agent") {
+        this.recordTool(jobId, "memory.extraction.skip", "ok", `${sessionId}: missing_or_background_source`);
+        continue;
+      }
+      const context: MemoryContext = { session_id: sessionId, view: "effective" };
+      let cursor = memory.getExtractionCursor(sessionId);
+      const pending = memory.getExtractionMessages(sessionId, cursor);
+      if (!pending.length) {
+        this.recordTool(jobId, "memory.extraction.skip", "ok", `${sessionId}: no_new_content`);
+        continue;
+      }
+      let offset = 0;
+      while (offset < pending.length) {
+        const batch: typeof pending = [];
+        let chars = 0;
+        while (offset < pending.length && (batch.length === 0 || (batch.length < 100 && chars + (pending[offset]!.content?.length ?? 0) <= 48_000))) {
+          const message = pending[offset++]!;
+          batch.push(message);
+          chars += message.content?.length ?? 0;
+        }
+        const nextCursor = batch.at(-1)!.cursor;
+        const messages = batch.filter(message => ["user", "assistant"].includes(message.role) && message.content?.trim());
+        const userIds = new Set(messages.filter(message => message.role === "user").map(message => message.id));
+        if (!userIds.size) {
+          memory.commitExtraction({ session_id: sessionId, expected_cursor: cursor, cursor: nextCursor, changes: [] });
+          cursor = nextCursor;
+          this.recordTool(jobId, "memory.extraction.skip", "ok", `${sessionId}: no_new_user_text`);
+          continue;
+        }
+        const adjacent = memory.getExtractionMessages(sessionId, 0)
+          .filter(message => message.cursor <= cursor && ["user", "assistant"].includes(message.role) && message.content?.trim()).slice(-2);
+        const sourceAgents = new Map(messages.filter(message => message.role === "user").map(message => {
+          const source = this.db.query("SELECT agent_key FROM messages WHERE id=? AND session_id=?").get(message.id, sessionId) as { agent_key: string | null };
+          return [message.id, source.agent_key || undefined];
+        }));
+        const agentKeys = [...new Set([...sourceAgents.values()].filter((key): key is string => !!key))];
+        const scopedContext = (args: Record<string, unknown>, effective = false): MemoryContext => {
+          if (args.agent_key !== undefined && (typeof args.agent_key !== "string" || !agentKeys.includes(args.agent_key))) throw new Error("agent_key requires a real named Agent identity from this batch");
+          return { session_id: sessionId, scope: args.scope as MemoryContext["scope"],
+            agent_key: args.agent_key as string | undefined,
+            view: (args.view ?? (effective && args.scope === undefined ? "effective" : "scoped")) as MemoryContext["view"] };
+        };
+        const existing = memory.list(context);
+        const namedAgentMemories = agentKeys.map(agent_key => ({ agent_key, ...memory.list({ ...context, agent_key }) }));
+        const availableScopes = (["global", "project"] as const).filter(scope => {
+          try { memory.list({ session_id: sessionId, scope, view: "scoped" }, { limit: 1 }); return true; }
+          catch { return false; }
+        });
+        const prompt = [agent.task_brief, "available_tools:", JSON.stringify(toolSchemasFor(allowedTools)),
+          "context_package:", JSON.stringify({ session_id: sessionId, source_identity: { agent_keys: agentKeys, repo_url: existing.namespaces.find(ns => ns.scope === "project")?.context.repo_url ?? null, ...this.db.query("SELECT directory FROM sessions WHERE id=?").get(sessionId) as object },
+            available_scopes: availableScopes, messages, adjacent_context: adjacent, existing_memories: existing, named_agent_memories: namedAgentMemories })].join("\n");
+        prompts.push(prompt);
+        let committed: (ReturnType<MemoryService["commitExtraction"]> & { skipped: Array<{message_id:string;reason:string}> }) | undefined;
+        await this.runReactLoop(provider, model, agent.system_prompt || MEMORY_EXTRACTION_SYSTEM_PROMPT, prompt, (name, args) => {
+          if (!allowedTools.includes(name)) throw new Error(`Tool not allowed: ${name}`);
+          try {
+            let result: unknown;
+            if (name === "memory.list" || name === "memory.read") {
+              const target = scopedContext(args, true);
+              result = name === "memory.list"
+                ? memory.list(target, { query: args.query as string | undefined, cursor: args.cursor as string | undefined, status: args.status as "active" | "forgotten" | undefined })
+                : memory.read(target, String(args.id || ""));
+            }
+            else if (name === "memory.extraction.write") {
+              if (committed) throw new Error("Batch already committed");
+              if (!Array.isArray(args.changes)) throw new Error("changes must be an array");
+              const skipped = args.skipped ?? [];
+              if (!Array.isArray(skipped) || skipped.some(item => !userIds.has(item?.message_id) || typeof item.reason !== "string" || !item.reason.trim() || item.reason.length > 2000)) throw new Error("Invalid skipped decision");
+              const changes: MemoryChange[] = args.changes.map((change, index) => {
+                if (!change || !userIds.has(change.message_id)) throw new Error("Each change requires a new user message_id from this batch");
+                if (!change.assessment || !change.scope) throw new Error("Each change requires assessment and explicit scope");
+                const target = scopedContext(change);
+                if (target.agent_key && target.agent_key !== sourceAgents.get(change.message_id)) throw new Error("Named Agent must match the source message identity");
+                if (!availableScopes.includes(target.scope ?? "project")) throw new Error("Memory scope requires a reliable source identity");
+                return { action: change.action, id: change.id, context: target, input: {
+                  operation_id: `extraction:${sessionId}:${cursor}:${nextCursor}:${index}`,
+                  source: { session_id: sessionId, message_id: change.message_id, job_id: jobId, explicit: change.explicit, assessment: change.assessment },
+                  name: change.name, description: change.description, type: change.type, body: change.body,
+                  expected_revision: change.expected_revision, restore: change.restore,
+                } };
+              });
+              committed = { ...memory.commitExtraction({ session_id: sessionId, expected_cursor: cursor, cursor: nextCursor, changes }), skipped };
+              result = committed;
+            } else throw new Error(`Unknown tool: ${name}`);
+            this.recordTool(jobId, name, "ok", `${sessionId}: ${name}`);
+            return result;
+          } catch (error) {
+            this.recordTool(jobId, name, "error", error instanceof Error ? error.message : String(error));
+            throw error;
+          }
+        }, {
+          maxSteps: 6, requiredToolRetrySteps: 2, requiredTool: "memory.extraction.write", returnAfterRequiredTool: true,
+          onLlmResult: llm => {
+            total.input_tokens += llm.input_tokens;
+            total.output_tokens += llm.output_tokens;
+            total.total_tokens += llm.total_tokens;
+            this.db.query(`UPDATE agent_jobs SET input_tokens=?, output_tokens=?, total_tokens=?, cost_usd=cost_usd+? WHERE id=?`)
+              .run(total.input_tokens, total.output_tokens, total.total_tokens, costService.compute(provider.name, model.model, llm), jobId);
+            this.recordLlmStep(jobId, model, `长期记忆提取 ${sessionId}`, {}, llm);
+          },
+        });
+        if (!committed) throw new Error(`Memory extraction did not commit session: ${sessionId}`);
+        cursor = nextCursor;
+        outputs.push({ session_id: sessionId, ...committed });
+      }
+    }
+    return { ...total, summary: `长期记忆提取完成，提交 ${outputs.length} 批`, prompt: prompts.join("\n\n"), output: { batches: outputs } };
   }
 
   private async runSessionSummary(jobId: string, agent: AgentRow, provider: ProviderRow, model: ModelRow, input: AgentRunInput): Promise<any> {

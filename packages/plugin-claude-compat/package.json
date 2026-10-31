@@ -1,11 +1,11 @@
 {
   "name": "@runmarks/claude-compat-plugin",
-  "version": "0.2.20",
+  "version": "0.2.22",
   "private": false,
   "type": "module",
   "main": "./dist/index.mjs",
   "bin": {
-    "agent-tracker-claude-compat-plugin": "./bin/agent-tracker-claude-compat-install.js"
+    "runmark-claude-compat-plugin": "./bin/agent-tracker-claude-compat-install.js"
   },
   "files": [
     "bin",

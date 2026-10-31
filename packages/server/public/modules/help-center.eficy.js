@@ -9,7 +9,7 @@ const ARTICLES = [
     title: '统一接入配置',
     path: '/help/quickstart.md',
     eyebrow: 'Shared Client Env',
-    summary: '所有客户端共用 ~/.config/agent-tracker/env，在这里一次性配置上报地址和 API Key。',
+    summary: '所有客户端共用 ~/.config/runmark/env，在这里一次性配置上报地址和 API Key。',
   },
   {
     id: 'cursor',
@@ -75,12 +75,12 @@ function shellSingleQuote(value) {
 
 function buildEnvCommand(endpoint, apiKey) {
   return [
-    'mkdir -p ~/.config/agent-tracker && {',
+    'mkdir -p ~/.config/runmark && {',
     '  echo ""',
     '  echo ' + shellSingleQuote('# Runmark client config'),
-    '  echo ' + shellSingleQuote('AGENT_TRACKER_ENDPOINT="' + endpoint + '"'),
-    '  echo ' + shellSingleQuote('AGENT_TRACKER_API_KEY="' + apiKey + '"'),
-    '} >> ~/.config/agent-tracker/env',
+    '  echo ' + shellSingleQuote('RUNMARK_ENDPOINT="' + endpoint + '"'),
+    '  echo ' + shellSingleQuote('RUNMARK_API_KEY="' + apiKey + '"'),
+    '} >> ~/.config/runmark/env',
   ].join('\n')
 }
 
@@ -91,7 +91,7 @@ function buildPlaceholders(ctx) {
     ENDPOINT: endpoint,
     API_KEY: apiKey,
     CLIENT_ENV_COMMAND: buildEnvCommand(endpoint, apiKey),
-    CLIENT_ENV_PATH: '~/.config/agent-tracker/env',
+    CLIENT_ENV_PATH: '~/.config/runmark/env',
     HEALTH_URL: endpoint + '/health',
     DASHBOARD_URL: endpoint + '/',
     INGEST_PROBE_OPENCODE: [

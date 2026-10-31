@@ -1,5 +1,8 @@
 import { isForkSessionTitle, isHiddenSessionTitle, shouldSkipTool } from "@agent-tracker/shared";
+import { memoryAgentKey } from "./memory";
 export const createOpenCode2TrackerState = () => ({
+    userMessages: new Map(),
+    deliveredUsers: new Set(),
     hidden: new Set(),
     forkCutoffMs: new Map(),
     pending: new Map(),
@@ -16,8 +19,13 @@ const modelOf = (value) => {
     const model = asRecord(value);
     if (!model)
         return undefined;
-    return { id: asString(model.id), providerID: asString(model.providerID) };
+    // OpenCode 2 事件里模型名是 id；旧 session 消息是 modelID。unknown 是采集失败的占位，不当模型
+    return {
+        id: recordedName(asString(model.id) ?? asString(model.modelID)),
+        providerID: recordedName(asString(model.providerID)),
+    };
 };
+const recordedName = (value) => value && value.toLowerCase() !== "unknown" ? value : undefined;
 const tokensOf = (value) => {
     const tokens = asRecord(value);
     if (!tokens)
@@ -131,14 +139,32 @@ export const mapOpenCode2Event = (state, event, options) => {
         const text = asString(payload?.text)?.trim();
         if (item?.type !== "user" || !text)
             return [];
-        return [{
-                type: "message",
-                session_id: sessionID,
-                message_id: asString(data.inboxID) ?? asString(data.id) ?? `user-${now}`,
-                role: "user",
-                content: text,
-                created_at: createdAt,
-            }];
+        const message = {
+            type: "message",
+            session_id: sessionID,
+            message_id: asString(data.inboxID) ?? asString(data.id) ?? `user-${now}`,
+            role: "user",
+            content: text,
+            created_at: createdAt,
+        };
+        // 入队尚无实际执行 Agent；只在 delivered 后的 step.started 绑定本条来源，不能用会话当前 Agent 回填历史。
+        state.userMessages.set(message.message_id, message);
+        return [];
+    }
+    if (event.type === "session.inbox.delivered") {
+        const id = asString(data.inboxID);
+        if (id && state.userMessages.has(id))
+            state.deliveredUsers.add(id);
+        return [];
+    }
+    if (event.type === "session.inbox.cancelled") {
+        const id = asString(data.inboxID);
+        const message = id ? state.userMessages.get(id) : undefined;
+        if (id) {
+            state.userMessages.delete(id);
+            state.deliveredUsers.delete(id);
+        }
+        return message ? [message] : [];
     }
     if (event.type === "session.text.ended") {
         const messageID = asString(data.assistantMessageID);
@@ -151,13 +177,23 @@ export const mapOpenCode2Event = (state, event, options) => {
         return [];
     }
     if (event.type === "session.step.started") {
+        const previous = state.pending.get(sessionID);
         state.pending.set(sessionID, {
-            model: model?.id ?? state.pending.get(sessionID)?.model ?? "unknown",
-            provider: model?.providerID ?? state.pending.get(sessionID)?.provider ?? "unknown",
+            model: model?.id ?? previous?.model ?? "",
+            provider: model?.providerID ?? previous?.provider ?? "",
             startTime: event.created ?? now,
             messageID: asString(data.assistantMessageID),
+            agentKey: memoryAgentKey(asString(data.agent)),
         });
-        return [];
+        const messages = [];
+        for (const [id, message] of state.userMessages) {
+            if (message.session_id !== sessionID || !state.deliveredUsers.has(id))
+                continue;
+            messages.push({ ...message, agent_key: memoryAgentKey(asString(data.agent)) });
+            state.userMessages.delete(id);
+            state.deliveredUsers.delete(id);
+        }
+        return messages;
     }
     if (event.type === "session.tool.called") {
         const callID = asString(data.id);
@@ -206,8 +242,8 @@ export const mapOpenCode2Event = (state, event, options) => {
                 session_id: sessionID,
                 turn_id: messageID,
                 message_id: messageID,
-                model: pending?.model ?? model?.id ?? "unknown",
-                provider: pending?.provider ?? model?.providerID ?? "unknown",
+                model: recordedName(pending?.model) ?? model?.id ?? "unknown",
+                provider: recordedName(pending?.provider) ?? model?.providerID ?? "unknown",
                 input_tokens: tokens?.input ?? 0,
                 output_tokens: tokens?.output ?? 0,
                 cache_read_tokens: tokens?.cache?.read,
@@ -227,8 +263,9 @@ export const mapOpenCode2Event = (state, event, options) => {
                 message_id: messageID,
                 role: "assistant",
                 content,
-                model: pending?.model ?? model?.id,
-                provider: pending?.provider ?? model?.providerID,
+                agent_key: pending?.agentKey,
+                model: recordedName(pending?.model) ?? model?.id,
+                provider: recordedName(pending?.provider) ?? model?.providerID,
                 created_at: createdAt,
             });
             state.texts.delete(messageID);
@@ -248,8 +285,8 @@ export const mapOpenCode2Event = (state, event, options) => {
                 type: "turn.error",
                 session_id: sessionID,
                 turn_id: pending.messageID ?? `turn-${sessionID}-${pending.startTime}`,
-                model: pending.model,
-                provider: pending.provider,
+                model: recordedName(pending.model) ?? "unknown",
+                provider: recordedName(pending.provider) ?? "unknown",
                 input_tokens: 0,
                 output_tokens: 0,
                 total_tokens: 0,

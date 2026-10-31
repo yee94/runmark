@@ -595,6 +595,23 @@ describe("API integration", () => {
     expect(row.models).toEqual(["glm-5-1", "deepseek-v4-pro"]);
   });
 
+  it("GET /v1/sessions drops placeholder unknown from stored models", async () => {
+    db.exec(`
+      INSERT INTO sessions (id, agent, title, model, started_at, ended_at, request_count, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd)
+      VALUES ('ph-1', 'opencode', '占位模型', 'deepseek-v4.1-flash, unknown', '2026-07-09T04:10:00.000Z', NULL, 0, 0, 0, 0, 0)
+    `);
+    db.exec(`
+      INSERT INTO messages (id, session_id, role, content, created_at)
+      VALUES ('m-ph-1', 'ph-1', 'user', 'hi', '2026-07-09T04:10:01.000Z')
+    `);
+
+    const sessionsRes = await app.request("/v1/sessions");
+    const sessions = await sessionsRes.json();
+    const row = sessions.find((s: any) => s.id === "ph-1");
+    expect(row).toBeTruthy();
+    expect(row.models).toEqual(["deepseek-v4.1-flash"]);
+  });
+
   it("GET /v1/sessions?q= searches message body and supports offset pagination", async () => {
     db.exec(`
       INSERT INTO sessions (id, agent, title, started_at, ended_at, request_count, total_input_tokens, total_output_tokens, total_tokens, total_cost_usd)

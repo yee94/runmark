@@ -33,13 +33,18 @@ describe("mergeHooksConfig", () => {
 
 describe("runInit", () => {
   let tempRoot: string;
+  let previousHome: string | undefined;
 
   beforeEach(() => {
     tempRoot = mkdtempSync(join(tmpdir(), "agent-tracker-init-"));
+    previousHome = process.env.HOME;
+    process.env.HOME = tempRoot;
   });
 
   afterEach(() => {
     rmSync(tempRoot, { recursive: true, force: true });
+    if (previousHome === undefined) delete process.env.HOME;
+    else process.env.HOME = previousHome;
   });
 
   it("writes hooks.json and copies hook script", () => {
@@ -59,5 +64,17 @@ describe("runInit", () => {
     const hooks = JSON.parse(readFileSync(result.hooksPath, "utf-8"));
     expect(hooks.version).toBe(1);
     expect(hooks.hooks.beforeSubmitPrompt?.[0]?.command).toBe(`./hooks/${HOOK_INSTALL_DIR}/${HOOK_WRAPPER_FILE}`);
+    const envPath = join(tempRoot, ".config/runmark/env");
+    expect(readFileSync(envPath, "utf8")).toContain('RUNMARK_ENDPOINT="http://localhost:3456"');
+    expect(existsSync(join(tempRoot, ".config/agent-tracker/env"))).toBe(false);
+
+    rmSync(envPath);
+    const legacyPath = join(tempRoot, ".config/agent-tracker/env");
+    mkdirSync(join(tempRoot, ".config/agent-tracker"), { recursive: true });
+    const legacy = "endpoint=https://existing.test\napiKey=existing-key\n";
+    writeFileSync(legacyPath, legacy);
+    runInit({ cursorDir, hookDistDir: distDir, wrapperSourcePath: wrapperSource });
+    expect(existsSync(envPath)).toBe(false);
+    expect(readFileSync(legacyPath, "utf8")).toBe(legacy);
   });
 });

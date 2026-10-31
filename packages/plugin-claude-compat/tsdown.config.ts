@@ -12,5 +12,5 @@ export default defineConfig({
   treeshake: true,
   minify: false,
   // Bundle @agent-tracker/shared inline so the CLI runs standalone
-  onlyBundle: [/^@agent-tracker\//],
+  onlyBundle: ["@agent-tracker/shared"],
 });

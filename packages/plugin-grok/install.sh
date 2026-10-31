@@ -12,7 +12,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
-VERSION="0.1.2"
+VERSION="0.1.4"
 HOOK_NAME="runmark-tracker.json"
 GROK_HOME="${GROK_HOME:-$HOME/.grok}"
 HOOKS_DIR="${AGENT_TRACKER_GROK_HOOKS_DIR:-$GROK_HOME/hooks}"
@@ -97,7 +97,7 @@ if RUNTIME="$(resolve_runtime)"; then
   exec "$RUNTIME" "$SCRIPT_DIR/index.mjs" "$@"
 fi
 
-LOG="${AGENT_TRACKER_LOG_FILE:-${HOME}/.config/agent-tracker/plugin.log}"
+LOG="${RUNMARK_LOG_FILE:-${AGENT_TRACKER_LOG_FILE:-${HOME}/.config/runmark/plugin.log}}"
 mkdir -p "$(dirname "$LOG")" 2>/dev/null || true
 printf '{"ts":"%s","level":"error","component":"tracker-hook","message":"no bun/node runtime; telemetry disabled"}\n' \
   "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$LOG" 2>/dev/null || true
@@ -240,7 +240,7 @@ echo "安装目录:    ${INSTALL_ROOT}"
 echo ""
 echo "下一步："
 echo "  1. 确认 Runmark Server: curl localhost:3456/health"
-echo "  2. 配置 ~/.config/agent-tracker/env（与其它客户端共用）"
+echo "  2. 配置 ~/.config/runmark/env（与其它客户端共用）"
 echo "     endpoint=\"http://localhost:3456\""
 echo "     apiKey=\"dev-key-change-me\""
 echo "  3. 重启 Grok 或新开会话（用户级 hooks 无需 /hooks-trust）"

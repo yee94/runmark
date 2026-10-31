@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>Runmark</title>
   <link rel="stylesheet" href="https://unpkg.com/@eficy/shadcn-ui@1.1.3/dist/index.css" />
-  <link rel="stylesheet" href="./style.css?v=stats-range-20261018" />
+  <link rel="stylesheet" href="./style.css?v=memory-evidence-20261029" />
 </head>
 <body>
   <div class="ambient">
@@ -48,7 +48,7 @@
       Input, Textarea, Label,
       Calendar, Popover, PopoverTrigger, PopoverContent,
     } = shadcnUi
-    const { CalendarDays } = shadcnUi.Lucide
+    const { CalendarDays, Brain } = shadcnUi.Lucide
 
     // ─── Signals ───
     const summary = signal(null)
@@ -226,7 +226,7 @@
       { k: 'custom', label: '自定义' },
     ]
 
-    const VALID_TABS = ['summary', 'models', 'sessions', 'agent-config', 'agent-runs', 'matters', 'system-config', 'help']
+    const VALID_TABS = ['summary', 'models', 'sessions', 'agent-config', 'agent-runs', 'matters', 'memories', 'system-config', 'help']
 
     function statsQueryString() {
       const range = statsRange.value
@@ -1687,7 +1687,7 @@
       </svg>
     ))
 
-    const tabLabels = { summary: '总览', models: '模型', sessions: '会话', 'agent-config': '智能体配置', 'agent-runs': '调用记录', matters: '事项归档', 'system-config': '系统配置', help: '帮助中心' }
+    const tabLabels = { summary: '总览', models: '模型', sessions: '会话', 'agent-config': '智能体配置', 'agent-runs': '调用记录', matters: '事项归档', memories: '记忆', 'system-config': '系统配置', help: '帮助中心' }
 
     // ─── Stats filter toolbar ───
     const StatsToolbar = component(() => (
@@ -1823,6 +1823,7 @@
     const loadedAgentRuns = signal(false)
     const loadedSystemConfig = signal(false)
     const loadedMatters = signal(false)
+    const loadedMemories = signal(false)
     const loadedHelpCenter = signal(false)
 
     // ─── Summary panels ───
@@ -1954,7 +1955,7 @@
     let AgentConfigPage = null
     async function loadAgentConfigPage() {
       if (AgentConfigPage) return
-      const mod = await loadModule('./modules/agent-config.eficy.js?v=agent-schedule-20260714-1')
+      const mod = await loadModule('./modules/agent-config.eficy.js?v=memory-tools-20261029')
       AgentConfigPage = mod.createAgentConfigPage({
         apiFetch,
         selectedAgentId,
@@ -2050,11 +2051,24 @@
       return <MattersPage />
     })
 
+    let MemoriesPage = null
+    async function loadMemoriesPage() {
+      if (MemoriesPage) return
+      const mod = await loadModule('./modules/memories.eficy.js?v=memory-evidence-20261029')
+      MemoriesPage = mod.createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgentId, formatDateTime })
+      loadedMemories.value = true
+    }
+
+    const MemoriesPageWrapper = component(() => {
+      if (!loadedMemories.value) return null
+      return <MemoriesPage />
+    })
+
     // ─── Help center page ───
     let HelpCenterPage = null
     async function loadHelpCenterPage() {
       if (HelpCenterPage) return
-      const mod = await loadModule('./modules/help-center.eficy.js?v=help-20260708-9')
+      const mod = await loadModule('./modules/help-center.eficy.js?v=runmark-env-20261029')
       HelpCenterPage = mod.createHelpCenterPage({
         apiFetch,
         selectedHelpArticleId,
@@ -2078,6 +2092,7 @@
     loadAgentRunsPage()
     loadSystemConfigPage()
     loadMattersPage()
+    loadMemoriesPage()
     loadHelpCenterPage()
 
     // ─── Session Detail（密集 trace 视图） ───
@@ -2166,7 +2181,7 @@
             <br /><br />
             也可在本机配置文件中查看：
             <br />
-            <code>~/.config/agent-tracker/env</code> 里的 <code>AGENT_TRACKER_API_KEY</code>（或短键 <code>apiKey</code>）
+            <code>~/.config/runmark/env</code> 里的 <code>RUNMARK_API_KEY</code>（或短键 <code>apiKey</code>）
             <br /><br />
             <div style={{ marginBottom: '6px', fontWeight: 600, color: 'var(--text-primary)' }}>登录后做什么？</div>
             打开侧栏 <strong>帮助中心</strong>（<code>#/help</code>），按「统一接入配置」完成 Cursor / OpenCode / Codex 客户端上报。
@@ -2243,7 +2258,7 @@
                 </ol>
               </div>
               {!ready ? (
-                <p style={{ color: 'var(--accent-orange)' }}>服务端未配置 AGENT_TRACKER_CURSOR_CRYPTO_KEY，无法加密存储 Token。请联系管理员在 .env 中配置。</p>
+                <p style={{ color: 'var(--accent-orange)' }}>服务端未配置 RUNMARK_CURSOR_CRYPTO_KEY，无法加密存储 Token。请联系管理员在 .env 中配置。</p>
               ) : null}
               <div>
                 <Label htmlFor="cursor-token">WorkosCursorSessionToken</Label>
@@ -2310,6 +2325,7 @@
               <NavItem tab="models" label="模型" icon={<CpuIcon />} />
               <NavItem tab="sessions" label="会话" icon={<ListIcon />} />
               <NavItem tab="matters" label="事项归档" icon={<ArchiveIcon />} />
+              <NavItem tab="memories" label="记忆" icon={<Brain size={14} />} />
               <div className="sidebar-spacer" />
               <div className="sidebar-divider" />
               <p className="sidebar-label">CONFIGURATION</p>
@@ -2376,6 +2392,10 @@
 
               {activeTab.value === 'matters' && !routeSessionId.value ? (
                 <MattersPageWrapper />
+              ) : null}
+
+              {activeTab.value === 'memories' && !routeSessionId.value ? (
+                <MemoriesPageWrapper />
               ) : null}
 
               {activeTab.value === 'help' && !routeSessionId.value ? (
