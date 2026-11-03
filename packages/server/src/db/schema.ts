@@ -46,6 +46,15 @@ CREATE TABLE IF NOT EXISTS memory_extraction_progress (
   session_id TEXT PRIMARY KEY,
   cursor INTEGER NOT NULL DEFAULT 0
 );
+CREATE TABLE IF NOT EXISTS memory_index_snapshots (
+  sequence INTEGER PRIMARY KEY AUTOINCREMENT,
+  namespace_id TEXT NOT NULL,
+  basis_version TEXT NOT NULL,
+  entries_json TEXT NOT NULL,
+  job_id TEXT NOT NULL,
+  created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memory_index_namespace ON memory_index_snapshots(namespace_id, sequence DESC);
 CREATE TABLE IF NOT EXISTS ingest_events (
   id INTEGER PRIMARY KEY,
   source TEXT NOT NULL,

@@ -47,6 +47,12 @@ export type MemoryHost = {
         context?: (input: {
             sessionID: string;
         }) => Promise<readonly MemorySourceMessage[]>;
+        synthetic?: (input: {
+            sessionID: string;
+            text: string;
+            resume: false;
+            metadata: Record<string, unknown>;
+        }) => Promise<unknown>;
         hook: (name: "context", handler: (event: {
             sessionID: string;
             agent?: string;
@@ -74,6 +80,14 @@ export declare function createMemoryClient(config: Pick<PluginConfig, "endpoint"
 }, log: (message: string, details?: Record<string, unknown>) => void, sourceMessage?: (context: MemoryToolContext, requested?: string) => Promise<string | undefined>): {
     snapshot: (sessionID: string, agent?: string) => Promise<string | undefined>;
     tools: MemoryTool[];
+    updates: (sessionID: string, agent: string | undefined, notify: (text: string) => Promise<unknown>) => Promise<void>;
+    recall: (sessionID: string, agent?: string) => {
+        start(id: string, query: string): void;
+        take(): string | undefined;
+        markRead(ids: string[]): void;
+        clear(): void;
+    };
+    retrievalMode: "index" | "semantic";
     clear: () => void;
 };
 export declare function setupMemory(host: MemoryHost, memory: ReturnType<typeof createMemoryClient>): Promise<() => Promise<void>>;

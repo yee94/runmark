@@ -9,7 +9,7 @@
   },
   "files": [
     "bin",
-    "lib",
+    "lib/patch_opencode_config.py",
     "install.sh",
     "README.md"
   ],

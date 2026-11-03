@@ -22,7 +22,7 @@
 | 定价与历史重算 | GET/PUT `/v1/pricing`、POST `/v1/pricing/reprice` |
 | 服务更新 | GET `/v1/system-update/check`、`/v1/system-update/status`、POST `/v1/system-update` |
 | 帮助上下文 | GET `/v1/help/context` |
-| 分层长期记忆 | GET `/v1/memories/scopes`、`/projects`、`/index`、GET/POST `/v1/memories`、GET/PATCH/DELETE `/v1/memories/{id}`；scope + agent_key 选择空间，view=effective 读取适用层；见 [分层记忆](memory.md) |
+| 分层长期记忆 | GET `/v1/memories/scopes`、`/projects`、`/index`、`/index-state`，POST `/v1/memories/recall`，GET/POST `/v1/memories`、GET/PATCH/DELETE `/v1/memories/{id}`；scope + agent_key 选择空间，view=effective 读取适用层；见 [分层记忆](memory.md) |
 
 采集接口另有 POST `/v1/ingest`、`/v1/traces`、`/v1/metrics`。OTLP 只支持 HTTP JSON，metrics 接收后丢弃。GET `/v1/turns` 提供全局 turn 分页；GET `/v1/stats/by-tool` 仍存在，但网页不展示工具统计。
 

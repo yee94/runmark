@@ -258,6 +258,9 @@ export const DEFAULT_PRICING: ModelPricing[] = [
   { provider: "anthropic", model: "claude-sonnet-4-20250514", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
   { provider: "anthropic", model: "claude-sonnet-4", input_price: 3.0, output_price: 15.0, cache_read_price: 0.3, cache_write_price: 3.75 },
   { provider: "anthropic", model: "claude-haiku-4-20250514", input_price: 0.5, output_price: 2.5, cache_read_price: 0.05, cache_write_price: 0.625 },
+  // Haiku 5.5：$0.10/$0.50（较 4.5 降价 90%）；cache read 0.1x / 5m write 1.25x
+  { provider: "anthropic", model: "claude-haiku-5-5", input_price: 0.1, output_price: 0.5, cache_read_price: 0.01, cache_write_price: 0.125 },
+  { provider: "anthropic", model: "claude-haiku-5", input_price: 0.1, output_price: 0.5, cache_read_price: 0.01, cache_write_price: 0.125 },
   // OpenAI
   { provider: "openai", model: "gpt-4.1", input_price: 2.0, output_price: 8.0 },
   { provider: "openai", model: "gpt-4.1-mini", input_price: 0.4, output_price: 1.6 },

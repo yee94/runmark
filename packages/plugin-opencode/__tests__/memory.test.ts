@@ -177,3 +177,49 @@ test("location-scoped hooks and tools ignore sessions belonging to another plugi
   await expect(tools.find(t=>t.name.endsWith("write")).execute({scope:"global"},{sessionID:"session"})).rejects.toThrow("location");
   expect(f.requests).toHaveLength(1);
 });
+
+test("scope protocol is injected once, not repeated in each tool description", async () => {
+  const memory = fixture().make();
+  const text = await memory.snapshot("session", "build");
+  expect(text).toContain("内容 type 与存储 scope 独立");
+  expect(memory.tools.every(tool => !tool.description.includes("内容 type 与存储 scope 独立"))).toBe(true);
+  expect(text).toContain("实际采用某条记忆前");
+});
+
+test("consolidation adds one synthetic notice on a new user turn without changing the frozen system index", async () => {
+  let version = "original";
+  let indexes = 0, checks = 0;
+  const server = Bun.serve({ port: 0, fetch(req) {
+    if (new URL(req.url).pathname.endsWith("/index-state")) { checks++; return Response.json({ consolidation_version: version }); }
+    indexes++; return Response.json({ markdown: "INITIAL_INDEX", consolidation_version: version });
+  } });
+  servers.push(server);
+  const memory = createMemoryClient({ endpoint: server.url.href, apiKey: "test" }, {}, () => {});
+  let hook: any;
+  let user = { id: "user-1", type: "user", text: "开始协作" };
+  const notices: any[] = [];
+  const dispose = await setupMemory({ session: {
+    hook: async (_, callback) => { hook = callback; return { dispose: async () => {} }; },
+    context: async () => [user], synthetic: async input => { notices.push(input); },
+  }, tool: { transform: async () => ({ dispose: async () => {} }) } }, memory);
+  const event = { sessionID: "session", system: [] as any[] };
+  await hook(event);
+  const initial = JSON.stringify(event.system);
+  version = "consolidated";
+  await hook(event);
+  expect(checks).toBe(0);
+  user = { ...user, id: "user-2" };
+  await hook(event);
+  expect(notices).toHaveLength(1);
+  expect(notices[0]).toMatchObject({ sessionID: "session", resume: false, metadata: { synthetic: true, source: "runmark-memory" } });
+  expect(notices[0].text).toContain("runmark_memory_refresh");
+  expect(JSON.stringify(event.system)).toBe(initial);
+  expect(indexes).toBe(1);
+  await hook(event);
+  expect(checks).toBe(1);
+  user = { ...user, id: "user-3" };
+  await hook(event);
+  expect(checks).toBe(2);
+  expect(notices).toHaveLength(1);
+  await dispose();
+});

@@ -2,6 +2,21 @@
 
 ## Unreleased
 
+## 0.2.43 (Server) - 2026-11-03
+
+- Tighten long-term memory admission: exclude child, background, synthetic and attached context as sources; automatic writes require durable evidence and a concrete future use beyond the current task.
+- Extraction reads the full applicable catalog, skips sources already handled by foreground tools, and receives forgotten-entry exclusion metadata without old bodies. Weak evidence rejects the whole batch without advancing the cursor.
+- Add versioned, namespace-scoped index consolidation and related-memory reads. Original facts, sources and revisions are preserved; concurrent changes invalidate stale snapshots.
+- Add index-state and semantic recall APIs. Consolidation and recall agents are independently configurable and disabled by default; upgrading does not run historical consolidation.
+- Include the upstream Haiku 5.5 estimated prices and `haiku` alias; cost calculation stays on the server.
+- Use npmjs download URLs in the workspace lockfile and server packaging. Limit installer Python assets to source, excluding local bytecode caches from npm archives.
+
+## OpenCode Plugin 0.2.13 - 2026-11-03
+
+- Keep the initial per-session, per-Agent memory index stable after writes. Background consolidation only sends a refresh hint on a new real-user turn.
+- Add a cancellable, non-blocking semantic recall alternative, mutually exclusive with index injection and disabled by default.
+- Foreground memory tools require an explicit real-user request and reusable long-term value. Update the bundled `runmark` Skill and API contract.
+
 ## 0.2.42 (Server) - 2026-10-31
 
 Catch-up from 0.2.39 (includes 0.2.40 and 0.2.41).

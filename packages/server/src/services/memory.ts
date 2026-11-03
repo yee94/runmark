@@ -3,7 +3,7 @@ import { createHash, randomUUID } from "node:crypto";
 
 export type MemoryScope = "global" | "project";
 export interface MemoryContext { session_id?: string; repo_url?: string; hostname?: string; directory?: string; project_id?: string; scope?: MemoryScope; agent_key?: string; view?: "effective" | "scoped" | "projects" }
-export interface MemoryAssessment { quote: string; retention_reason: string; scope_reason: string }
+export interface MemoryAssessment { quote: string; retention_reason: string; scope_reason: string; durable_basis?: "explicit_memory_request" | "stable_preference" | "standing_constraint" | "reference_pointer"; future_use?: string }
 export interface MemorySource { session_id: string; message_id: string; job_id?: string; explicit?: boolean; assessment?: MemoryAssessment }
 export interface MemoryWrite {
   scope?: MemoryScope;
@@ -18,6 +18,7 @@ export interface MemoryWrite {
   restore?: boolean;
 }
 export interface MemoryChange { action: "create" | "update" | "forget"; id?: string; input: MemoryWrite; context?: MemoryContext }
+export interface MemoryIndexEntry { id: string; description: string; related_ids?: string[] }
 interface MemoryRow {
   id: string; project_id: string; scope: MemoryScope; agent_key: string; context_json: string; name: string; description: string; type: string; body: string;
   origin_session_id: string; revision: number; status: string; created_at: string; updated_at: string; forgotten_at: string | null; forgotten_sequence: number | null;
@@ -28,11 +29,42 @@ export class MemoryError extends Error {
 const fail = (status: MemoryError["status"], message: string): never => { throw new MemoryError(status, message); };
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
 const metadata = ({ body, context_json, ...row }: MemoryRow) => row;
+export type MemoryDetail = ReturnType<typeof metadata> & { body: string; markdown: string; sources: Array<Record<string, unknown>>; related_memories?: MemoryDetail[] };
 const priority = (row: { scope: MemoryScope; agent_key: string }) => ({ global: 0, project: 2 }[row.scope] + (row.agent_key ? 1 : 0));
 const prioritySQL = "(CASE scope WHEN 'project' THEN 2 ELSE 0 END + CASE WHEN agent_key='' THEN 0 ELSE 1 END)";
 
+export function memoryUserText(content: string | null | undefined): string {
+  const text = (content ?? "").replace(/<(system-reminder|conversation-checkpoint|skill_content|runmark-project-memory)\b[^>]*>[\s\S]*?<\/\1>/gi, "").trim();
+  if (/^You are a subagent spawned by another session\./i.test(text)) return "";
+  return text;
+}
+
 export class MemoryService {
   constructor(private db: Database) {}
+
+  sourceSessionRejection(sessionId: string): string | null {
+    const session = this.db.query("SELECT agent, parent_session_id, metadata FROM sessions WHERE id=?").get(sessionId) as { agent: string; parent_session_id: string | null; metadata: string | null } | null;
+    if (!session) return "missing_source_session";
+    let meta: Record<string, unknown> = {};
+    try { meta = JSON.parse(session.metadata ?? "{}") ?? {}; } catch {}
+    if (session.parent_session_id || meta.is_subagent === true) return "subagent_source";
+    if (session.agent === "runmark" || session.agent.startsWith("agent-")
+      || meta.synthetic === true || meta.background_agent === true || meta.source === "runmark-agent"
+      || (typeof meta.agent_id === "string" && meta.agent_id.startsWith("agent-"))) return "background_source";
+    return null;
+  }
+
+  extractionExclusions(context: MemoryContext) {
+    const namespaces = this.namespaces(context);
+    return this.db.query(`SELECT m.id,m.name,m.type,s.assessment_json FROM memories m
+      LEFT JOIN memory_sources s ON s.memory_id=m.id AND s.revision=m.revision
+      WHERE m.project_id IN (${namespaces.map(() => "?").join(",")}) AND m.status='forgotten' ORDER BY m.id`)
+      .all(...namespaces.map(n => n.id)).map((row: any) => {
+        let reason: string | null = null;
+        try { reason = JSON.parse(row.assessment_json ?? "null")?.retention_reason ?? null; } catch {}
+        return { id: row.id, name: row.name, type: row.type, reason };
+      });
+  }
 
   migrateWorkspaceMemories() {
     const rows = this.db.query("SELECT * FROM memories WHERE scope='local' ORDER BY id").all() as MemoryRow[];
@@ -198,23 +230,100 @@ export class MemoryService {
     return Buffer.from(JSON.stringify({ project_id: row.project_id, updated_at: row.updated_at, id: row.id, priority: priority(row) })).toString("base64url");
   }
 
+  catalog(context: MemoryContext) {
+    const first = this.list(context, { limit: 200 });
+    const items = [...first.items];
+    let cursor = first.next_cursor;
+    while (cursor) {
+      const page = this.list(context, { limit: 200, cursor });
+      items.push(...page.items);
+      cursor = page.next_cursor;
+    }
+    return { ...first, items, has_more: false, next_cursor: null };
+  }
+
+  version(context: MemoryContext) {
+    return this.recordVersion(this.namespaces(context).map(namespace => namespace.id));
+  }
+
+  private recordVersion(namespaceIds: string[]) {
+    const rows = this.db.query(`SELECT id, revision, status FROM memories WHERE project_id IN (${namespaceIds.map(() => "?").join(",")}) ORDER BY id`).all(...namespaceIds);
+    return hash(JSON.stringify(rows));
+  }
+
+  indexState(context: MemoryContext) {
+    const versions = this.namespaces(context).map(namespace => ({
+      namespace: namespace.id,
+      sequence: (this.db.query("SELECT sequence FROM memory_index_snapshots WHERE namespace_id=? ORDER BY sequence DESC LIMIT 1").get(namespace.id) as { sequence: number } | null)?.sequence ?? 0,
+    }));
+    return { consolidation_version: hash(JSON.stringify(versions)) };
+  }
+
+  consolidateIndex(context: MemoryContext, expectedVersion: string, entries: MemoryIndexEntry[], jobId: string) {
+    return this.db.transaction(() => {
+      if (context.view === "effective" || context.view === "projects") return fail(400, "Consolidation requires an exact namespace");
+      const namespace = this.namespace(context);
+      if (expectedVersion !== this.version(context)) return fail(409, "Memory changed during consolidation");
+      if (!Array.isArray(entries) || entries.length > 200) return fail(400, "Index requires at most 200 entries");
+      const rows = new Map(this.catalog(context).items.map(item => [item.id, item]));
+      const seen = new Set<string>();
+      const normalized = entries.map(entry => {
+        if (!entry || typeof entry.description !== "string" || !entry.description.trim() || /[\r\n]/.test(entry.description) || entry.description.length > 150) return fail(400, "Index hook must be one line, at most 150 characters");
+        const related = entry.related_ids ?? [];
+        if (!Array.isArray(related) || related.some(id => typeof id !== "string")) return fail(400, "Invalid related memory IDs");
+        for (const id of [entry.id, ...related]) {
+          if (!rows.has(id) || seen.has(id)) return fail(400, "Index IDs must be active, unique and in the same namespace");
+          seen.add(id);
+        }
+        return { id: entry.id, description: entry.description.trim(), related_ids: related };
+      });
+      const encoded = JSON.stringify(normalized);
+      if (encoded.length > 24_500) return fail(400, "Index exceeds character budget");
+      const previous = this.db.query("SELECT basis_version,entries_json FROM memory_index_snapshots WHERE namespace_id=? ORDER BY sequence DESC LIMIT 1").get(namespace.id) as { basis_version: string; entries_json: string } | null;
+      if (previous?.basis_version === expectedVersion && previous.entries_json === encoded) return { success: true, changed: false };
+      this.db.query("INSERT INTO memory_index_snapshots(namespace_id,basis_version,entries_json,job_id,created_at) VALUES (?,?,?,?,?)")
+        .run(namespace.id, expectedVersion, encoded, jobId, new Date().toISOString());
+      return { success: true, changed: true };
+    })();
+  }
+
+  private indexEntries(context: MemoryContext) {
+    const entries: Array<MemoryIndexEntry & { item: ReturnType<typeof metadata>; curated?: boolean }> = [];
+    for (const namespace of this.namespaces(context).sort((a, b) => priority(b) - priority(a))) {
+      const scoped = { ...context, ...namespace.context, scope: namespace.scope, agent_key: namespace.agent_key, view: "scoped" as const };
+      const items = this.catalog(scoped).items;
+      const snapshot = this.db.query("SELECT basis_version,entries_json FROM memory_index_snapshots WHERE namespace_id=? ORDER BY sequence DESC LIMIT 1").get(namespace.id) as { basis_version: string; entries_json: string } | null;
+      if (snapshot && snapshot.basis_version === this.version(scoped)) {
+        const byId = new Map(items.map(item => [item.id, item]));
+        for (const entry of JSON.parse(snapshot.entries_json) as MemoryIndexEntry[]) entries.push({ ...entry, item: byId.get(entry.id)!, curated: true });
+      } else {
+        for (const item of items) entries.push({ id: item.id, description: item.description, item });
+      }
+    }
+    if (!entries.some(entry => entry.curated)) entries.sort((a, b) => priority(b.item) - priority(a.item)
+      || b.item.updated_at.localeCompare(a.item.updated_at) || a.id.localeCompare(b.id));
+    return entries;
+  }
+
   index(context: MemoryContext) {
     const result = this.list(context, { limit: 200 });
+    const entries = this.indexEntries(context);
     const lines: string[] = [];
     let used = 0;
-    for (const item of result.items) {
-      const hook = item.description.replace(/[\\[\]<>`*_]/g, "\\$&");
+    for (const { item, description } of entries) {
+      const hook = description.replace(/[\\[\]<>`*_]/g, "\\$&");
       const line = `- [${item.name}](/v1/memories/${item.id}?${this.projectQuery(context)}) — [${item.scope}${item.agent_key ? ` / ${item.agent_key.replace(/[\\[\]<>`*_]/g, "\\$&")}` : " / shared"}] ${hook}`;
-      if (used + line.length + 1 > 24500) break;
+      if (lines.length >= 200 || used + line.length + 1 > 24500) break;
       lines.push(line); used += line.length + 1;
     }
-    const has_more = result.has_more || lines.length < result.items.length;
-    const last = result.items[lines.length - 1];
-    const next_cursor = has_more && last ? this.cursor({ ...last, project_id: result.namespaces.map(n => n.id).sort().join(",") }) : null;
+    const has_more = lines.length < entries.length;
+    const last = entries[lines.length - 1]?.item;
+    const next_cursor = has_more && last && !entries.some(entry => entry.curated) ? this.cursor({ ...last, project_id: result.namespaces.map(n => n.id).sort().join(",") }) : null;
     const continuation = `/v1/memories?${this.projectQuery(context)}${next_cursor ? `&cursor=${encodeURIComponent(next_cursor)}` : ""}`;
     const markdown = lines.join("\n");
-    const version = this.db.query(`SELECT id, revision, status FROM memories WHERE project_id IN (${result.namespaces.map(() => "?").join(",")}) ORDER BY id`).all(...result.namespaces.map(n => n.id));
-    return { project: result.project, namespaces: result.namespaces, precedence: "Current instructions override memory; project is more specific than global; agent-specific is more specific than shared. Memory is shared across machines. Keep distinct facts even when names match.", version: hash(JSON.stringify(version)), markdown, has_more, next_cursor, next_url: has_more ? continuation : null };
+    const state = this.indexState(context);
+    const version = hash(JSON.stringify([this.version(context), state.consolidation_version]));
+    return { project: result.project, namespaces: result.namespaces, precedence: "Current instructions override memory; project is more specific than global; agent-specific is more specific than shared. Memory is shared across machines. Keep distinct facts even when names match.", version, ...state, markdown, has_more, next_cursor, next_url: has_more ? continuation : null };
   }
 
   private projectQuery(context: MemoryContext) {
@@ -249,7 +358,7 @@ export class MemoryService {
     return row ?? fail(404, "Memory not found in project");
   }
 
-  read(context: MemoryContext, id: string) {
+  read(context: MemoryContext, id: string, includeRelated = true): MemoryDetail {
     const namespaces = this.namespaces(context);
     const row = this.db.query(`SELECT * FROM memories WHERE id=? AND project_id IN (${namespaces.map(() => "?").join(",")})`).get(id, ...namespaces.map(n => n.id)) as MemoryRow | null;
     if (!row) return fail(404, "Memory not found in applicable scope");
@@ -260,7 +369,11 @@ export class MemoryService {
         return { ...rest, assessment: assessment_json ? JSON.parse(assessment_json) : null };
       });
     const markdown = `---\nname: ${JSON.stringify(row.name)}\ndescription: ${JSON.stringify(row.description)}\nmetadata:\n  node_type: memory\n  type: ${row.type}\n  scope: ${row.scope}\n  agent_key: ${JSON.stringify(row.agent_key)}\n  originSessionId: ${JSON.stringify(row.origin_session_id)}\n---\n\n${row.body}`;
-    return { ...metadata(row), body: row.body, markdown, sources };
+    const snapshot = includeRelated ? this.db.query("SELECT basis_version,entries_json FROM memory_index_snapshots WHERE namespace_id=? ORDER BY sequence DESC LIMIT 1").get(row.project_id) as { basis_version: string; entries_json: string } | null : null;
+    const related = snapshot && snapshot.basis_version === this.recordVersion([row.project_id])
+      ? (JSON.parse(snapshot.entries_json) as MemoryIndexEntry[]).find(entry => entry.id === id)?.related_ids ?? [] : [];
+    return { ...metadata(row), body: row.body, markdown, sources,
+      ...(related.length ? { related_memories: related.map(id => this.read(context, id, false)) } : {}) };
   }
 
   create(context: MemoryContext, input: MemoryWrite) { return this.write(context, "create", undefined, input); }
@@ -298,6 +411,12 @@ export class MemoryService {
       }
       if (project.agent_key && message.agent_key !== project.agent_key) return fail(422, "Source belongs to another named Agent or has no Agent identity");
       if (source.explicit && message.role !== "user") return fail(422, "Explicit actions require a user source");
+      if (action !== "forget") {
+        const rejection = this.sourceSessionRejection(source.session_id);
+        if (rejection || message.role !== "user" || !memoryUserText(message.content)) return fail(422, `Memory requires a real user source: ${rejection ?? "non_user_or_synthetic_text"}`);
+        if (source.assessment && !memoryUserText(message.content).includes(source.assessment.quote)) return fail(422, "Assessment quote must match user-authored text, not attached context");
+        if (!source.explicit || source.job_id) this.validateDurableAssessment(source.assessment);
+      }
       if (source.job_id) {
         if (typeof source.job_id !== "string") return fail(400, "Invalid source job_id");
         const job = this.db.query("SELECT target_session_id, input_json FROM agent_jobs WHERE id = ?").get(source.job_id) as { target_session_id: string | null; input_json: string | null } | null;
@@ -349,6 +468,12 @@ export class MemoryService {
     })();
   }
 
+  private validateDurableAssessment(assessment: MemoryAssessment | undefined) {
+    if (!assessment || !["explicit_memory_request", "stable_preference", "standing_constraint", "reference_pointer"].includes(assessment.durable_basis ?? "")
+      || typeof assessment.future_use !== "string" || !assessment.future_use.trim() || assessment.future_use.length > 2000) return fail(422, "Automatic memory requires durable_basis and a concrete future_use; uncertain candidates must be skipped");
+    for (const key of ["quote", "retention_reason", "scope_reason"] as const) if (typeof assessment[key] !== "string" || !assessment[key].trim()) return fail(422, "Automatic memory requires source-backed assessment");
+  }
+
   getExtractionCursor(sessionId: string): number {
     return (this.db.query("SELECT cursor FROM memory_extraction_progress WHERE session_id = ?").get(sessionId) as { cursor: number } | null)?.cursor ?? 0;
   }
@@ -359,15 +484,22 @@ export class MemoryService {
       WHERE m.session_id = ? AND a.sequence > ? ORDER BY a.sequence`).all(sessionId, afterCursor) as Array<{ cursor: number; id: string; session_id: string; role: string; content: string | null; created_at: string }>;
   }
 
+  foregroundSources(sessionId: string) {
+    return new Set((this.db.query("SELECT DISTINCT message_id FROM memory_sources WHERE session_id=? AND explicit=1 AND job_id IS NULL AND action IN ('create','update','forget')").all(sessionId) as Array<{ message_id: string }>).map(row => row.message_id));
+  }
+
   commitExtraction(input: { session_id: string; expected_cursor: number; cursor: number; changes: MemoryChange[] }) {
     return this.db.transaction(() => {
       if (this.getExtractionCursor(input.session_id) !== input.expected_cursor) return fail(409, "Extraction cursor conflict");
       if (!Number.isInteger(input.cursor) || input.cursor < input.expected_cursor || (input.cursor > 0 && !this.db.query("SELECT 1 FROM memory_message_arrivals WHERE session_id = ? AND sequence = ?").get(input.session_id, input.cursor))) return fail(400, "Invalid extraction cursor");
+      const handled = this.foregroundSources(input.session_id);
       const results = input.changes.map(change => {
         if (!["create", "update", "forget"].includes(change.action) || (change.action !== "create" && !change.id)) return fail(400, "Invalid memory change");
         if (change.input.source?.session_id !== input.session_id) return fail(422, "Extraction source must belong to the processed session");
+        if (handled.has(change.input.source.message_id)) return fail(409, "Source already handled by foreground memory tools");
         const source = this.db.query("SELECT sequence AS cursor FROM memory_message_arrivals WHERE message_id = ? AND session_id = ?").get(change.input.source.message_id, input.session_id) as { cursor: number } | null;
-        if (!source || source.cursor > input.cursor) return fail(422, "Source exceeds extraction cursor");
+        if (!source || source.cursor <= input.expected_cursor || source.cursor > input.cursor) return fail(422, "Source exceeds extraction cursor or was already processed");
+        if (change.action !== "forget") this.validateDurableAssessment(change.input.source.assessment);
         return this.write({ ...change.context, session_id: input.session_id }, change.action, change.id, change.input);
       });
       this.db.query("INSERT INTO memory_extraction_progress VALUES (?,?) ON CONFLICT(session_id) DO UPDATE SET cursor=excluded.cursor").run(input.session_id,input.cursor);

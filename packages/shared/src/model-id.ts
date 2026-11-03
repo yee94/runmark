@@ -31,6 +31,8 @@ const MODEL_PRICING_ALIASES: Record<string, string> = {
   hy3: "hy-3",
   hunyuan3: "hy-3",
   "hunyuan-3": "hy-3",
+  // Claude Code / Agent SDK 只上报模型别名 haiku，按当前最新 Haiku 5.5 计价
+  haiku: "claude-haiku-5-5",
   // GLM 版本写法
   "glm-5-0": "glm-5",
   "glm-5v-turbo": "glm-5-turbo",

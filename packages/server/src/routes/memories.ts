@@ -1,8 +1,10 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
 import { MemoryError, MemoryService, type MemoryContext } from "../services/memory";
+import type { ServerConfig } from "../config";
+import { getAgentRuntime, MEMORY_RECALL_AGENT_ID } from "../services/agents";
 
-export function createMemoriesRoute(db: Database) {
+export function createMemoriesRoute(db: Database, config?: ServerConfig) {
   const app = new Hono();
   const service = new MemoryService(db);
   app.onError((error, c) => {
@@ -29,6 +31,27 @@ export function createMemoriesRoute(db: Database) {
   app.get("/v1/memories/projects", c => c.json(service.projects()));
   app.get("/v1/memories/scopes", c => c.json(service.scopes()));
   app.get("/v1/memories/index", c => c.json(service.index(context(c.req.query()))));
+  app.get("/v1/memories/index-state", c => c.json(service.indexState(context(c.req.query()))));
+  app.post("/v1/memories/recall", async c => {
+    if (!config) throw new MemoryError(400, "Memory recall is unavailable");
+    const body = await c.req.json();
+    if (!body || typeof body.query !== "string" || body.query.length > 16_000
+      || (body.exclude_ids !== undefined && (!Array.isArray(body.exclude_ids) || body.exclude_ids.length > 200 || body.exclude_ids.some((id: unknown) => typeof id !== "string")))) throw new MemoryError(400, "Invalid recall query");
+    const runtime = getAgentRuntime(db, config);
+    if (!runtime.listAgents().find(agent => agent.id === MEMORY_RECALL_AGENT_ID)?.enabled) return c.json({ items: [] });
+    const requested = { ...context(c.req.query(), body), view: "effective" as const };
+    const project = service.list(requested, { limit: 1 }).namespaces.find(namespace => namespace.scope === "project");
+    const canonical: MemoryContext = {
+      ...(requested.session_id ? { session_id: requested.session_id } : project ? { repo_url: project.context.repo_url, project_id: project.context.project_id } : {}),
+      agent_key: requested.agent_key, view: "effective",
+    };
+    const job = await runtime.runAgent(MEMORY_RECALL_AGENT_ID, {
+      session_id: canonical.session_id, memory_context: canonical, search_query: body.query,
+      exclude_memory_ids: body.exclude_ids, signal: c.req.raw.signal,
+    });
+    const output = job.status === "success" ? JSON.parse(job.output_json) : { items: [] };
+    return c.json(output);
+  });
   app.get("/v1/memories", c => c.json(service.list(context(c.req.query()), {
     query: c.req.query("query"), cursor: c.req.query("cursor"),
     type: c.req.query("type") as import("../services/memory").MemoryWrite["type"],

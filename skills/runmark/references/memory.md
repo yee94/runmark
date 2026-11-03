@@ -8,7 +8,7 @@
 
 稳定跨项目偏好可用 global，项目约束用 project。机器和目录只是事实内容，不划分记忆空间。用户明确指定的范围优先；不确定时不扩大到 global。type=user 不等于 scope=global。
 
-先判断是否值得长期留存，再确定事实对象与来源仓库是否匹配。单次交付要求、定时任务正文和 Skill 既有流程保留在原处；身份矛盾或范围无依据时跳过，不用全局兜底。详情 sources.assessment 提供自动提取的原文片段、留存理由、范围理由；历史记录可能为空。提取任务 output_json.batches[].skipped 提供跳过原因。
+默认不存。先确认真实用户原文支持跨任务复用，再确定事实对象与来源仓库是否匹配：当前任务结束后，该事实仍在哪类独立任务适用？不能回答就跳过。单次交付/发布/有损授权、实验参数、临时环境与进度留在原会话；代码、Skill及任务配置已有的信息保留在原处。子任务派发、assistant、宿主附加内容和历史摘要不是用户偏好依据。身份矛盾或范围无依据时跳过，不用全局兜底。详情 sources.assessment 提供原文和判断依据；提取任务 output_json.batches[].skipped 提供跳过原因，历史记录不补造。
 
 ## 读取与应用
 
@@ -39,13 +39,13 @@ runmark_get "/v1/memories/$MEMORY_ID" -G --data-urlencode "session_id=$SESSION_I
 | project | 无法仅从代码推导的动机、约束和决策 |
 | reference | 外部文档、工单、看板等查询入口 |
 
-`description` 写成“何时应当读取”的单行 hook。feedback/project 正文包含事实、`Why:` 与 `How to apply:`；缺少依据的原因写未知。已有仓库指令、当前任务进度、凭据和完整工具输出不作为长期记忆保存。
+`description` 用一行概括主题、适用边界和核心结论，详细步骤留在正文。feedback/project 正文包含事实、`Why:` 与 `How to apply:`；缺少依据的原因写未知。凭据和完整工具输出不作为长期记忆保存。
 
 写入必须指定精确 scope/agent_key，不使用 view=effective；携带真实原始会话与消息作为来源。global 可来自任意真实会话，project 必须匹配来源仓库，专属 Agent 必须匹配来源消息的 agent_key。更新前读取当前范围与 revision，不能默认把全局条目当项目条目更新；冲突后重读再判断。只有接口确认成功后才回复“已记住”或“已忘记”。具体请求字段见 [OpenAPI](../openapi.yaml)。
 
-创建时提交 `operation_id`、`source: {session_id,message_id}`、`name`、`description`、`type` 与不带 frontmatter 的 `body`；项目定位同读取。`operation_id` 对同一操作保持不变，重放会返回当前记录状态，状态若为 forgotten 不能声称已重新保存。更新用 `runmark_patch`，遗忘用 `runmark_delete`，均提交 `expected_revision` 与真实来源。恢复须使用新的明确用户消息，并在更新时设置 `restore:true`。
+创建时提交 `operation_id`、`source: {session_id,message_id,explicit}`、`name`、`description`、`type` 与不带 frontmatter 的 `body`；项目定位同读取。仅真实用户明确要求保存或修订时使用 `explicit:true`，不能把一般任务授权标成“要求记住”。新增/修订只接受真实用户来源，拒绝子会话、后台及合成来源。非显式保存或自动提取还需 `source.assessment={quote,retention_reason,scope_reason,durable_basis,future_use}`：quote匹配用户自己表达的连续原文，retention_reason说明长期性依据，scope_reason说明范围；durable_basis取explicit_memory_request、stable_preference、standing_constraint或reference_pointer，future_use说明具体后续独立任务和边界。缺少依据就跳过，不绕过校验。`operation_id` 对同一操作保持不变，重放会返回当前记录状态，状态若为 forgotten 不能声称已重新保存。更新用 `runmark_patch`，遗忘用 `runmark_delete`，均提交 `expected_revision` 与真实来源。恢复须使用新的明确用户消息，并在更新时设置 `restore:true`。
 
-遗忘让记录停止参与后续索引与读取，不会抹除已经进入当前模型上下文的文字，也不删除原始会话。对话中说明旧事实已失效；不把失败的删除当作完成。旧消息重放不能恢复被遗忘的事实，重新保存需要之后的新用户明确要求。
+遗忘让记录停止参与后续索引与读取，不会抹除已经进入当前模型上下文的文字，也不删除原始会话。对话中说明旧事实已失效；不把失败的删除当作完成。旧消息重放不能恢复被遗忘的事实，同类内容换名或换消息也不应自动重建；重新保存需要之后的新用户明确要求，沿用原ID。语义判断不保证零误存。
 
 新会话用户明确要求恢复时，用列表的 `status=forgotten` 按 name 查询原 ID 与 revision，再更新并提交完整事实；该查询只返回遗忘记录的元数据，不返回旧正文。普通查询和自动索引始终使用默认 active 范围。
 
@@ -54,3 +54,5 @@ runmark_get "/v1/memories/$MEMORY_ID" -G --data-urlencode "session_id=$SESSION_I
 SQLite 是唯一权威来源，MEMORY.md 是服务端生成的短索引表示，不是需要在工作目录创建的文件。详情 frontmatter 描述 name、description、metadata.type、scope、agent_key、node_type 与首次 originSessionId；以 API 的 ID、revision、状态及完整来源关系核实修订。
 
 OpenCode 新会话一次加载适用的通用与当前 Agent 专属各层索引，正文由工具按需读取；同会话同 Agent 复用快照，切换 Agent 使用对应快照，需最新索引时显式刷新。其余客户端可用本 Skill 查询。当前要求与当前事实优先；历史同主题冲突时 project 比 global 更具体，同范围内 Agent 专属更具体。自动提取与客户端注入分别启用，关闭功能不删除已存记忆。
+
+写入不自动重建会话system索引。后台整理仅归组索引入口，原始事实和来源保留；读取入口时详情可带related_memories，需分别核对来源与适用边界。`GET /v1/memories/index-state`只反映整理版本变化，收到通知后按需refresh。语义召回是与索引互斥的备用分支，默认关闭；`POST /v1/memories/recall`会调用模型，未启用或失败时返回空选择，不因此改动事实。人工清洗和功能启用是不同操作，不能因服务升级就声称历史索引已完成归组。

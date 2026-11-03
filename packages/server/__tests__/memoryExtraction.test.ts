@@ -7,6 +7,7 @@ import { createMemoriesRoute } from "../src/routes/memories";
 import { getAgentRuntime, MEMORY_EXTRACTION_AGENT_ID, seedBuiltinAgentConfig } from "../src/services/agents";
 import { AgentThrottleScheduler } from "../src/services/agentScheduler";
 import { costService } from "../src/services/cost";
+import { MemoryService } from "../src/services/memory";
 import type { ServerConfig } from "../src/config";
 
 describe("Memory extraction through Agent and Memory APIs", () => {
@@ -30,6 +31,7 @@ describe("Memory extraction through Agent and Memory APIs", () => {
     action: "create", message_id: id, name, type: "feedback",
     description: "修改现有代码及注释时读取", body: "保留无关注释。\nWhy: 未知。\nHow to apply: 修改功能时只改相关注释。",
   });
+  const assessment = (quote: string) => ({ quote, retention_reason: "用户将注释保留规定为持续协作边界，而非某次修复步骤", scope_reason: "限定当前来源仓库", durable_basis: "standing_constraint" as const, future_use: "后续独立代码修改时保留与修改无关的原有注释" });
 
   beforeEach(() => {
     previousPricing = costService.getPricing();
@@ -51,7 +53,7 @@ describe("Memory extraction through Agent and Memory APIs", () => {
       requests.push(JSON.parse(String(init?.body)));
       const calls = toolSteps.shift() ?? [{ name: "memory.extraction.write", arguments: { changes } }];
       for (const call of calls) if (call.name === "memory.extraction.write" && Array.isArray(call.arguments.changes)) {
-        call.arguments.changes = call.arguments.changes.map((change: any) => ({scope:"project",assessment:{quote:(db.query("SELECT content FROM messages WHERE id=?").get(change.message_id) as any)?.content ?? "missing",retention_reason:"明确的持续协作约束",scope_reason:"限定当前来源仓库"},...change}));
+        call.arguments.changes = call.arguments.changes.map((change: any) => ({scope:"project",assessment:assessment((db.query("SELECT content FROM messages WHERE id=?").get(change.message_id) as any)?.content ?? "missing"),...change}));
       }
       return new Response(JSON.stringify({
         choices: [{ message: { content: JSON.stringify({ tool_calls: calls }) } }],
@@ -104,9 +106,60 @@ describe("Memory extraction through Agent and Memory APIs", () => {
     seedBuiltinAgentConfig(db);
     const updated = await (await app.request(configPath)).json();
     expect(updated.enabled).toBe(true);
-    expect(updated.system_prompt).toContain("memory-scopes-v3");
+    expect(updated.system_prompt).toContain("memory-scopes-v5");
     expect((await run()).status).toBe("success");
     expect(requests).toHaveLength(1);
+    expect(await list()).toHaveLength(1);
+  });
+
+  it("provides all existing metadata beyond the default first page", async () => {
+    message("seed", "持续约定");
+    const memory = new MemoryService(db);
+    for (let i = 0; i < 215; i++) memory.create({ session_id: "source" }, {
+      operation_id: `seed-${i}`, source: { session_id: "source", message_id: "seed", explicit: true },
+      name: `fact-${i}`, description: `约定 ${i}`, type: "user", body: `完整事实 ${i}`,
+    });
+    await app.request(configPath, write({ enabled: true }));
+    message("new-user", "本次运行测试");
+    changes = [];
+    expect((await run()).status).toBe("success");
+    const context = JSON.parse(requests[0].messages[1].content.split("context_package:\n")[1]);
+    expect(context.existing_memories.items).toHaveLength(215);
+    expect(context.existing_memories.has_more).toBe(false);
+    expect(JSON.stringify(context.existing_memories)).not.toContain("完整事实");
+  });
+
+  it("skips already saved foreground sources without discarding unrelated new user requests", async () => {
+    await app.request(configPath, write({ enabled: true }));
+    message("handled", "请记住以后保留注释");
+    const memory = new MemoryService(db);
+    memory.create({ session_id: "source" }, { operation_id: "foreground", source: { session_id: "source", message_id: "handled", explicit: true },
+      name: "saved", description: "注释保留约定", type: "user", body: "保留注释" });
+    expect((await run()).status).toBe("success");
+    expect(requests).toHaveLength(0);
+    message("also-handled", "请记住发布约定");
+    memory.create({ session_id: "source" }, { operation_id: "foreground-other", source: { session_id: "source", message_id: "also-handled", explicit: true },
+      name: "saved-release", description: "发布约定", type: "user", body: "核对分支" });
+    message("new-user", "请记住测试时不用 mock 数据库");
+    changes = [createChange("new-user", "database-policy")];
+    expect((await run()).status).toBe("success");
+    const context = JSON.parse(requests[0].messages[1].content.split("context_package:\n")[1]);
+    expect(context.messages.map((message: any) => message.id)).toEqual(["new-user"]);
+    expect(await list()).toHaveLength(3);
+  });
+
+  it("rejects a foreground write that races an extraction commit", async () => {
+    await app.request(configPath, write({ enabled: true }));
+    message("new-user", "请记住长期约定");
+    const memory = new MemoryService(db);
+    const cursor = memory.getExtractionCursor("source");
+    const next = memory.getExtractionMessages("source", cursor).at(-1)!.cursor;
+    memory.create({ session_id: "source" }, { operation_id: "foreground", source: { session_id: "source", message_id: "new-user", explicit: true },
+      name: "saved", description: "约定", type: "user", body: "约定" });
+    expect(() => memory.commitExtraction({ session_id: "source", expected_cursor: cursor, cursor: next, changes: [{
+      action: "create", input: { operation_id: "background", source: { session_id: "source", message_id: "new-user" }, name: "duplicate", description: "约定", type: "user", body: "约定" },
+    }] })).toThrow("already handled");
+    expect(memory.getExtractionCursor("source")).toBe(cursor);
     expect(await list()).toHaveLength(1);
   });
 
@@ -130,7 +183,7 @@ describe("Memory extraction through Agent and Memory APIs", () => {
   it("requires source-backed decisions, stores reasons and records deliberate skips", async () => {
     await app.request(configPath, write({enabled:true}));
     message("new-user", "以后所有项目都用中文解释");
-    changes = [{...createChange(),scope:"global",assessment:{quote:"编造原文",retention_reason:"长期偏好",scope_reason:"所有项目"}}];
+    changes = [{...createChange(),scope:"global",assessment:{...assessment("编造原文"),retention_reason:"长期偏好",scope_reason:"所有项目"}}];
     expect((await run()).status).toBe("failed");
     changes[0].assessment.quote="以后所有项目都用中文解释";
     const job=await run();
@@ -304,6 +357,81 @@ describe("Memory extraction through Agent and Memory APIs", () => {
     expect(requests).toHaveLength(1);
   });
 
+  it("skips child, synthetic and background sessions without an LLM call and advances the watermark", async () => {
+    await app.request(configPath, write({ enabled: true }));
+    const memory = new MemoryService(db);
+    const cases = [
+      { parent: "parent", meta: {} }, { parent: null, meta: { is_subagent: true } },
+      { parent: null, meta: { synthetic: true } }, { parent: null, meta: { background_agent: true } },
+      { parent: null, meta: { source: "runmark-agent" } },
+      { parent: null, meta: { agent_id: "agent-session-summary" } },
+    ];
+    for (const [index, item] of cases.entries()) {
+      message(`child-${index}`, "子任务执行说明，不是用户长期约束");
+      db.query("UPDATE sessions SET parent_session_id=?,metadata=? WHERE id='source'").run(item.parent, JSON.stringify(item.meta));
+      expect((await run()).status).toBe("success");
+      expect(memory.getExtractionMessages("source", memory.getExtractionCursor("source"))).toEqual([]);
+    }
+    expect(requests).toHaveLength(0);
+    expect(await list()).toEqual([]);
+    db.query("UPDATE sessions SET parent_session_id=NULL,metadata=NULL WHERE id='source'").run();
+    message("new-user", "以后修改代码都保留无关注释");
+    expect((await run()).status).toBe("success");
+    expect(await list()).toHaveLength(1);
+  });
+
+  it("removes subtask dispatch and attached context before extraction, including adjacent messages", async () => {
+    await app.request(configPath, write({ enabled: true }));
+    message("dispatch", "You are a subagent spawned by another session. 请按实验参数运行并记住");
+    message("checkpoint", "<conversation-checkpoint>以前用户说自动发布</conversation-checkpoint>");
+    expect((await run()).status).toBe("success");
+    expect(requests).toHaveLength(0);
+    message("new-user", "以后修改代码都保留无关注释\n<system-reminder>此处是宿主指令不是用户偏好</system-reminder>");
+    changes = [{ ...createChange(), assessment: assessment("以后修改代码都保留无关注释") }];
+    expect((await run()).status).toBe("success");
+    const context = JSON.parse(requests[0].messages[1].content.split("context_package:\n")[1]);
+    expect(context.messages).toHaveLength(1);
+    expect(context.messages[0].content).toBe("以后修改代码都保留无关注释");
+    expect(context.adjacent_context).toEqual([]);
+    expect(await list()).toHaveLength(1);
+  });
+
+  it("rejects weak retention claims, then records one-off skips and continues to the next independent task", async () => {
+    await app.request(configPath, write({ enabled: true }));
+    message("new-user", "修复以后提交推送，发布新的fix版本");
+    changes = [{ ...createChange(), explicit: true, assessment: { quote: "修复以后提交推送，发布新的fix版本", retention_reason: "用户明确要求", scope_reason: "当前项目" } }];
+    expect((await run()).status).toBe("failed");
+    expect(await list()).toEqual([]);
+    changes = [];
+    toolSteps = [[{ name: "memory.extraction.write", arguments: { changes: [], skipped: [{ message_id: "new-user", reason: "单次发布授权，不是以后自动发布的长期约束" }] } }]];
+    expect((await run()).status).toBe("success");
+    const prompt = requests.at(-1).messages[0].content;
+    for (const rule of ["默认不存", "有损", "ABI", "worktree", "并发", "截图", "future_use", "不确定"]) expect(prompt).toContain(rule);
+    message("lasting", "以后所有项目均使用中文解释");
+    changes = [{ ...createChange("lasting", "chinese"), scope: "global", assessment: { ...assessment("以后所有项目均使用中文解释"), durable_basis: "stable_preference", future_use: "未来各项目独立任务均用中文解释" } }];
+    expect((await run()).status).toBe("success");
+    expect((await (await app.request("/v1/memories?scope=global")).json()).items).toHaveLength(1);
+    expect(await list()).toEqual([]);
+  });
+
+  it("supplies scoped forgetting exclusions without old bodies to discourage renamed semantic re-creation", async () => {
+    const memory = new MemoryService(db);
+    message("old", "请记住此研究只使用某个实验worktree");
+    const original = memory.create({ session_id: "source" }, { operation_id: "old", source: { session_id: "source", message_id: "old", explicit: true },
+      name: "experiment-worktree", description: "实验分支", type: "user", body: "不应重现的旧实验正文" });
+    memory.forget({ session_id: "source" }, original.id, { operation_id: "forget-old", expected_revision: 1,
+      source: { session_id: "source", message_id: "old", assessment: { quote: "请记住此研究只使用某个实验worktree", retention_reason: "仅一次实验配置，无跨任务复用价值", scope_reason: "原项目" } } });
+    await app.request(configPath, write({ enabled: true }));
+    message("new-user", "这次实验仍放在独立worktree");
+    changes = [];
+    expect((await run()).status).toBe("success");
+    const context = JSON.parse(requests[0].messages[1].content.split("context_package:\n")[1]);
+    expect(context.forgotten_exclusions).toEqual([{ id: original.id, name: "experiment-worktree", type: "user", reason: "仅一次实验配置，无跨任务复用价值" }]);
+    expect(JSON.stringify(context)).not.toContain("不应重现的旧实验正文");
+    expect(context.existing_memories.items).toEqual([]);
+    expect(await list()).toEqual([]);
+  });
+
   it("does not reset progress on ordinary config edits and rejects stale revisions atomically", async () => {
     await app.request(configPath, write({ enabled: true }));
     message("new-user", "保留无关注释");
@@ -347,7 +475,7 @@ describe("Memory extraction through Agent and Memory APIs", () => {
       const payload = JSON.parse(String(init?.body));
       const context = JSON.parse(payload.messages[1].content.split("context_package:\n")[1]);
       const change = createChange(context.messages[0].id, context.session_id === "source" ? "keep-comments" : "chinese-replies");
-      Object.assign(change, {scope:"project",assessment:{quote:context.messages[0].content,retention_reason:"持续约束",scope_reason:"来源项目"}});
+      Object.assign(change, {scope:"project",assessment:assessment(context.messages[0].content)});
       return new Response(JSON.stringify({ choices: [{ message: { content: JSON.stringify({ tool_calls: [{ name: "memory.extraction.write", arguments: { changes: [change] } }] }) } }] }), { headers: { "Content-Type": "application/json" } });
     }) as typeof fetch;
     const job = await getAgentRuntime(db, config).runAgent(MEMORY_EXTRACTION_AGENT_ID, { session_ids: ["source", "second"] });

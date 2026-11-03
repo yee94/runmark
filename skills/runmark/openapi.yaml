@@ -1164,7 +1164,37 @@ paths:
         - $ref: '#/components/parameters/MemoryAgent'
         - $ref: '#/components/parameters/MemoryView'
       responses:
-        '200': { description: 'markdown 短索引、namespaces、precedence、version、has_more、next_cursor 与 next_url；索引条目标注实际 scope/agent_key' }
+        '200': { description: 'markdown 短索引、namespaces、precedence、version、has_more、next_cursor 与 next_url；索引条目标注实际 scope/agent_key，整理后的入口可归组关联事实' }
+  /v1/memories/index-state:
+    get:
+      summary: 返回适用命名空间的索引整理版本，普通事实写入不改变此版本
+      parameters:
+        - $ref: '#/components/parameters/MemorySession'
+        - $ref: '#/components/parameters/MemoryRepo'
+        - $ref: '#/components/parameters/MemoryScope'
+        - $ref: '#/components/parameters/MemoryAgent'
+        - $ref: '#/components/parameters/MemoryView'
+      responses:
+        '200': { description: 'consolidation_version；版本变化仅提示按需refresh，不改写当前system上下文' }
+  /v1/memories/recall:
+    post:
+      summary: 语义备用分支按当前问题选择相关记忆，默认未启用，实际执行会产生模型费用
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [query]
+              properties:
+                session_id: { type: string }
+                repo_url: { type: string }
+                agent_key: { type: string }
+                query: { type: string, maxLength: 16000 }
+                exclude_ids: { type: array, maxItems: 200, items: { type: string } }
+      responses:
+        '200': { description: 'items为最多5条适用记忆详情；Agent未启用或运行失败时为空，不重试或关键词兜底' }
+        '400': { description: 参数无效或召回未配置 }
   /v1/memories:
     parameters:
       - $ref: '#/components/parameters/MemorySession'
@@ -1195,6 +1225,7 @@ paths:
         '201': { description: 新记忆 }
         '200': { description: operation_id 幂等重放 }
         '409': { description: 操作 ID 冲突 }
+        '422': { description: 来源不是可接受的真实用户，或非显式写入缺少长期价值举证 }
   /v1/memories/{id}:
     parameters:
       - $ref: '#/components/parameters/Id'
@@ -1210,7 +1241,7 @@ paths:
       summary: 读取记忆详情、revision 与来源
       security: [{ ApiKeyAuth: [] }]
       responses:
-        '200': { description: 记忆详情 }
+        '200': { description: '记忆详情及sources；归组入口可含related_memories，各自保留正文和来源' }
         '404': { description: 未找到当前适用范围的记忆 }
         '410': { description: 已遗忘 }
     patch:
@@ -1221,6 +1252,7 @@ paths:
       responses:
         '200': { description: 更新结果 }
         '409': { description: revision 或 operation_id 冲突 }
+        '422': { description: 来源不合规或缺少长期价值举证 }
     delete:
       summary: 遗忘记忆，需要 JSON 请求体与 expected_revision
       security: [{ ApiKeyAuth: [] }]
@@ -1239,7 +1271,7 @@ components:
           schema:
             type: object
             required: [operation_id, source]
-            description: 创建时还需 name/description/type/body；更新与遗忘需 expected_revision。scope 默认 project，agent_key 默认共享；写入不接受 effective。来源必须匹配目标范围，命名 Agent 必须匹配原始消息 agent_key。定位同 query，scope/agent_key 参数冲突时拒绝。
+            description: 创建时还需 name/description/type/body；更新与遗忘需 expected_revision。scope 默认 project，agent_key 默认共享；写入不接受 effective。新增/修订只能引用真实用户，拒绝子会话、后台及合成来源；遗忘允许核对历史异常来源后清理。非显式或自动保存须有完整assessment举证。来源必须匹配目标范围，命名 Agent 必须匹配原始消息 agent_key。定位同 query，scope/agent_key 参数冲突时拒绝。
             properties:
               session_id: { type: string }
               repo_url: { type: string }
@@ -1255,15 +1287,17 @@ components:
                   session_id: { type: string }
                   message_id: { type: string }
                   job_id: { type: string }
-                  explicit: { type: boolean }
+                  explicit: { type: boolean, description: 仅真实用户明确要求保存或修订时为true，不代表一般任务授权 }
                   assessment:
                     type: object
-                    description: 自动提取依据，读取详情 sources 同样返回；旧记录为空。quote 必须匹配来源消息原文。
+                    description: 非显式create/update及所有自动提取create/update必需；还需durable_basis和future_use。遗忘仅需前三项。读取详情sources同样返回，旧记录不补造。quote必须匹配用户自己表达的原文，不能引用附加上下文。
                     required: [quote, retention_reason, scope_reason]
                     properties:
                       quote: { type: string, maxLength: 2000 }
                       retention_reason: { type: string, maxLength: 2000 }
                       scope_reason: { type: string, maxLength: 2000 }
+                      durable_basis: { type: string, enum: [explicit_memory_request, stable_preference, standing_constraint, reference_pointer] }
+                      future_use: { type: string, minLength: 1, maxLength: 2000, description: 当前任务结束后适用的具体后续独立任务和边界 }
               name: { type: string }
               description: { type: string }
               type: { type: string, enum: [user, feedback, project, reference] }

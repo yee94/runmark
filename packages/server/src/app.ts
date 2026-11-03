@@ -158,7 +158,7 @@ export function createApp(config?: ServerConfig) {
   app.route("/", statsRoute);
   app.route("/", cursorRoute);
   app.route("/", agentsRoute);
-  app.route("/", createMemoriesRoute(db));
+  app.route("/", createMemoriesRoute(db, cfg));
   app.route("/", helpRoute);
   app.route("/", updateRoute);
 

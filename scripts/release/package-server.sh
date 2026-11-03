@@ -46,9 +46,9 @@ fi
 
 rm -f "$STAGING/bun.lock"
 # Bun 1.4+：`--production --lockfile-only` 不写 lockfile；生成完整 lock，安装仍走 --production
-(cd "$STAGING" && bun install --lockfile-only)
+(cd "$STAGING" && bun install --lockfile-only --registry=https://registry.npmjs.org/)
 [ -s "$STAGING/bun.lock" ] || { echo "ERROR: bun.lock was not generated"; exit 1; }
-(cd "$STAGING" && bun install --production --frozen-lockfile)
+(cd "$STAGING" && bun install --production --frozen-lockfile --registry=https://registry.npmjs.org/)
 
 # 打包
 mkdir -p "$DIST_DIR"

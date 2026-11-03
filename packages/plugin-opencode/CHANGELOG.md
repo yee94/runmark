@@ -1,5 +1,13 @@
 # @runmarks/opencode-plugin
 
+## 0.2.13
+
+### Patch Changes
+
+- Keep the initial memory index stable after writes; notify on background consolidation changes instead of rebuilding system context.
+- Add a cancellable, non-blocking semantic recall alternative, disabled by default and mutually exclusive with index injection.
+- Tighten foreground memory admission to explicit real-user requests with cross-task value; update the bundled `runmark` Skill and API contract.
+
 ## 0.2.12
 
 ### Patch Changes

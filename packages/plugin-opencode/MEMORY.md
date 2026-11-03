@@ -17,6 +17,15 @@ V1 入口保留采集，启用记忆时日志明确提示不支持；不以 `cha
 同会话按真实命名 Agent 分开保留内存快照；重新加载插件后冷恢复重新读取；失败一秒后略过且不逐轮重试。
 `context` 每轮替换单个带标记区块，不更改持久化消息。刷新显式替换当前快照。
 
+默认索引模式下，具备 `session.context` 和 `session.synthetic` 时，新真实用户轮次会检查 `/index-state`。
+仅后台整理版本变化时追加一次 `resume=false` 的 synthetic 背景通知，提示按需刷新；不改 system 快照，不主动唤醒会话。
+普通 write/update/forget 不触发重读，也不产生整理通知。能力缺失或检查失败不影响正常模型请求。
+范围协议只在索引块中出现一次，工具描述不再重复。
+
+`memoryRetrieval.ts` 的内部常量保持默认 index；semantic 是互斥的备用分支，不新增配置项。
+该分支使用最新真实用户消息异步预取相关正文，首个请求不等待，结果经 synthetic 在后续边界交付；
+新问题或清理时取消旧预取。只注入相关正文，不同时加载全量索引。
+
 工具：`runmark_memory_read/list/refresh/write/update/forget`。
 写操作默认从宿主会话上下文中选取当前工具所属 assistant 消息之前最近的真实 user 消息；
 缺失或找不到 assistant messageID 时拒绝写入，不能退回到未来的用户消息。
@@ -49,7 +58,8 @@ Bus.Service 与 `session.get` 实际返回值。
 - write 默认共享 project，可显式指定 scope 和当前真实 agent_key。空 agent_key 表示共享，不能冒用另一 Agent。
 - read 默认 effective 按稳定 ID；list 默认 effective，可限定 scope/agent_key/type，分页与 forgotten 过滤保持可用。
 - update/forget 先 effective read 确认记录 scope/agent_key，再发送精确范围写请求；410 时分页查询 forgotten 元数据，支持恢复与幂等重试，不读取旧正文。
-- index 消费 `{markdown:string, has_more?:boolean}`；详情、列表及写入响应原样以 JSON 返回模型。
+- index 消费 `{markdown:string, has_more?:boolean, consolidation_version?:string}`；详情、列表及写入响应原样以 JSON 返回模型。
+- 整理后的入口详情可包含 `related_memories`，保留被归组事实的原文与来源；未收录条目仍可 list/read。
 - 写入字段：`operation_id`, `source:{session_id,message_id,explicit:true}`, `name`, `description`, `type`, `body`。
 - 更新/遗忘：稳定 ID 放 URL，`expected_revision` 放 body；更新支持 `restore`。
 - list 支持 `status:active|forgotten`，默认 active；forgotten 仅用于用户明确恢复时查 ID/revision，不召回旧正文。
