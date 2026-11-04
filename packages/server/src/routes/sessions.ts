@@ -8,6 +8,7 @@ import { forkFieldsForSession } from "../services/fork";
 import { costService } from "../services/cost";
 import { splitSessionModels } from "../services/ingest";
 import { repriceTurns } from "../services/reprice";
+import { groupDailyModelStats, groupModelStats, type DailyModelStatsRow, type ModelStatsRow } from "../services/model-stats";
 
 type SessionRow = Record<string, unknown> & {
   id: string;
@@ -521,7 +522,11 @@ export function createStatsRoute(db: Database) {
       WHERE ${turnsTimeClause()} AND model != ''
       GROUP BY model, provider
       ORDER BY ${orderBy}
-    `).all({ $from: from, $to: to }) as { total_cost_usd?: number }[];
+    `).all({ $from: from, $to: to }) as ModelStatsRow[];
+
+    if (c.req.query("group") === "model") {
+      return c.json(groupModelStats(rows, sort));
+    }
 
     return c.json(rows.map(withTotalCostCny));
   });
@@ -593,17 +598,20 @@ export function createStatsRoute(db: Database) {
       WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t")}
       GROUP BY ${beijingDate}, t.provider, t.model
       ORDER BY date ASC, total_cost_usd DESC
-    `).all(params) as { date: string; provider: string; model: string; turn_count: number; total_tokens: number; total_cost_usd: number }[];
+    `).all(params) as DailyModelStatsRow[];
 
 /** 按 date 聚合模型行 */
-    const modelsByDate = new Map<string, any[]>();
-    for (const mr of modelRows) {
-      if (!modelsByDate.has(mr.date)) modelsByDate.set(mr.date, []);
-      const { provider, model } = mr;
-      const pNorm = (provider ?? "").trim().toLowerCase();
-      const mNorm = (model ?? "").trim().toLowerCase();
-      const label = (!pNorm || pNorm === mNorm) ? model : (!mNorm || mNorm === pNorm) ? provider : `${provider} / ${model}`;
-      modelsByDate.get(mr.date)!.push(withTotalCostCny({ ...mr, label }));
+    const groupModels = c.req.query("group") === "model";
+    const modelsByDate = groupModels ? groupDailyModelStats(modelRows) : new Map<string, any[]>();
+    if (!groupModels) {
+      for (const mr of modelRows) {
+        if (!modelsByDate.has(mr.date)) modelsByDate.set(mr.date, []);
+        const { provider, model } = mr;
+        const pNorm = (provider ?? "").trim().toLowerCase();
+        const mNorm = (model ?? "").trim().toLowerCase();
+        const label = (!pNorm || pNorm === mNorm) ? model : (!mNorm || mNorm === pNorm) ? provider : `${provider} / ${model}`;
+        modelsByDate.get(mr.date)!.push(withTotalCostCny({ ...mr, label }));
+      }
     }
 
     return c.json(rows.map((row) => ({

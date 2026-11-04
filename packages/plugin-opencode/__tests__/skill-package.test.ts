@@ -24,6 +24,18 @@ test("npm package registers the current single-source skill with all relative re
     expect(archive).toStartWith("runmarks-opencode-plugin-");
     await run(["tar", "-xzf", join(directory, archive)], directory);
     const installed = join(directory, "package");
+    const manifest = JSON.parse(await readFile(join(installed, "package.json"), "utf8"));
+    expect(manifest.icon).toStartWith("data:image/svg+xml;base64,");
+    expect(manifest.icon.length).toBeLessThan(3 << 19);
+    const icon = Buffer.from(manifest.icon.slice("data:image/svg+xml;base64,".length), "base64").toString("utf8");
+    expect(icon).toBe(await readFile(resolve(packageDirectory, "../../docs/images/runmark-icon.svg"), "utf8"));
+    expect(icon).toContain('viewBox="0 0 128 128"');
+    expect(icon).toContain("<path ");
+    expect(icon).not.toMatch(/<(?:image|script|foreignObject|linearGradient|radialGradient)\b|data:image\//i);
+    expect(icon).not.toContain("<rect");
+    expect(icon).not.toMatch(/\b(?:fill|style)\s*=/i);
+    expect(manifest.exports["./gui-experimental"]).toBe("./dist/gui-experimental.cjs");
+    expect((await readFile(join(installed, manifest.exports["./gui-experimental"]), "utf8")).length).toBeGreaterThan(0);
     const result = JSON.parse(await run(["node", "--input-type=module", "-e", `
       import plugin from ${JSON.stringify(join(installed, "dist/index.mjs"))};
       const skills = new Map([["runmark", { id: "runmark", content: "stale" }], ["other", { id: "other" }]]);

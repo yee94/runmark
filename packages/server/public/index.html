@@ -137,19 +137,73 @@
     const selectedAgentRunId = signal('run-20260708-1432')
     const selectedProviderId = signal('provider-openai-prod')
     const selectedHelpArticleId = signal('quickstart')
+    let embedApiKey = ''
+    let embedOrigin = null
+    try {
+      const candidate = new URLSearchParams(location.search).get('embedOrigin')
+      if (window.parent !== window && candidate && candidate !== 'null'
+        && (new URL(candidate).origin === candidate || candidate === 'yuri-ui://app')) embedOrigin = candidate
+    } catch {}
+    if (embedOrigin) {
+      window.addEventListener('message', async (event) => {
+        if (event.source !== window.parent || event.origin !== embedOrigin) return
+        if (event.data?.type === 'runmark.embed.auth') {
+          if (typeof event.data.apiKey !== 'string' || !event.data.apiKey.trim() || embedApiKey) return
+          embedApiKey = event.data.apiKey
+          await checkAuth()
+          publishEmbedLocation('push')
+          return
+        }
+        if (event.data?.type !== 'runmark.embed.navigate' || !embedApiKey || !Number.isSafeInteger(event.data.id) || event.data.id < 1) return
+        if (event.data.action === 'reload') { location.reload(); return }
+        if (event.data.action !== 'navigate' || typeof event.data.href !== 'string' || event.data.href.length > 8192) return
+        let target
+        try { target = new URL(event.data.href) } catch { return }
+        if (target.origin !== location.origin || target.pathname !== location.pathname || target.search !== location.search || target.username || target.password) return
+        embedReplaceState(null, '', target.href)
+        handleHashChange()
+        publishEmbedLocation('traverse', event.data.id)
+      })
+      window.parent.postMessage({ type: 'runmark.embed.ready' }, embedOrigin)
+    }
+    const embedReplaceState = history.replaceState.bind(history)
+    function publishEmbedLocation(mode, id) {
+      if (embedOrigin) window.parent.postMessage({ type: 'runmark.embed.location', href: location.href, mode, ...(id === undefined ? {} : { id }) }, embedOrigin)
+    }
+    if (embedOrigin) {
+      for (const method of ['pushState', 'replaceState']) {
+        const original = history[method].bind(history)
+        history[method] = (...args) => {
+          const result = original(...args)
+          publishEmbedLocation(method === 'replaceState' ? 'replace' : 'push')
+          return result
+        }
+      }
+      window.addEventListener('hashchange', () => publishEmbedLocation('push'))
+      window.addEventListener('popstate', () => publishEmbedLocation('push'))
+    }
 
     /** 带 Cookie 的 API 请求（Dashboard 登录态） */
     function apiFetch(url, options) {
+      if (embedOrigin) {
+        const target = new URL(url, location.href)
+        if (target.origin !== location.origin) return Promise.reject(new Error('External authenticated request rejected'))
+        const headers = new Headers(options?.headers)
+        if (embedApiKey) headers.set('X-API-Key', embedApiKey)
+        return fetch(target, { ...options, headers, credentials: 'omit', redirect: 'error', cache: 'no-store' })
+      }
       return fetch(url, { credentials: 'include', ...options })
     }
 
     async function checkAuth() {
+      if (embedOrigin && !embedApiKey) return
       authChecking.value = true
       try {
         const res = await apiFetch('/auth/session')
         const data = await res.json()
         isPublicDashboard.value = !!data.public
         authenticated.value = !!data.authenticated
+        if (!data.authenticated && embedOrigin) authError.value = '内嵌认证失败，请检查插件 options 中的 apiKey 并重新加载插件'
         if (data.authenticated) {
           syncRouteFromHash()
           await Promise.all([fetchData(false), fetchCursorStatus()])
@@ -193,6 +247,7 @@
       try {
         await apiFetch('/auth/logout', { method: 'POST' })
       } catch {}
+      embedApiKey = ''
       if (refreshTimer) clearInterval(refreshTimer)
       batch(() => {
         authenticated.value = false
@@ -720,20 +775,28 @@
 
     function navigate(tab, sessionId) {
       if (sessionId) {
-        location.hash = serializeTraceRouteHash({
+        writeDashboardHash(serializeTraceRouteHash({
           kind: 'sessions',
           sessionId,
           types: [],
           node: null,
           child: null,
-        })
+        }))
       } else {
-        location.hash = '#/' + tab
+        writeDashboardHash('#/' + tab)
       }
     }
 
     function openAgentRun(runId) {
-      location.hash = '#/agent-runs/' + encodeURIComponent(runId)
+      writeDashboardHash('#/agent-runs/' + encodeURIComponent(runId))
+    }
+
+    function writeDashboardHash(hash) {
+      if (!embedOrigin) { location.hash = hash; return }
+      if (location.hash === hash) return
+      embedReplaceState(null, '', hash)
+      handleHashChange()
+      publishEmbedLocation('push')
     }
 
     function focusMatterRoute(matterId, options = {}) {
@@ -1278,9 +1341,9 @@
         const qs = statsQueryString()
         const [summaryRes, modelRes, agentRes, dailyRes, sessionsRes] = await Promise.all([
           apiFetch('/v1/stats/summary' + qs).then(r => r.json()).catch(() => null),
-          apiFetch('/v1/stats/by-model' + qs).then(r => r.json()).catch(() => []),
+          apiFetch('/v1/stats/by-model' + qs + '&group=model').then(r => r.json()).catch(() => []),
           apiFetch('/v1/stats/by-agent' + qs).then(r => r.json()).catch(() => []),
-          apiFetch('/v1/stats/daily' + qs).then(r => r.json()).catch(() => []),
+          apiFetch('/v1/stats/daily' + qs + '&group=model').then(r => r.json()).catch(() => []),
           sessionAiResultsMode.value
             ? Promise.resolve(null)
             : apiFetch('/v1/sessions' + sessionsQueryString()).then(r => r.json()).catch(() => []),
@@ -1905,7 +1968,7 @@
     async function loadModelsPage() {
       if (ModelsPage) return
       const mod = await loadModule('./modules/models.eficy.js')
-      const _ModelRow = mod.createModelRow({ formatTokens, formatCost, formatDuration, resolveModelIconUrl })
+      const _ModelRow = mod.createModelRow({ formatTokens, formatCost, formatDuration, resolveModelIconUrl, ChevronIcon })
       ModelsPage = mod.createModelsPage({ byModel, StatsToolbar, SectionTitle, EmptyState, signal, ModelRow: _ModelRow })
       loadedModels.value = true
     }

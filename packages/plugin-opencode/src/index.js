@@ -7,42 +7,13 @@
  * This plugin follows the same hook API as opencode-otel-plugin but sends data
  * as JSON to our own server instead of via OTLP/protobuf.
  */
-import { FileLogger, TrackerClient, buildIngestErrorToastMessage, defaultPluginLogPath, loadEnvFile, resolveEnvValue, shouldSkipTool, forkSourceTitle, isForkReplayTurn, isForkSessionTitle, isHiddenSessionTitle, } from "@agent-tracker/shared";
+import { FileLogger, TrackerClient, buildIngestErrorToastMessage, defaultPluginLogPath, shouldSkipTool, forkSourceTitle, isForkReplayTurn, isForkSessionTitle, isHiddenSessionTitle, } from "@agent-tracker/shared";
 import { bundledSkillsDirectory } from "./skill";
+import { loadPluginConfig } from "./config";
+export { loadPluginConfig, resolvePluginOptions } from "./config";
 // ---------------------------------------------------------------------------
 // Config
 // ---------------------------------------------------------------------------
-/**
- * 读取 opencode.jsonc 中以对象形式声明的插件 options；字符串条目没有 options。
- * memoryEnabled 兼容布尔与字符串写法，type 不合法时忽略并回落到 env 配置。
- */
-export function resolvePluginOptions(options) {
-    if (!options || typeof options !== "object" || Array.isArray(options))
-        return {};
-    const value = options.memoryEnabled;
-    if (typeof value === "boolean")
-        return { memoryEnabled: value };
-    if (value === "true")
-        return { memoryEnabled: true };
-    if (value === "false")
-        return { memoryEnabled: false };
-    return {};
-}
-/** 加载插件配置；fileEnvPath 仅用于测试，默认 ~/.config/agent-tracker/env */
-export function loadPluginConfig(fileEnvPath, options) {
-    const fileEnv = loadEnvFile(fileEnvPath);
-    const env = (key, ...aliases) => resolveEnvValue(fileEnv, key, ...aliases);
-    const pluginOptions = resolvePluginOptions(options);
-    return {
-        memoryEnabled: pluginOptions.memoryEnabled ?? env("RUNMARK_MEMORY_ENABLED", "memoryEnabled") === "true",
-        endpoint: env("RUNMARK_ENDPOINT", "endpoint") ?? "http://localhost:3456",
-        apiKey: env("RUNMARK_API_KEY", "apiKey", "api_key") ?? "dev-key-change-me",
-        includeMessageContent: (env("RUNMARK_INCLUDE_MESSAGES", "includeMessages") ?? "true") === "true",
-        includeToolOutput: (env("RUNMARK_INCLUDE_TOOL_OUTPUT", "includeToolOutput") ?? "true") === "true",
-        debug: (env("RUNMARK_DEBUG", "debug") ?? "false") === "true",
-        logFile: env("RUNMARK_LOG_FILE", "logFile", "log_file") ?? defaultPluginLogPath(),
-    };
-}
 function loadConfig(options) {
     return loadPluginConfig(undefined, options);
 }

@@ -1,5 +1,12 @@
 # @runmarks/opencode-plugin
 
+## 0.2.14
+
+### Minor Changes
+
+- Add the GUI bundle and Runmark icon for an embedded Dashboard in Yuri-compatible hosts, with document-local navigation and origin-checked authentication.
+- Allow endpoint and API key plugin options for reporting; preserve memory options and the bundled `runmark` Skill.
+
 ## 0.2.13
 
 ### Patch Changes

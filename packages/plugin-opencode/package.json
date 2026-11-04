@@ -1,6 +1,7 @@
 {
   "name": "@runmarks/opencode-plugin",
-  "version": "0.2.13",
+  "icon": "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMjgiIGhlaWdodD0iMTI4IiB2aWV3Qm94PSIwIDAgMTI4IDEyOCI+CiAgPGc+CiAgICA8Y2lyY2xlIGN4PSIyNiIgY3k9IjQwIiByPSI1LjUiLz4KICAgIDxjaXJjbGUgY3g9IjE1IiBjeT0iNjQiIHI9IjYiLz4KICAgIDxjaXJjbGUgY3g9IjI2IiBjeT0iODUiIHI9IjUuNSIvPgogICAgPHBhdGggZD0iTTMwIDM3aDI0YzEyIDAgMTAgMjAgMjUgMjBoMjN2Nkg3OUM1OSA2MyA2MiA0MyA1NCA0M0gzMFoiLz4KICAgIDxwYXRoIGQ9Ik0yMCA2MWg3NXY2SDIwWiIvPgogICAgPHBhdGggZD0iTTMwIDgyaDI0YzggMCA1LTE3IDI1LTE3aDE2djdINzljLTEzIDAtMTEgMTYtMjUgMTZIMzBaIi8+CiAgICA8cGF0aCBkPSJNOTUgNTdoMTlhNiA2IDAgMCAxIDYgNnYyN2MwIDMtMiA0LTQgMmwtMTEtMTAtMTEgMTBjLTIgMi01IDEtNS0yVjYzYTYgNiAwIDAgMSA2LTZaIi8+CiAgPC9nPgo8L3N2Zz4K",
+  "version": "0.2.14",
   "type": "module",
   "main": "./dist/index.mjs",
   "types": "./dist/index.d.mts",
@@ -8,15 +9,17 @@
     ".": {
       "types": "./dist/index.d.mts",
       "import": "./dist/index.mjs"
-    }
+    },
+    "./gui-experimental": "./dist/gui-experimental.cjs"
   },
   "files": [
     "dist"
   ],
   "scripts": {
-    "build": "tsdown",
+    "build": "tsdown && vite build",
     "prepack": "bun run build",
     "dev": "tsdown --watch",
+    "dev:gui": "vite build --watch",
     "clean": "rm -rf dist",
     "test": "bun test",
     "test:host": "bun run build && RUNMARK_HOST_TEST=1 bun test __tests__/memory-host.test.ts",
@@ -26,12 +29,16 @@
     "@opencode-ai/plugin": ">=0.1.0"
   },
   "devDependencies": {
-    "@agent-tracker/shared": "workspace:*",
     "@opencode-ai/plugin": "latest",
     "@opencode-ai/sdk": "1.17.15",
+    "@opencode/plugin": "2.2.5",
+    "@agent-tracker/shared": "workspace:*",
     "@types/bun": "latest",
+    "solid-js": "^1.9.0",
     "tsdown": "^0.17.0",
     "typescript": "^5.5.0",
+    "vite": "^7.0.0",
+    "vite-plugin-solid": "^2.11.0",
     "yaml": "^2.8.1"
   },
   "license": "MIT",

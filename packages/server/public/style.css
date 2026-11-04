@@ -798,6 +798,27 @@ body {
 .list-row:hover {
   background: rgba(255,255,255,0.04);
 }
+.model-stats-scroll { overflow-x: auto; }
+.model-stats-table { min-width: 740px; }
+.model-stats-table .model-stat-grid { display: grid; grid-template-columns: minmax(240px, 3fr) repeat(6, minmax(60px, 1fr)); gap: 10px; align-items: center; min-width: 0; padding: 0 14px; }
+.model-stats-table > .session-header { height: 30px; }
+.model-stat-row > summary { min-height: 36px; border-bottom: 1px solid rgba(255,255,255,0.045); border-left: 2px solid transparent; cursor: pointer; list-style: none; }
+.model-stat-row > summary::-webkit-details-marker { display: none; }
+.model-stat-row > summary:hover { background: rgba(255,255,255,0.035); border-left-color: var(--brand-blue); }
+.model-stat-row > summary:focus-visible { outline: 1px solid rgba(59,158,255,0.45); outline-offset: -2px; background: rgba(59,158,255,0.08); }
+.model-stat-row[open] > summary { background: rgba(255,255,255,0.025); }
+.model-stat-identity { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.model-stat-chevron { display: inline-flex; color: var(--text-muted); flex-shrink: 0; }
+.model-stat-row[open] .model-stat-chevron { transform: rotate(90deg); }
+.model-stat-identity > .model-stat-channels { padding: 2px 6px; font-size: 10px; }
+.model-stat-sources { background: rgba(255,255,255,0.014); }
+.model-stat-source { min-height: 30px; border-bottom: 1px solid rgba(255,255,255,0.035); border-left: 2px solid transparent; }
+.model-stat-source:hover { background: rgba(255,255,255,0.025); }
+.model-stat-source-label { display: flex; align-items: center; gap: 8px; min-width: 0; padding-left: 22px; }
+.model-stat-provider { display: block; flex: 0 1 auto; max-width: 45%; padding: 1px 6px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 10px; }
+.model-stat-source-model { min-width: 0; color: var(--text-muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-stat-source .session-number-col { color: var(--text-secondary); font-size: 11px; }
+.model-stat-grid .digits { white-space: nowrap; }
 .list-row--clickable:hover {
   box-shadow: inset 2px 0 0 var(--brand-blue);
 }
@@ -4576,7 +4597,7 @@ body {
     height: 24px;
     flex-basis: 24px;
   }
-  .main-content { padding: 16px 16px 32px; }
+  .main-content { width: 100%; padding: 16px 16px 32px; }
   .content-grid { grid-template-columns: 1fr; }
   .mock-page .mock-page-head { align-items: flex-start; flex-direction: column; }
   .mock-page .matter-header,

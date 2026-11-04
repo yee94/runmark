@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.2.45 (Server) - 2026-11-04
+
+- Merge recognized model usage across providers in model statistics and daily trends, normalizing explicit routing prefixes, version spellings, compact snapshot dates and context markers. Keep uncertain aliases and capability variants separate; do not rewrite historical data or reprice usage.
+- Reuse the compact model table with expandable original model/provider breakdowns, turn-weighted average durations and stable daily model labels.
+- Add regression coverage for token/cost conservation, Beijing date boundaries, range filtering and legacy ungrouped API compatibility.
+
+## 0.2.44 (Server) - 2026-11-04
+
+- Support embedding the existing Dashboard in Yuri with source/origin-checked authentication and navigation messages. Keep credentials in memory and authenticate same-origin API requests via headers without third-party cookies.
+- Synchronize in-plugin Back, Forward, Reload and route addresses while confining navigation to the Dashboard document. Standalone Dashboard cookie login is unchanged.
+
+## OpenCode Plugin 0.2.14 - 2026-11-04
+
+- Add a prebuilt GUI entry and Runmark icon for an embedded Dashboard in Yuri-compatible hosts; hide the entry on mobile and preserve the bundled `runmark` Skill.
+- Allow endpoint and API key options for both reporting and the GUI, without putting credentials in iframe URLs or persistent browser storage.
+
 ## 0.2.43 (Server) - 2026-11-03
 
 - Tighten long-term memory admission: exclude child, background, synthetic and attached context as sources; automatic writes require durable evidence and a concrete future use beyond the current task.
