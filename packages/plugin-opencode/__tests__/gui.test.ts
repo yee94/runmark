@@ -52,7 +52,7 @@ test("existing Dashboard embed bridge authenticates only its parent and never se
   expect(requests).toHaveLength(2);
 });
 
-test("real bundle embeds the existing dashboard, confines auth to the frame and hides mobile", async () => {
+test("real bundle hides unconfigured entries, embeds the existing dashboard, confines auth to the frame and hides mobile", async () => {
   const directory = await mkdtemp(join(tmpdir(), "runmark-gui-"));
   try {
     await build({ configFile: false, root: resolve(import.meta.dir, ".."), logLevel: "silent", plugins: [gui({ entry: "src/gui.ts", outFile: join(directory, "gui.cjs") })] });
@@ -78,6 +78,25 @@ test("real bundle embeds the existing dashboard, confines auth to the frame and 
     });
     const plugin = module.exports.default!;
     expect(plugin.main).toBeUndefined();
+    for (const options of [
+      {},
+      { endpoint: "https://runmark.example" },
+      { apiKey: "fixture-only-key" },
+      { endpoint: "", apiKey: "fixture-only-key" },
+      { endpoint: "   ", apiKey: "fixture-only-key" },
+      { endpoint: "https://runmark.example", apiKey: "" },
+      { endpoint: "https://runmark.example", apiKey: "   " },
+      { endpoint: 123, apiKey: "fixture-only-key" },
+      { endpoint: "https://runmark.example", apiKey: 123 },
+    ]) {
+      const entries = new Map<string, unknown>();
+      context = { options, layout: { narrow: () => false }, use: () => () => ({ status: "inactive" }),
+        add: (token: { id: string }, item: unknown) => entries.set(token.id, typeof item === "function" ? item() : item),
+        t: (key: string) => plugin.i18n!.zh[key],
+      };
+      plugin.setup!(context as Parameters<Gui.Plugin.Setup>[0]);
+      expect(entries.size).toBe(0);
+    }
     for (const mobile of [false, true]) {
       const entries = new Map<string, unknown>();
       const opened: string[] = [];

@@ -1,7 +1,7 @@
 import { execFile } from "node:child_process";
 import { hostname } from "node:os";
 import { createMemoryClient, setupMemory, memorySource } from "./memory";
-import { FileLogger, TrackerClient, defaultPluginLogPath, isHiddenSessionTitle } from "@agent-tracker/shared";
+import { FileLogger, TrackerClient, defaultPluginLogPath, isHiddenSessionTitle, parseClientId } from "@agent-tracker/shared";
 import { loadPluginConfig } from "./index";
 import { createOpenCode2TrackerState, mapOpenCode2Event } from "./opencode2-events";
 import { setupRunmarkSkill } from "./skill";
@@ -65,14 +65,18 @@ export const setupAgentTrackerV2 = async (ctx) => {
                         locatedSessions.set(sessionID, local);
                         if (!local)
                             continue;
+                        const storedAgent = parseClientId(await ctx.storage?.get(`tracker/agent/${sessionID}`).catch(() => undefined));
+                        if (storedAgent)
+                            state.sessionAgents.set(sessionID, storedAgent);
                         if (isHiddenSessionTitle(info.title))
                             state.hidden.add(sessionID);
                         else
                             client.push({
-                                type: "session.updated", session_id: info.id, agent: "opencode", title: info.title,
+                                type: "session.updated", session_id: info.id, agent: state.sessionAgents.get(sessionID) ?? "opencode", title: info.title,
                                 parent_session_id: info.parentID, model: info.model?.id, provider: info.model?.providerID,
                                 repo_url: repoUrl, branch: branch, user_email: author || undefined,
                                 hostname: hostname(), directory: info.location.directory,
+                                metadata: { runtime: "opencode" },
                             });
                     }
                     catch (error) {
@@ -82,6 +86,7 @@ export const setupAgentTrackerV2 = async (ctx) => {
                 }
                 if (sessionID && locatedSessions.get(sessionID) === false)
                     continue;
+                const previousAgent = state.sessionAgents.get(sessionID);
                 const mapped = mapOpenCode2Event(state, event, {
                     includeMessageContent: config.includeMessageContent !== false,
                     includeToolOutput: config.includeToolOutput !== false,
@@ -95,9 +100,15 @@ export const setupAgentTrackerV2 = async (ctx) => {
                         directory: item.directory ?? directory,
                     }
                     : item);
+                const sessionAgent = state.sessionAgents.get(sessionID);
+                if (sessionAgent && sessionAgent !== previousAgent) {
+                    await ctx.storage?.set(`tracker/agent/${sessionID}`, sessionAgent).catch((error) => {
+                        logger.error("session agent persistence failed", { sessionID, error: String(error) });
+                    });
+                }
                 for (const item of mapped)
                     client.push(item);
-                if (mapped.some((item) => item.type === "session.idle" || item.type === "turn.completed")) {
+                if (mapped.some((item) => item.type === "session.idle" || item.type === "turn.completed") || (event.type === "session.inbox.delivered" && mapped.length)) {
                     void client.flush();
                 }
             }

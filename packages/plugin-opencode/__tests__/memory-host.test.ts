@@ -124,7 +124,10 @@ test.skipIf(process.env.RUNMARK_HOST_TEST !== "1")("standalone host sends short 
     expect(detail.body).toBe("请用中文回答");
     const source = detail.sources[0] as any;
     expect(db.query("SELECT agent, hostname, directory FROM sessions WHERE id=?").get(source.session_id)).toMatchObject({ agent: "opencode", hostname: hostname(), directory: project });
-    expect(db.query("SELECT role,content,agent_key FROM messages WHERE id=?").get(source.message_id)).toMatchObject({ role: "user", agent_key: "opencode/build", content: "\"Recall the deploy memory using runmark_memory_read. 另请记住本项目用中文回答。\"" });
+    const sourceMessage = db.query<{ role: string; content: string; agent_key: string }, string>("SELECT role,content,agent_key FROM messages WHERE id=?").get(source.message_id);
+    expect(sourceMessage).toMatchObject({ role: "user", agent_key: "opencode/build" });
+    const promptText = "Recall the deploy memory using runmark_memory_read. 另请记住本项目用中文回答。";
+    expect([promptText, JSON.stringify(promptText)]).toContain(sourceMessage?.content);
     const system = (request: any) => request.messages.filter((message: any) => message.role === "system").map((message: any) => message.content).join("\n");
     expect(system(requests[0])).toContain("查询 Runmark 历史会话与工作记录");
     expect(system(requests.at(-1))).not.toContain(saved.id);

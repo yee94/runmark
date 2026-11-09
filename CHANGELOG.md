@@ -2,6 +2,30 @@
 
 ## Unreleased
 
+## 0.2.48 (Server) - 2026-11-09
+
+- Display the stored `agent` consistently across the Dashboard, with Yuri branding and no separate client-source label in session lists, details or trace rows.
+- Preserve native OpenCode identity and metadata restoration for OTLP deduplication when the reported Agent is a declared client such as Yuri.
+- Keep Agent statistics aggregated by `sessions.agent`; do not backfill historical attribution or change token/cost accounting. Add reporting-to-storage, statistics and plugin-reload regression tests.
+
+## 0.2.47 (Server) - 2026-11-09
+
+- Accept optional, validated `client_id` telemetry on messages and turns; migrate existing databases idempotently and leave historical sources unknown.
+- Expose declared session client IDs and unknown-source state through the API; distinguish declared clients in user-message deduplication without changing named-Agent memory identity, usage or costs.
+- Update the OpenAPI contract and add ingestion, migration, deduplication and Dashboard regression tests.
+
+## 0.2.46 (Server) - 2026-11-05
+
+- Redesign the memory browser as a combined card feed with scope selection, secondary filters and management actions, plus a dark detail dialog that preserves list position and keyboard focus.
+- Add debounced, IME-aware search with immediate submit; pagination uses the applied query rather than pending input.
+- Add a read-only `view=all` management view ordered by update time, preserving Agent isolation, pagination, filters and forgotten-body protection. Effective recall and exact-scope writes are unchanged.
+
+## OpenCode Plugin 0.2.17 - 2026-11-09
+
+- Report a delivered prompt's declared `metadata.client.id` as the session Agent, falling back to OpenCode when none is declared. Preserve named-Agent memory identity and the bundled `runmark` Skill.
+- Keep confirmed attribution across later telemetry, child sessions and plugin reloads; record message/turn client sources without guessing mixed or unmarked inputs.
+- Hide the embedded Dashboard entry when endpoint or API key options are missing.
+
 ## 0.2.45 (Server) - 2026-11-04
 
 - Merge recognized model usage across providers in model statistics and daily trends, normalizing explicit routing prefixes, version spellings, compact snapshot dates and context markers. Keep uncertain aliases and capability variants separate; do not rewrite historical data or reprice usage.

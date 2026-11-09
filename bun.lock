@@ -64,7 +64,7 @@
     },
     "packages/plugin-opencode": {
       "name": "@runmarks/opencode-plugin",
-      "version": "0.2.14",
+      "version": "0.2.17",
       "devDependencies": {
         "@agent-tracker/shared": "workspace:*",
         "@opencode-ai/plugin": "latest",
@@ -91,7 +91,7 @@
     },
     "packages/server": {
       "name": "@agent-tracker/server",
-      "version": "0.2.45",
+      "version": "0.2.48",
       "dependencies": {
         "@agent-tracker/shared": "workspace:*",
         "hono": "^4.5.0",

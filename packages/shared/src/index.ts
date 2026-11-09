@@ -45,6 +45,7 @@ export interface IngestSessionEvent {
 }
 
 export interface IngestTurnEvent {
+  client_id?: string;
   type: "turn.completed" | "turn.error";
   session_id: string;
   turn_id: string;
@@ -66,6 +67,7 @@ export interface IngestTurnEvent {
 }
 
 export interface IngestMessageEvent {
+  client_id?: string;
   agent_key?: string;
   type: "message";
   session_id: string;
@@ -114,6 +116,11 @@ export type IngestEvent =
   | IngestMessageEvent
   | IngestToolResultEvent;
 
+/** 客户端主动声明的遥测来源；不是执行引擎、命名 Agent 或鉴权身份。 */
+export function parseClientId(value: unknown): string | undefined {
+  return typeof value === "string" && value.match(/^[a-z0-9][a-z0-9._-]{0,63}$/)?.[0] === value ? value : undefined;
+}
+
 export interface IngestBatchRequest {
   events: IngestEvent[];
 }
@@ -136,6 +143,8 @@ export interface ApiErrorResponse {
 // ============================================================================
 
 export interface Session {
+  client_ids?: string[];
+  has_unknown_client?: boolean;
   id: string;
   agent: string;
   /** OpenCode session.title，展示用 summary 优先取此字段 */
@@ -162,6 +171,7 @@ export interface Session {
 }
 
 export interface ConversationMessage {
+  client_id?: string;
   id: string;
   session_id: string;
   role: "user" | "assistant" | "system" | "tool" | "reasoning";
@@ -175,6 +185,7 @@ export interface ConversationMessage {
 }
 
 export interface Turn {
+  client_id?: string;
   id: string;
   session_id: string;
   message_id?: string;

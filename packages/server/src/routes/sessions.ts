@@ -195,8 +195,14 @@ function serializeSession(db: Database, row: SessionRow) {
     0,
     new Date(lastActivityAt).getTime() - new Date(firstActivityAt).getTime(),
   );
+  const clients = db.query<{ client_id: string | null }, { $id: string }>(`
+    SELECT client_id FROM messages WHERE session_id = $id AND role = 'user'
+    UNION SELECT client_id FROM turns WHERE session_id = $id
+  `).all({ $id: rolled.id });
   return {
     ...rolled,
+    client_ids: clients.flatMap(row => row.client_id ? [row.client_id] : []),
+    has_unknown_client: clients.length === 0 || clients.some(row => row.client_id === null),
     ...forkFieldsForSession(db, rolled),
     // model 保持原存储串；models 为展示用拆分结果
     models,

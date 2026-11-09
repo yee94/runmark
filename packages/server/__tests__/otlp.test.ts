@@ -195,7 +195,7 @@ describe("OTLP ingest", () => {
     if (nativeFirst) expect(notifications).toEqual([]);
   });
 
-  it.each([false, true])("会话兜底跨重启、双序、重报及 idle 后所有统计保持原生值（nativeFirst=%s）", async (nativeFirst) => {
+  it.each([false, true].flatMap(nativeFirst => ["opencode", "yuri"].map(agent => ({ nativeFirst, agent }))))("会话兜底跨重启、双序、重报及 idle 后所有统计保持原生值（%j）", async ({ nativeFirst, agent }) => {
     directory = mkdtempSync(join(tmpdir(), "runmark-dedup-"));
     const path = join(directory, "test.db");
     db.close();
@@ -203,7 +203,7 @@ describe("OTLP ingest", () => {
     db.exec("PRAGMA foreign_keys = ON");
     db.exec(SCHEMA_SQL);
     mount();
-    const native = { events: [{ type: "session.created", session_id: "ses-magpie-1", agent: "opencode", title: "real title", metadata: { persisted: true } }, nativeTurn()] };
+    const native = { events: [{ type: "session.created", session_id: "ses-magpie-1", agent, title: "real title", metadata: { persisted: true, runtime: "opencode" } }, nativeTurn()] };
     const otlp = otlpPayload([generationSpan()]);
     await post(nativeFirst ? "/v1/ingest" : "/v1/traces", nativeFirst ? native : otlp);
     db.close();
@@ -214,7 +214,7 @@ describe("OTLP ingest", () => {
     await post(nativeFirst ? "/v1/traces" : "/v1/ingest", nativeFirst ? otlp : native);
     await post("/v1/traces", otlp);
     await post("/v1/ingest", native);
-    await post("/v1/ingest", { events: [{ type: "session.idle", session_id: "ses-magpie-1", agent: "opencode", request_count: 10, session_total_tokens: 1000, session_cost_usd: 2, session_input_tokens: 800, session_output_tokens: 200 }] });
+    await post("/v1/ingest", { events: [{ type: "session.idle", session_id: "ses-magpie-1", agent, request_count: 10, session_total_tokens: 1000, session_cost_usd: 2, session_input_tokens: 800, session_output_tokens: 200 }] });
     db.close();
     db = new Database(path);
     db.exec("PRAGMA foreign_keys = ON");
@@ -226,7 +226,7 @@ describe("OTLP ingest", () => {
     expect(JSON.parse((await sessions())[0].metadata)).toMatchObject({ persisted: true });
     expect(await (await app.request("/v1/stats/summary?range=all")).json()).toMatchObject({ sessions: 1, turns: 1, tokens: { total: 25 }, cost_usd: 0.01 });
     expect(await (await app.request("/v1/stats/by-model?range=all")).json()).toMatchObject([{ turn_count: 1, total_tokens: 25, total_cost_usd: 0.01 }]);
-    expect(await (await app.request("/v1/stats/by-agent?range=all")).json()).toMatchObject([{ turn_count: 1, total_tokens: 1000, total_cost_usd: 2 }]);
+    expect(await (await app.request("/v1/stats/by-agent?range=all")).json()).toMatchObject([{ agent, turn_count: 1, total_tokens: 1000, total_cost_usd: 2 }]);
   });
 
   it("零用量占位和未确认来源的 turn 不触发切换，迟到原生身份确认后才切换", async () => {

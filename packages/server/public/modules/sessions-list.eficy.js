@@ -1,7 +1,7 @@
 import { component, computed } from 'eficy'
 
 export function createSessionRow(ctx) {
-  const { formatTokens, formatCost, formatDateTime, formatRelativeTime, formatSessionDuration, routeSessionId, openSession, peek, ChevronIcon, resolveAgentIconUrl, formatAgentLabel, resolveModelIconUrl } = ctx
+  const { formatTokens, formatCost, formatDateTime, formatRelativeTime, formatSessionDuration, sessionAgents, routeSessionId, openSession, peek, ChevronIcon, resolveAgentIconUrl, formatAgentLabel, resolveModelIconUrl } = ctx
 
   /** 从 sessions.model 逗号串或 models[] 解出展示列表 */
   function sessionModelList(s) {
@@ -25,8 +25,7 @@ export function createSessionRow(ctx) {
 
   const SessionRow = component(({ session }) => {
     const summaryText = computed(() => session.value.summary || session.value.title || session.value.id || '—')
-    const agent = computed(() => formatAgentLabel?.(session.value.agent) || session.value.agent || '—')
-    const agentIcon = computed(() => resolveAgentIconUrl?.(session.value.agent) || null)
+    const agents = computed(() => sessionAgents(session.value, formatAgentLabel, resolveAgentIconUrl))
     const modelItems = computed(() => {
       const names = sessionModelList(session.value)
       if (!names.length) return [{ name: '—', icon: null }]
@@ -58,14 +57,12 @@ export function createSessionRow(ctx) {
           </div>
         </div>
         <div className="session-agent-col">
-          {agentIcon.value ? (
-            <span className="agent-label">
-              <img className="agent-label-icon" src={agentIcon.value} alt="" />
-              {agent}
-            </span>
-          ) : (
-            <span className="badge badge-agent">{agent}</span>
-          )}
+          {agents.value.map((agent, i) => (
+            <span key={agent.id || i}>{i ? ' / ' : ''}<span className={agent.icon ? 'agent-label' : 'badge badge-agent'}>
+              {agent.icon ? <img className="agent-label-icon" src={agent.icon} alt="" /> : null}
+              {agent.label}
+            </span></span>
+          ))}
         </div>
         <div className="session-model-col">
           <div className="session-model-list" title={modelItems.value.map((m) => m.name).join(', ')}>

@@ -92,6 +92,7 @@ function ensureSessionsColumns(db: Database): void {
 
 function ensureMessagesColumns(db: Database): void {
   ensureTableColumns(db, "messages", [
+    ["client_id", "TEXT"],
     ["content", "TEXT"],
     ["model", "TEXT"],
     ["provider", "TEXT"],
@@ -103,6 +104,7 @@ function ensureMessagesColumns(db: Database): void {
 
 function ensureTurnsColumns(db: Database): void {
   ensureTableColumns(db, "turns", [
+    ["client_id", "TEXT"],
     ["message_id", "TEXT"],
     ["cache_read_tokens", "INTEGER NOT NULL DEFAULT 0"],
     ["cache_write_tokens", "INTEGER NOT NULL DEFAULT 0"],

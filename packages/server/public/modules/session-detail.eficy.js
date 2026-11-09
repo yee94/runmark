@@ -113,6 +113,7 @@ export function createSessionDetailView(ctx) {
     navigate, openSession, toggleSubagent,
     selectTraceItem, toggleTraceCategory,
     formatDateTime, formatSessionDuration, formatDuration, formatTokens, formatCost,
+    sessionAgents, formatAgentLabel, resolveAgentIconUrl,
     forkParentSessionId, mergeForkTraceItems,
     TRACE_CATEGORIES, TRACE_FILTER_LABELS, TRACE_FILTER_DOTS,
     filterTraceItems, ChevronIcon,
@@ -727,12 +728,14 @@ export function createSessionDetailView(ctx) {
                 <span className="trace-meta-val">{session.value.model}</span>
               </span>
             ) : null}
-            {session.value?.agent ? (
-              <span className="trace-meta-item">
-                <span className="trace-meta-label">Agent</span>
-                <span className="trace-meta-val">{session.value.agent}</span>
+            <span className="trace-meta-item">
+              <span className="trace-meta-label">Agent</span>
+              <span className="trace-meta-val">
+                {sessionAgents(session.value, formatAgentLabel, resolveAgentIconUrl).map((agent, i) => (
+                  <span key={agent.id || i}>{i ? ' / ' : ''}<span className="agent-label">{agent.icon ? <img className="agent-label-icon" src={agent.icon} alt="" /> : null}{agent.label}</span></span>
+                ))}
               </span>
-            ) : null}
+            </span>
             <span className="trace-meta-item">
               <span className="trace-meta-label">Started</span>
               <span className="trace-meta-val">{formatDateTime(session.value?.started_at)}</span>

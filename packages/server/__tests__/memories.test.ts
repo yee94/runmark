@@ -186,6 +186,44 @@ describe("Project memory API", () => {
     expect((await request("POST", "", write("invalid-view"), "view=projects")).status).toBe(400);
   });
 
+  it("browses global and project memories together by recency, with isolated Agents and stable pagination", async () => {
+    const project = (await request("POST", "", write())).data;
+    const foreign = (await request("POST", "", {...write("foreign"), source:{session_id:"foreign",message_id:"mf",explicit:true}}, "session_id=foreign")).data;
+    const global = (await request("POST", "", {...write("global"),scope:"global"})).data;
+    db.query("UPDATE memories SET updated_at='2026-10-01T00:00:00Z'").run();
+    db.query("UPDATE memories SET updated_at='2026-10-02T00:00:00Z' WHERE id=?").run(global.id);
+    db.query("UPDATE messages SET agent_key='opencode/build' WHERE id='m1'").run();
+    const agent = (await request("POST", "", {...write("agent"),agent_key:"opencode/build"})).data;
+    const agentGlobal = (await request("POST", "", {...write("agent-global"),scope:"global",agent_key:"opencode/build"})).data;
+    const ids: string[] = [];
+    let cursor = "";
+    do {
+      const page = await request("GET", "", undefined, "view=all&type=user&query=中文&limit=1" + (cursor ? "&cursor=" + cursor : ""));
+      expect(page.status).toBe(200);
+      expect(page.data.items).toHaveLength(1);
+      ids.push(page.data.items[0].id);
+      cursor = page.data.next_cursor;
+    } while (cursor);
+    expect(ids).toEqual([global.id, ...[project.id,foreign.id].sort()]);
+    expect((await request("GET", "", undefined, "view=all&agent_key=opencode/build")).data.items.map((item:any)=>item.id).sort()).toEqual([agent.id,agentGlobal.id].sort());
+    expect((await request("GET", "", undefined, "view=all&type=reference")).data.items).toEqual([]);
+    expect((await request("GET", `/${foreign.id}`, undefined, "view=all")).status).toBe(200);
+    expect((await request("GET", `/${agent.id}`, undefined, "view=all")).status).toBe(404);
+    expect((await request("GET", `/${foreign.id}`, undefined, "session_id=s1&view=effective")).status).toBe(404);
+    const index = (await request("GET", "/index", undefined, "view=all")).data.markdown;
+    expect(index.indexOf(global.id)).toBeLessThan(index.indexOf(project.id));
+    expect(index).toContain("view=all");
+    expect((await request("GET", "", undefined, "view=all&scope=global")).status).toBe(400);
+    expect((await request("GET", "", undefined, "view=all&session_id=s1")).status).toBe(400);
+    expect((await request("POST", "", write("invalid-all"), "view=all")).status).toBe(400);
+    expect(()=>service.consolidateIndex({view:"all"}, "", [], "test")).toThrow("exact namespace");
+    await request("DELETE", `/${global.id}`, {operation_id:"forget-global",source,expected_revision:1}, "scope=global");
+    const forgotten = (await request("GET", "", undefined, "view=all&status=forgotten")).data.items;
+    expect(forgotten.map((item:any)=>item.id)).toEqual([global.id]);
+    expect(forgotten[0].body).toBeUndefined();
+    expect((await request("GET", `/${global.id}`, undefined, "view=all")).status).toBe(410);
+  });
+
   it("migrates legacy namespaces without changing identities, revisions, provenance or tombstones", async () => {
     const created = (await request("POST", "", write())).data;
     await request("DELETE", `/${created.id}`, {operation_id:"forget",source,expected_revision:1});

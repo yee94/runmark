@@ -12,6 +12,7 @@ import {
   traceChildQuery,
   traceItemCategory,
 } from "../public/modules/trace.eficy.js";
+import { formatClientId, formatSessionClients } from "../public/modules/client-source.js";
 
 function makeTraceHelpers(expanded: Record<string, boolean> = {}) {
   return createTraceHelpers({
@@ -27,6 +28,31 @@ function makeTraceHelpers(expanded: Record<string, boolean> = {}) {
 }
 
 describe("trace timeline", () => {
+  it("retains each message/turn source without backfilling from session or neighbouring records", () => {
+    const { buildTraceItems } = makeTraceHelpers();
+    const items = buildTraceItems({
+      messages: [
+        { id: "user", role: "user", content: "input", client_id: "yuri", created_at: "2026-01-01" },
+        { id: "answer", role: "assistant", content: "output", created_at: "2026-01-02" },
+      ],
+      turns: [
+        { id: "known", client_id: "other", created_at: "2026-01-01" },
+        { id: "mixed", created_at: "2026-01-02" },
+      ],
+    }, 0, { id: "shared", agent: "opencode", client_ids: ["yuri"] });
+    expect(items.map((item: any) => [item.key, item.client_id])).toEqual([
+      ["msg-user", "yuri"], ["turn-known", "other"], ["turn-mixed", undefined], ["msg-answer", undefined],
+    ]);
+  });
+
+  it("labels declared, mixed and historical session sources independently of the engine", () => {
+    expect(formatClientId("yuri")).toBe("Yuri");
+    expect(formatClientId(null)).toBe("未知");
+    expect(formatSessionClients({ agent: "opencode", client_ids: ["yuri"], has_unknown_client: false })).toBe("Yuri");
+    expect(formatSessionClients({ client_ids: ["yuri", "other"], has_unknown_client: true })).toBe("Yuri / other / 未知");
+    expect(formatSessionClients({ agent: "opencode" })).toBe("未知");
+  });
+
   it("orders same-timestamp items as user, turn, assistant", () => {
     const ts = "2026-07-09T11:08:36.000Z";
     const { mergeForkTraceItems } = makeTraceHelpers();

@@ -26,3 +26,19 @@ Runmark 自己提供 30px 高的 mini 导航栏：24px 后退、前进、刷新�
 保留插件内的导航历史。服务端需要同时包含认证与导航桥；旧认证版不会启用导航按钮。
 
 验证：`bun run test __tests__/gui.test.ts`、`bun run typecheck`、`bun run build`。
+
+## 请求客户端来源（OpenCode V2）
+
+客户端在实际 prompt 上声明 `metadata.client.id`，例如 Yuri 使用 `yuri`。
+插件读取原生 `session.inbox.enqueued` 的 `item.payload.metadata.client.id`，
+用户消息保存各自来源；只有 delivered 输入才绑定下一 step，工具续步沿用当前执行来源。
+队列不覆盖正在执行的来源，执行完成、失败或中断后清理；同一步混合来源或含未声明输入时，turn 来源为未知。
+关闭消息正文采集仍可记录 turn 来源。无标记历史、未观察到入队的输入均保持未知，不猜测为 CLI。
+
+Ingest 的 message / turn 事件可携带 `client_id`：1–64 位小写字母、数字、点、下划线或连字符，
+首位为字母或数字；非法值视为未知。数据库旧记录的列为 NULL。
+会话 API 的 `client_ids` 汇总本会话用户消息和 turns 的声明值；
+`has_unknown_client` 表示包含未知记录或尚无可汇总记录。Dashboard 按实际 `agent` 展示归属，不单独展示来源；单条 trace 不用会话汇总回填。
+
+已交付输入声明有效客户端时，将其写入会话 `agent`，未声明时回退 `opencode`；后续事件、子会话及插件重载保留已确认归属。命名 Agent 的记忆身份仍为 `opencode/<agent>`，不修改 UA、模型、费用或鉴权。
+这是客户端主动声明的遥测标签，不是防伪或认证机制。仅打开会话不会改变来源。

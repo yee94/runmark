@@ -1,5 +1,13 @@
 # @runmarks/opencode-plugin
 
+## 0.2.17
+
+### Patch Changes
+
+- Report the delivered prompt's declared client as the session Agent and persist it across subsequent telemetry, child sessions and plugin reloads. Keep named-Agent memory identity unchanged.
+- Include message/turn client attribution and the updated Runmark API contract; do not guess unknown or mixed sources.
+- Hide unconfigured embedded Dashboard entries.
+
 ## 0.2.14
 
 ### Minor Changes

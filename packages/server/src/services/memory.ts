@@ -2,7 +2,7 @@ import type { Database } from "bun:sqlite";
 import { createHash, randomUUID } from "node:crypto";
 
 export type MemoryScope = "global" | "project";
-export interface MemoryContext { session_id?: string; repo_url?: string; hostname?: string; directory?: string; project_id?: string; scope?: MemoryScope; agent_key?: string; view?: "effective" | "scoped" | "projects" }
+export interface MemoryContext { session_id?: string; repo_url?: string; hostname?: string; directory?: string; project_id?: string; scope?: MemoryScope; agent_key?: string; view?: "effective" | "scoped" | "projects" | "all" }
 export interface MemoryAssessment { quote: string; retention_reason: string; scope_reason: string; durable_basis?: "explicit_memory_request" | "stable_preference" | "standing_constraint" | "reference_pointer"; future_use?: string }
 export interface MemorySource { session_id: string; message_id: string; job_id?: string; explicit?: boolean; assessment?: MemoryAssessment }
 export interface MemoryWrite {
@@ -105,10 +105,11 @@ export class MemoryService {
   }
 
   private namespaces(context: MemoryContext) {
-    if (context.view === "projects") {
-      if ((context.scope && context.scope !== "project") || context.session_id || context.repo_url || context.project_id) return fail(400, "All-projects view cannot specify a project");
-      this.namespace({ scope: "global", agent_key: context.agent_key });
-      return this.scopes().items.filter(item => item.scope === "project" && item.agent_key === (context.agent_key ?? "")).map(item => ({ ...item, key: item.id }));
+    if (context.view === "projects" || context.view === "all") {
+      if ((context.scope && (context.view === "all" || context.scope !== "project")) || context.session_id || context.repo_url || context.project_id) return fail(400, "Cross-project views cannot specify a scope or project");
+      const global = this.namespace({ scope: "global", agent_key: context.agent_key });
+      const projects = this.scopes().items.filter(item => item.scope === "project" && item.agent_key === (context.agent_key ?? "")).map(item => ({ ...item, key: item.id }));
+      return context.view === "all" ? [global, ...projects] : projects;
     }
     if (context.view !== undefined && context.view !== "effective" && context.view !== "scoped") return fail(400, "Invalid memory view");
     if (context.view !== "effective") return [this.namespace(context)];
@@ -216,18 +217,19 @@ export class MemoryService {
         after = parsed;
       } catch { return fail(400, "Invalid project cursor"); }
     }
+    const orderPriority = context.view === "all" ? "CAST(0 AS INTEGER)" : prioritySQL;
     const rows = this.db.query(`SELECT * FROM memories WHERE project_id IN (${namespaces.map(() => "?").join(",")}) AND status = ? AND (? = '' OR type = ?)
       AND (? = '' OR instr(lower(name || ' ' || description || ' ' || body), lower(?)) > 0)
-      AND (? = '' OR ${prioritySQL} < ? OR (${prioritySQL} = ? AND (updated_at < ? OR (updated_at = ? AND id > ?))))
-      ORDER BY ${prioritySQL} DESC, updated_at DESC, id ASC LIMIT ?`).all(...namespaces.map(n => n.id), status, options.type ?? "", options.type ?? "", options.query ?? "", options.query ?? "", after.id, after.priority, after.priority, after.updated_at, after.updated_at, after.id, limit + 1) as MemoryRow[];
+      AND (? = '' OR ${orderPriority} < ? OR (${orderPriority} = ? AND (updated_at < ? OR (updated_at = ? AND id > ?))))
+      ORDER BY ${orderPriority} DESC, updated_at DESC, id ASC LIMIT ?`).all(...namespaces.map(n => n.id), status, options.type ?? "", options.type ?? "", options.query ?? "", options.query ?? "", after.id, after.priority, after.priority, after.updated_at, after.updated_at, after.id, limit + 1) as MemoryRow[];
     const items = rows.slice(0, limit).map(metadata);
     const last = items.at(-1);
     const has_more = rows.length > limit;
-    return { project, namespaces, items, has_more, next_cursor: has_more && last ? this.cursor({ ...last, project_id: selection }) : null };
+    return { project, namespaces, items, has_more, next_cursor: has_more && last ? this.cursor({ ...last, project_id: selection }, context.view === "all") : null };
   }
 
-  private cursor(row: { project_id: string; updated_at: string; id: string; scope: MemoryScope; agent_key: string }) {
-    return Buffer.from(JSON.stringify({ project_id: row.project_id, updated_at: row.updated_at, id: row.id, priority: priority(row) })).toString("base64url");
+  private cursor(row: { project_id: string; updated_at: string; id: string; scope: MemoryScope; agent_key: string }, chronological = false) {
+    return Buffer.from(JSON.stringify({ project_id: row.project_id, updated_at: row.updated_at, id: row.id, priority: chronological ? 0 : priority(row) })).toString("base64url");
   }
 
   catalog(context: MemoryContext) {
@@ -261,7 +263,7 @@ export class MemoryService {
 
   consolidateIndex(context: MemoryContext, expectedVersion: string, entries: MemoryIndexEntry[], jobId: string) {
     return this.db.transaction(() => {
-      if (context.view === "effective" || context.view === "projects") return fail(400, "Consolidation requires an exact namespace");
+      if (context.view && context.view !== "scoped") return fail(400, "Consolidation requires an exact namespace");
       const namespace = this.namespace(context);
       if (expectedVersion !== this.version(context)) return fail(409, "Memory changed during consolidation");
       if (!Array.isArray(entries) || entries.length > 200) return fail(400, "Index requires at most 200 entries");
@@ -300,7 +302,7 @@ export class MemoryService {
         for (const item of items) entries.push({ id: item.id, description: item.description, item });
       }
     }
-    if (!entries.some(entry => entry.curated)) entries.sort((a, b) => priority(b.item) - priority(a.item)
+    if (!entries.some(entry => entry.curated)) entries.sort((a, b) => (context.view === "all" ? 0 : priority(b.item) - priority(a.item))
       || b.item.updated_at.localeCompare(a.item.updated_at) || a.id.localeCompare(b.id));
     return entries;
   }
@@ -318,7 +320,7 @@ export class MemoryService {
     }
     const has_more = lines.length < entries.length;
     const last = entries[lines.length - 1]?.item;
-    const next_cursor = has_more && last && !entries.some(entry => entry.curated) ? this.cursor({ ...last, project_id: result.namespaces.map(n => n.id).sort().join(",") }) : null;
+    const next_cursor = has_more && last && !entries.some(entry => entry.curated) ? this.cursor({ ...last, project_id: result.namespaces.map(n => n.id).sort().join(",") }, context.view === "all") : null;
     const continuation = `/v1/memories?${this.projectQuery(context)}${next_cursor ? `&cursor=${encodeURIComponent(next_cursor)}` : ""}`;
     const markdown = lines.join("\n");
     const state = this.indexState(context);
@@ -327,7 +329,7 @@ export class MemoryService {
   }
 
   private projectQuery(context: MemoryContext) {
-    if (context.view === "projects") return new URLSearchParams({ view: "projects", agent_key: context.agent_key ?? "" }).toString();
+    if (context.view === "projects" || context.view === "all") return new URLSearchParams({ view: context.view, agent_key: context.agent_key ?? "" }).toString();
     // 使用已规范化身份，避免把 remote 中的凭据放进派生链接。
     if (context.view === "effective" && !context.session_id) {
       const safe: MemoryContext = { view: "effective", agent_key: context.agent_key, hostname: context.hostname, directory: context.directory, project_id: context.project_id };

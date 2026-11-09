@@ -8,6 +8,13 @@ export type OpenCode2Event = {
 export type OpenCode2TrackerState = {
     userMessages: Map<string, IngestMessageEvent>;
     deliveredUsers: Set<string>;
+    seenInputs: Set<string>;
+    inputClients: Map<string, {
+        sessionID: string;
+        clientID?: string;
+    }>;
+    executionClients: Map<string, string | undefined>;
+    sessionAgents: Map<string, string>;
     hidden: Set<string>;
     forkCutoffMs: Map<string, number>;
     pending: Map<string, {
@@ -16,6 +23,7 @@ export type OpenCode2TrackerState = {
         startTime: number;
         messageID?: string;
         agentKey?: string;
+        clientID?: string;
     }>;
     texts: Map<string, Map<number, string>>;
     tools: Map<string, {

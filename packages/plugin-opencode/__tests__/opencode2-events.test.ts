@@ -5,6 +5,146 @@ import { createOpenCode2TrackerState, mapOpenCode2Event } from "../src/opencode2
 const options = { includeMessageContent: true, includeToolOutput: true, now: 1_700_000_000_000 };
 
 describe("mapOpenCode2Event", () => {
+  it.each([true, false])("reports the delivered client in the actual session agent field (capture=%s)", (includeMessageContent) => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown> = {}) => mapOpenCode2Event(state, { type, data: { sessionID: "yuri-session", ...data } }, { ...options, includeMessageContent });
+    expect(event("session.created")[0]).toMatchObject({ agent: "opencode", metadata: { runtime: "opencode" } });
+    event("session.inbox.enqueued", { inboxID: "input", item: { type: "user", payload: { text: "hello", metadata: { client: { id: "yuri" } } } } });
+    expect(event("session.inbox.delivered", { inboxID: "input" })).toEqual([{ type: "session.updated", session_id: "yuri-session", agent: "yuri" }]);
+    expect(event("session.inbox.delivered", { inboxID: "input" })).toEqual([]);
+    event("session.step.started", { assistantMessageID: "answer", agent: "build" });
+    event("session.step.ended", { assistantMessageID: "answer" });
+    expect(event("session.execution.succeeded")[0]).toMatchObject({ agent: "yuri" });
+    expect(event("session.renamed", { title: "renamed" })[0]).toMatchObject({ agent: "yuri" });
+    expect(event("session.usage.updated", { cost: 1 })[0]).toMatchObject({ agent: "yuri" });
+    expect(event("session.model.selected", { model: { id: "test" } })[0]).toMatchObject({ agent: "yuri" });
+    event("session.tool.called", { id: "tool", name: "custom_tool" });
+    expect(event("session.tool.success", { id: "tool", content: [] })[0]).toMatchObject({ agent: "yuri" });
+  });
+
+  it("does not change agent for queued or cancelled clients, and inherits the reported agent for child sessions", () => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown> = {}) => mapOpenCode2Event(state, { type, data: { sessionID: "parent", ...data } }, options);
+    const enqueue = (inboxID: string, client: string) => event("session.inbox.enqueued", { inboxID, item: { type: "user", payload: { text: inboxID, metadata: { client: { id: client } } } } });
+    enqueue("queued", "other");
+    expect(event("session.renamed")[0]).toMatchObject({ agent: "opencode" });
+    event("session.inbox.cancelled", { inboxID: "queued" });
+    enqueue("actual", "yuri");
+    event("session.inbox.delivered", { inboxID: "actual" });
+    expect(event("session.created", { sessionID: "child", parentID: "parent" })[0]).toMatchObject({ agent: "yuri", parent_session_id: "parent" });
+    expect(event("session.created", { sessionID: "separate" })[0]).toMatchObject({ agent: "opencode" });
+    event("session.inbox.delivered", { inboxID: "unknown" });
+    expect(event("session.usage.updated")[0]).toMatchObject({ agent: "yuri" });
+    enqueue("switch", "other");
+    expect(event("session.inbox.delivered", { inboxID: "switch" })[0]).toMatchObject({ agent: "other" });
+    expect(event("session.usage.updated")[0]).toMatchObject({ agent: "other" });
+  });
+
+  it.each(["session.execution.succeeded", "session.execution.failed", "session.execution.interrupted"])("clears provenance after %s while preserving queued prompts and other sessions", (terminal) => {
+    const state = createOpenCode2TrackerState();
+    const event = (sessionID: string, type: string, data: Record<string, unknown> = {}) => mapOpenCode2Event(state, { type, data: { sessionID, ...data } }, options);
+    const enqueue = (sessionID: string, id: string, client?: string) => event(sessionID, "session.inbox.enqueued", { inboxID: id, item: { type: "user", payload: { text: id, metadata: { client: { id: client } } } } });
+    for (const session of ["first", "second"]) {
+      enqueue(session, session, "yuri");
+      event(session, "session.inbox.delivered", { inboxID: session });
+      event(session, "session.step.started", { assistantMessageID: session });
+      event(session, "session.step.ended", { assistantMessageID: session });
+    }
+    enqueue("first", "queued", "other");
+    enqueue("first", "interrupted-before-step", "yuri");
+    event("first", "session.inbox.delivered", { inboxID: "interrupted-before-step" });
+    event("first", terminal);
+    event("first", "session.step.started", { assistantMessageID: "new-unknown" });
+    expect((event("first", "session.step.ended", { assistantMessageID: "new-unknown" })[0] as any).client_id).toBeUndefined();
+    event("second", "session.step.started", { assistantMessageID: "second-continuation" });
+    expect(event("second", "session.step.ended", { assistantMessageID: "second-continuation" })[0]).toMatchObject({ client_id: "yuri" });
+    event("first", "session.inbox.delivered", { inboxID: "queued" });
+    event("first", "session.step.started", { assistantMessageID: "queued-answer" });
+    expect(event("first", "session.step.ended", { assistantMessageID: "queued-answer" })[0]).toMatchObject({ client_id: "other" });
+  });
+
+  it.each([true, false])("does not guess a turn source when a delivered input is unknown (%s)", (enqueueUnknown) => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "mixed", ...data } }, options);
+    event("session.inbox.enqueued", { inboxID: "known", item: { type: "user", payload: { text: "known", metadata: { client: { id: "yuri" } } } } });
+    event("session.inbox.delivered", { inboxID: "known" });
+    if (enqueueUnknown) event("session.inbox.enqueued", { inboxID: "unknown", item: { type: "user", payload: { text: "unmarked" } } });
+    event("session.inbox.delivered", { inboxID: "unknown" });
+    event("session.step.started", { assistantMessageID: "answer" });
+    expect((event("session.step.ended", { assistantMessageID: "answer" })[0] as any).client_id).toBeUndefined();
+  });
+
+  it("ignores enqueue/delivery replays after consumption and keeps retry/failure turns tied to their execution", () => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "replay", ...data } }, options);
+    const input = { inboxID: "input", item: { type: "user", payload: { text: "prompt", metadata: { client: { id: "yuri" } } } } };
+    event("session.inbox.enqueued", input);
+    event("session.inbox.delivered", input);
+    event("session.step.started", { assistantMessageID: "failed" });
+    expect(event("session.step.failed", { error: { message: "retryable" } })[0]).toMatchObject({ client_id: "yuri" });
+    event("session.inbox.enqueued", input);
+    event("session.inbox.delivered", input);
+    expect(event("session.step.started", { assistantMessageID: "retry" })).toEqual([]);
+    expect(event("session.execution.interrupted", { reason: "user" })[0]).toMatchObject({ client_id: "yuri", finish_reason: "aborted" });
+    expect(event("session.execution.interrupted", { reason: "user" })).toEqual([]);
+    event("session.inbox.enqueued", input);
+    event("session.inbox.delivered", input);
+    event("session.step.started", { assistantMessageID: "unmarked" });
+    expect((event("session.step.ended", { assistantMessageID: "unmarked" })[0] as any).client_id).toBeUndefined();
+  });
+
+  it.each([true, false])("tracks delivered client provenance independently of message capture (%s)", (includeMessageContent) => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "shared", ...data } }, { ...options, includeMessageContent });
+    event("session.inbox.enqueued", { inboxID: "yuri", item: { type: "user", payload: { text: "first", metadata: { client: { id: "yuri" } } } } });
+    event("session.inbox.enqueued", { inboxID: "cli", item: { type: "user", payload: { text: "queued" } } });
+    event("session.inbox.delivered", { inboxID: "yuri" });
+    const user = event("session.step.started", { agent: "build", assistantMessageID: "first" });
+    if (includeMessageContent) expect(user).toMatchObject([{ client_id: "yuri", agent_key: "opencode/build" }]);
+    else expect(user).toEqual([]);
+    expect(event("session.step.ended", { assistantMessageID: "first" })[0]).toMatchObject({ client_id: "yuri" });
+    event("session.step.started", { agent: "build", assistantMessageID: "continuation" });
+    expect(event("session.step.ended", { assistantMessageID: "continuation" })[0]).toMatchObject({ client_id: "yuri" });
+    event("session.inbox.delivered", { inboxID: "cli" });
+    event("session.step.started", { agent: "plan", assistantMessageID: "cli-answer" });
+    const cli = event("session.step.ended", { assistantMessageID: "cli-answer" })[0];
+    expect((cli as any).client_id).toBeUndefined();
+  });
+
+  it("keeps mixed delivered clients separate and never attributes their shared turn to one UI", () => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "mixed", ...data } }, options);
+    for (const id of ["yuri", "other"]) {
+      event("session.inbox.enqueued", { inboxID: id, item: { type: "user", payload: { text: id, metadata: { client: { id } } } } });
+      event("session.inbox.delivered", { inboxID: id });
+    }
+    expect(event("session.step.started", { agent: "build", assistantMessageID: "answer" }).map(item => (item as any).client_id)).toEqual(["yuri", "other"]);
+    expect((event("session.step.ended", { assistantMessageID: "answer" })[0] as any).client_id).toBeUndefined();
+  });
+
+  it("preserves admission provenance on duplicates, ignores cancelled prompts and clears completed execution context", () => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "retry", ...data } }, options);
+    for (const id of ["yuri", "other"]) event("session.inbox.enqueued", { inboxID: "fixed", item: { type: "user", payload: { text: "same", metadata: { client: { id } } } } });
+    event("session.inbox.delivered", { inboxID: "fixed" });
+    event("session.step.started", { assistantMessageID: "answer" });
+    expect(event("session.step.ended", { assistantMessageID: "answer" })[0]).toMatchObject({ client_id: "yuri" });
+    expect(event("session.execution.succeeded", {})[0]).toMatchObject({ agent: "yuri" });
+    event("session.inbox.enqueued", { inboxID: "cancelled", item: { type: "user", payload: { text: "cancel", metadata: { client: { id: "yuri" } } } } });
+    event("session.inbox.cancelled", { inboxID: "cancelled" });
+    event("session.inbox.delivered", { inboxID: "cancelled" });
+    event("session.step.started", { assistantMessageID: "unmarked" });
+    expect((event("session.step.ended", { assistantMessageID: "unmarked" })[0] as any).client_id).toBeUndefined();
+  });
+
+  it.each([null, [], { id: "Yuri" }, { id: "x".repeat(65) }, { id: "bad\nheader" }].map(client => ({ client })))("treats malformed client declarations as unknown (%j)", ({ client }) => {
+    const state = createOpenCode2TrackerState();
+    const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "bad", ...data } }, options);
+    event("session.inbox.enqueued", { inboxID: "input", item: { type: "user", payload: { text: "hello", metadata: { client } } } });
+    event("session.inbox.delivered", { inboxID: "input" });
+    expect((event("session.step.started", { assistantMessageID: "answer" })[0] as any).client_id).toBeUndefined();
+  });
+
   it("binds only delivered prompts to their executing step across Agent switches", () => {
     const state = createOpenCode2TrackerState();
     const event = (type: string, data: Record<string, unknown>) => mapOpenCode2Event(state, { type, data: { sessionID: "same", ...data } }, options);

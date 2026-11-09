@@ -1333,8 +1333,8 @@ components:
     MemoryView:
       name: view
       in: query
-      description: 仅用于读取；scoped 为单空间，effective 合并通用及当前命名 Agent 的适用 global/project，缺失仓库身份时仅全局。projects 用于管理页跨项目浏览，仅查询指定 agent_key（默认通用）的项目记录，支持分页与类型/搜索过滤，不接受具体项目定位。写入须使用精确 scope。
-      schema: { type: string, enum: [scoped, effective, projects], default: scoped }
+      description: 仅用于读取；scoped 为单空间，effective 合并通用及当前命名 Agent 的适用 global/project，缺失仓库身份时仅全局。projects 用于管理页跨项目浏览，仅查询指定 agent_key（默认通用）的项目记录，支持分页与类型/搜索过滤，不接受具体项目定位。all 用于管理页合并全局与所有项目，按更新时间倒序，仍仅查询指定 agent_key（默认通用），不接受 scope 或具体项目定位。写入须使用精确 scope。
+      schema: { type: string, enum: [scoped, effective, projects, all], default: scoped }
     MemoryProject:
       name: project_id
       in: query
@@ -1408,6 +1408,13 @@ components:
       properties:
         id: { type: string }
         agent: { type: string }
+        client_ids:
+          type: array
+          items: { type: string }
+          description: 本会话用户消息及 turns 的客户端声明汇总；不是引擎或命名 Agent 身份
+        has_unknown_client:
+          type: boolean
+          description: 包含无来源记录或尚无可汇总记录；旧历史不猜测为 CLI
         provider: { type: string }
         model: { type: string }
         repo_url: { type: string }
@@ -1432,6 +1439,7 @@ components:
         session_id: { type: string }
         role: { type: string, enum: [user, assistant, system, tool] }
         agent_key: { type: string, nullable: true, description: 消息实际所属命名 Agent，未知时为空 }
+        client_id: { type: string, nullable: true, description: 本条消息的客户端声明（如 yuri），非认证身份 }
         content: { type: string }
         model: { type: string }
         provider: { type: string }
@@ -1443,6 +1451,7 @@ components:
         id: { type: string }
         session_id: { type: string }
         message_id: { type: string }
+        client_id: { type: string, nullable: true, description: 实际 delivered 输入的客户端来源；混合或未声明时为空 }
         model: { type: string }
         provider: { type: string }
         input_tokens: { type: integer }

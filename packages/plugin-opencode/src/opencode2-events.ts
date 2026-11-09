@@ -1,4 +1,4 @@
-import { isForkSessionTitle, isHiddenSessionTitle, shouldSkipTool } from "@agent-tracker/shared";
+import { isForkSessionTitle, isHiddenSessionTitle, parseClientId, shouldSkipTool } from "@agent-tracker/shared";
 import type { IngestEvent, IngestMessageEvent } from "@agent-tracker/shared";
 import { memoryAgentKey } from "./memory";
 
@@ -20,9 +20,13 @@ type TokenUsage = {
 export type OpenCode2TrackerState = {
   userMessages: Map<string, IngestMessageEvent>;
   deliveredUsers: Set<string>;
+  seenInputs: Set<string>;
+  inputClients: Map<string, { sessionID: string; clientID?: string }>;
+  executionClients: Map<string, string | undefined>;
+  sessionAgents: Map<string, string>;
   hidden: Set<string>;
   forkCutoffMs: Map<string, number>;
-  pending: Map<string, { model: string; provider: string; startTime: number; messageID?: string; agentKey?: string }>;
+  pending: Map<string, { model: string; provider: string; startTime: number; messageID?: string; agentKey?: string; clientID?: string }>;
   texts: Map<string, Map<number, string>>;
   tools: Map<string, { name: string; input?: Record<string, unknown> }>;
   completed: Set<string>;
@@ -31,6 +35,10 @@ export type OpenCode2TrackerState = {
 export const createOpenCode2TrackerState = (): OpenCode2TrackerState => ({
   userMessages: new Map(),
   deliveredUsers: new Set(),
+  seenInputs: new Set(),
+  inputClients: new Map(),
+  executionClients: new Map(),
+  sessionAgents: new Map(),
   hidden: new Set(),
   forkCutoffMs: new Map(),
   pending: new Map(),
@@ -110,6 +118,20 @@ const toolOutput = (content: unknown): string | undefined => {
   return text || undefined;
 };
 
+const endClientExecution = (state: OpenCode2TrackerState, sessionID: string): IngestMessageEvent[] => {
+  state.executionClients.delete(sessionID);
+  const messages: IngestMessageEvent[] = [];
+  for (const [id, input] of state.inputClients) {
+    if (input.sessionID !== sessionID || !state.deliveredUsers.has(id)) continue;
+    const message = state.userMessages.get(id);
+    if (message) messages.push(message);
+    state.inputClients.delete(id);
+    state.deliveredUsers.delete(id);
+    state.userMessages.delete(id);
+  }
+  return messages;
+};
+
 export const mapOpenCode2Event = (
   state: OpenCode2TrackerState,
   event: OpenCode2Event,
@@ -133,9 +155,14 @@ export const mapOpenCode2Event = (
 
   const createdAt = new Date(now).toISOString();
   const model = modelOf(data.model);
+  const parentID = asString(data.parentID);
+  if (event.type === "session.created" && parentID && state.sessionAgents.has(parentID)) {
+    state.sessionAgents.set(sessionID, state.sessionAgents.get(parentID)!);
+  }
+  const sessionAgent = state.sessionAgents.get(sessionID) ?? "opencode";
 
   if (event.type === "session.created") {
-    const metadata: Record<string, unknown> = {};
+    const metadata: Record<string, unknown> = { runtime: "opencode" };
     const agent = asString(data.agent);
     const parentID = asString(data.parentID);
     if (agent) metadata.opencode_agent = agent;
@@ -144,7 +171,7 @@ export const mapOpenCode2Event = (
     return [{
       type: "session.created",
       session_id: sessionID,
-      agent: "opencode",
+      agent: sessionAgent,
       title: asString(data.title),
       parent_session_id: parentID,
       model: model?.id,
@@ -155,11 +182,11 @@ export const mapOpenCode2Event = (
   }
 
   if (event.type === "session.renamed") {
-    return [{ type: "session.updated", session_id: sessionID, agent: "opencode", title: asString(data.title) }];
+    return [{ type: "session.updated", session_id: sessionID, agent: sessionAgent, title: asString(data.title) }];
   }
 
   if (event.type === "session.model.selected" && model?.id) {
-    return [{ type: "session.updated", session_id: sessionID, agent: "opencode", model: model.id, provider: model.providerID }];
+    return [{ type: "session.updated", session_id: sessionID, agent: sessionAgent, model: model.id, provider: model.providerID }];
   }
 
   if (event.type === "session.usage.updated") {
@@ -167,7 +194,7 @@ export const mapOpenCode2Event = (
     return [{
       type: "session.updated",
       session_id: sessionID,
-      agent: "opencode",
+      agent: sessionAgent,
       session_cost_usd: asNumber(data.cost),
       session_input_tokens: tokens?.input,
       session_output_tokens: tokens?.output,
@@ -177,15 +204,22 @@ export const mapOpenCode2Event = (
     }];
   }
 
-  if (event.type === "session.inbox.enqueued" && options.includeMessageContent) {
+  if (event.type === "session.inbox.enqueued") {
     const item = asRecord(data.item);
     const payload = asRecord(item?.payload);
+    if (item?.type !== "user") return [];
+    const id = asString(data.inboxID) ?? asString(data.id) ?? `user-${now}`;
+    if (state.seenInputs.has(id)) return [];
+    state.seenInputs.add(id);
+    const clientID = parseClientId(asRecord(asRecord(payload?.metadata)?.client)?.id);
+    state.inputClients.set(id, { sessionID, clientID });
     const text = asString(payload?.text)?.trim();
-    if (item?.type !== "user" || !text) return [];
+    if (!options.includeMessageContent || !text) return [];
     const message: IngestMessageEvent = {
+      ...(clientID ? { client_id: clientID } : {}),
       type: "message",
       session_id: sessionID,
-      message_id: asString(data.inboxID) ?? asString(data.id) ?? `user-${now}`,
+      message_id: id,
       role: "user",
       content: text,
       created_at: createdAt,
@@ -197,14 +231,26 @@ export const mapOpenCode2Event = (
 
   if (event.type === "session.inbox.delivered") {
     const id = asString(data.inboxID);
-    if (id && state.userMessages.has(id)) state.deliveredUsers.add(id);
+    if (id && !state.seenInputs.has(id)) {
+      state.seenInputs.add(id);
+      state.inputClients.set(id, { sessionID });
+    }
+    if (id && state.inputClients.get(id)?.sessionID === sessionID) {
+      state.deliveredUsers.add(id);
+      const clientID = state.inputClients.get(id)?.clientID;
+      if (clientID && clientID !== state.sessionAgents.get(sessionID)) {
+        state.sessionAgents.set(sessionID, clientID);
+        return [{ type: "session.updated", session_id: sessionID, agent: clientID }];
+      }
+    }
     return [];
   }
 
   if (event.type === "session.inbox.cancelled") {
     const id = asString(data.inboxID);
+    if (id && state.inputClients.get(id)?.sessionID !== sessionID) return [];
     const message = id ? state.userMessages.get(id) : undefined;
-    if (id) { state.userMessages.delete(id); state.deliveredUsers.delete(id); }
+    if (id) { state.userMessages.delete(id); state.deliveredUsers.delete(id); state.inputClients.delete(id); }
     return message ? [message] : [];
   }
 
@@ -219,6 +265,11 @@ export const mapOpenCode2Event = (
   }
 
   if (event.type === "session.step.started") {
+    const delivered = [...state.inputClients].filter(([id, input]) => input.sessionID === sessionID && state.deliveredUsers.has(id));
+    if (delivered.length) {
+      const clients = new Set(delivered.map(([, input]) => input.clientID));
+      state.executionClients.set(sessionID, clients.size === 1 ? clients.values().next().value : undefined);
+    }
     const previous = state.pending.get(sessionID);
     state.pending.set(sessionID, {
       model: model?.id ?? previous?.model ?? "",
@@ -226,13 +277,15 @@ export const mapOpenCode2Event = (
       startTime: event.created ?? now,
       messageID: asString(data.assistantMessageID),
       agentKey: memoryAgentKey(asString(data.agent)),
+      clientID: state.executionClients.get(sessionID),
     });
     const messages: IngestEvent[] = [];
-    for (const [id, message] of state.userMessages) {
-      if (message.session_id !== sessionID || !state.deliveredUsers.has(id)) continue;
-      messages.push({ ...message, agent_key: memoryAgentKey(asString(data.agent)) });
+    for (const [id] of delivered) {
+      const message = state.userMessages.get(id);
+      if (message) messages.push({ ...message, agent_key: memoryAgentKey(asString(data.agent)) });
       state.userMessages.delete(id);
       state.deliveredUsers.delete(id);
+      state.inputClients.delete(id);
     }
     return messages;
   }
@@ -255,7 +308,7 @@ export const mapOpenCode2Event = (
     return [{
       type: "tool.result",
       session_id: sessionID,
-      agent: "opencode",
+      agent: sessionAgent,
       tool_name: name,
       call_id: callID,
       args: cached?.input,
@@ -278,6 +331,7 @@ export const mapOpenCode2Event = (
     state.pending.delete(sessionID);
     const events: IngestEvent[] = [{
       type: "turn.completed",
+      ...(pending?.clientID ? { client_id: pending.clientID } : {}),
       session_id: sessionID,
       turn_id: messageID,
       message_id: messageID,
@@ -301,6 +355,7 @@ export const mapOpenCode2Event = (
         session_id: sessionID,
         message_id: messageID,
         role: "assistant",
+        ...(pending?.clientID ? { client_id: pending.clientID } : {}),
         content,
         agent_key: pending?.agentKey,
         model: recordedName(pending?.model) ?? model?.id,
@@ -313,15 +368,17 @@ export const mapOpenCode2Event = (
   }
 
   if (event.type === "session.step.failed" || event.type === "session.execution.failed" || event.type === "session.execution.interrupted") {
+    const messages = event.type !== "session.step.failed" ? endClientExecution(state, sessionID) : [];
     const pending = state.pending.get(sessionID);
-    if (!pending) return [];
+    if (!pending) return messages;
     const error = asRecord(data.error);
     const reason = asString(data.reason);
     const errorName = asString(error?.message) ?? reason ?? event.type;
     const aborted = reason === "user" || /abort|interrupt/i.test(errorName);
     state.pending.delete(sessionID);
-    return [{
+    return [...messages, {
       type: "turn.error",
+      ...(pending.clientID ? { client_id: pending.clientID } : {}),
       session_id: sessionID,
       turn_id: pending.messageID ?? `turn-${sessionID}-${pending.startTime}`,
       model: recordedName(pending.model) ?? "unknown",
@@ -337,7 +394,8 @@ export const mapOpenCode2Event = (
   }
 
   if (event.type === "session.execution.succeeded") {
-    return [{ type: "session.idle", session_id: sessionID, agent: "opencode", ended_at: createdAt }];
+    const messages = endClientExecution(state, sessionID);
+    return [...messages, { type: "session.idle", session_id: sessionID, agent: sessionAgent, ended_at: createdAt }];
   }
 
   return [];

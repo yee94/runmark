@@ -4,6 +4,10 @@ import { type SkillHost } from "./skill";
 type V2Context = Omit<MemoryHost, "session"> & SkillHost & {
     /** opencode.jsonc 对象形式插件条目的 options；字符串条目为 undefined。 */
     options?: unknown;
+    storage?: {
+        get: (key: string) => Promise<unknown>;
+        set: (key: string, value: string) => Promise<void>;
+    };
     session?: Omit<NonNullable<MemoryHost["session"]>, "get"> & {
         get?: (input: {
             sessionID: string;

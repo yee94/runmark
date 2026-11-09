@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>Runmark</title>
   <link rel="stylesheet" href="https://unpkg.com/@eficy/shadcn-ui@1.1.3/dist/index.css" />
-  <link rel="stylesheet" href="./style.css?v=memory-evidence-20261029" />
+  <link rel="stylesheet" href="./style.css?v=client-logo-20261109" />
 </head>
 <body>
   <div class="ambient">
@@ -1114,6 +1114,7 @@
     const AGENT_ICON_NAMES = ['opencode', 'cursor', 'codebuddy', 'workbuddy', 'claude', 'codex', 'grok']
     const AGENT_LABELS = {
       opencode: 'OpenCode',
+      yuri: 'Yuri',
       cursor: 'Cursor',
       codebuddy: 'CodeBuddy',
       workbuddy: 'WorkBuddy',
@@ -1126,6 +1127,7 @@
     function resolveAgentIconUrl(agentName) {
       const key = normalizeModelKey(agentName)
       if (!key || key === '—') return null
+      if (key === 'yuri') return './client-icons/yuri.svg'
       if (AGENT_ICON_NAMES.includes(key)) return '/agent-icons/' + key + '.svg'
       // 兼容别名：tclaude → claude
       if (key === 'tclaude' || key === 'claudecode') return '/agent-icons/claude.svg'
@@ -1215,7 +1217,8 @@
       return <UpdateDialog />
     })
 
-    const traceMod = await loadModule('./modules/trace.eficy.js?v=session-trace-20260820-4')
+    const { sessionAgents } = await loadModule('./modules/client-source.js?v=client-agent-20261109-2')
+    const traceMod = await loadModule('./modules/trace.eficy.js?v=client-source-20261109')
     const {
       isForkSession, forkParentSessionId, mergeForkTraceItems,
       TRACE_CATEGORIES, filterTraceItems,
@@ -1893,11 +1896,11 @@
     let SummaryPanels = null
     async function loadSummaryPanels() {
       if (SummaryPanels) return
-      const mod = await loadModule('./modules/summary.eficy.js')
+      const mod = await loadModule('./modules/summary.eficy.js?v=client-agent-20261109-2')
       SummaryPanels = mod.createSummaryPanels({
         summary, summaryEfficiency, dailyChart, dailyModelLegend, hoveredDailyRow, dailyChartMetric, topAgents, topAgentMax, topModels, topModelMax, topCostSessions,
         statsRange, modelSort, activeTab,
-        formatPct, pctPart, formatTokens, formatCost, formatDateShort, resolveModelIconUrl, resolveAgentIconUrl, formatAgentLabel, colorForModel,
+        formatPct, pctPart, formatTokens, formatCost, formatDateShort, resolveModelIconUrl, resolveAgentIconUrl, formatAgentLabel, sessionAgents, colorForModel,
         TOKEN_SEGMENTS, RANGE_OPTIONS,
         setStatsRange, setModelSort, openSession, navigate,
         SectionTitle, EmptyState,
@@ -1982,8 +1985,8 @@
     let SessionsListPage = null
     async function loadSessionsListPage() {
       if (SessionsListPage) return
-      const mod = await loadModule('./modules/sessions-list.eficy.js?v=sessions-ai-search-20260718-1')
-      const _SessionRow = mod.createSessionRow({ formatTokens, formatCost, formatDateTime, formatRelativeTime, formatSessionDuration, routeSessionId, openSession, peek, ChevronIcon, resolveAgentIconUrl, formatAgentLabel, resolveModelIconUrl })
+      const mod = await loadModule('./modules/sessions-list.eficy.js?v=client-agent-20261109-2')
+      const _SessionRow = mod.createSessionRow({ formatTokens, formatCost, formatDateTime, formatRelativeTime, formatSessionDuration, sessionAgents, routeSessionId, openSession, peek, ChevronIcon, resolveAgentIconUrl, formatAgentLabel, resolveModelIconUrl })
       SessionsListPage = mod.createSessionsListPage({
         sessions,
         sessionLimit,
@@ -2117,7 +2120,7 @@
     let MemoriesPage = null
     async function loadMemoriesPage() {
       if (MemoriesPage) return
-      const mod = await loadModule('./modules/memories.eficy.js?v=memory-evidence-20261029')
+      const mod = await loadModule('./modules/memories.eficy.js?v=memory-dialog-search-20261105')
       MemoriesPage = mod.createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgentId, formatDateTime })
       loadedMemories.value = true
     }
@@ -2164,7 +2167,7 @@
     let SessionDetailView = null
     async function ensureSessionDetailView() {
       if (SessionDetailView) return
-      const mod = await loadModule("./modules/session-detail.eficy.js?v=session-trace-20260820-6")
+      const mod = await loadModule("./modules/session-detail.eficy.js?v=client-agent-20261109-2")
       SessionDetailView = mod.createSessionDetailView({
         apiFetch,
         sessions, sessionDetails, routeSessionId, routeTraceChild, selectedTraceKey, traceAutoFocusKey, expandedSubagents,
@@ -2175,6 +2178,7 @@
         navigate, openSession, toggleSubagent,
         selectTraceItem, toggleTraceCategory,
         formatDateTime, formatSessionDuration, formatDuration, formatTokens, formatCost,
+        sessionAgents, formatAgentLabel, resolveAgentIconUrl,
         forkParentSessionId, mergeForkTraceItems,
         TRACE_CATEGORIES, TRACE_FILTER_LABELS, TRACE_FILTER_DOTS,
         filterTraceItems, ChevronIcon,

@@ -114,6 +114,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_repo_url ON sessions(repo_url);
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
+  client_id TEXT,
   agent_key TEXT,
   session_id TEXT NOT NULL,
   role TEXT NOT NULL,
@@ -145,6 +146,7 @@ END;
 
 CREATE TABLE IF NOT EXISTS turns (
   id TEXT PRIMARY KEY,
+  client_id TEXT,
   session_id TEXT NOT NULL,
   message_id TEXT,
   model TEXT NOT NULL,

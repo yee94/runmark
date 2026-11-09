@@ -296,6 +296,7 @@ export function createTraceHelpers(ctx) {
   function cursorDisplayTurn(hookTurn, billingTurn, msg) {
     const src = hookTurn || billingTurn || {}
     return {
+      client_id: src.client_id,
       model: src.model || msg.model,
       provider: src.provider || msg.provider,
       input_tokens: src.input_tokens ?? 0,
@@ -316,6 +317,7 @@ export function createTraceHelpers(ctx) {
     items.push({
       key: key || ('turn-' + turn.id),
       kind: 'turn',
+      client_id: turn.client_id,
       role: aborted ? 'turn-abort' : (turn.error ? 'turn-fail' : 'turn'),
       abort: aborted,
       summary: summarizeTurn(turn),
@@ -348,6 +350,7 @@ export function createTraceHelpers(ctx) {
       items.push({
         key: 'msg-' + msg.id,
         kind: 'message',
+        client_id: msg.client_id,
         role: msg.role || 'unknown',
         summary: text.length > 120 ? text.slice(0, 120) + '…' : text,
         fullText: text,

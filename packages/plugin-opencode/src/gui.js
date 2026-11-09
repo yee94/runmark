@@ -6,6 +6,9 @@ import { Page, Pages } from "./gui-pages";
 export default Plugin.define({
     i18n: dashboardMessages,
     setup(ctx) {
+        const { endpoint, apiKey } = ctx.options;
+        if (typeof endpoint !== "string" || !endpoint.trim() || typeof apiKey !== "string" || !apiKey.trim())
+            return;
         const pages = ctx.use(Pages);
         ctx.add(Page, { id: "dashboard", title: "Runmark", icon: "window-analytics", render: () => createComponent(DashboardFrame, {}) });
         const open = () => {

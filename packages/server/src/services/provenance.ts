@@ -8,7 +8,7 @@ export type SourcedEvent = IngestEvent & {
 
 export type AppliedIngestResult = IngestBatchResponse & { appliedEvents: IngestEvent[] };
 
-const SESSION_METADATA_FIELDS = ["title", "provider", "project_name", "repo_url", "branch", "user_email", "hostname", "worktree", "directory", "parent_session_id"] as const;
+const SESSION_METADATA_FIELDS = ["agent", "title", "provider", "project_name", "repo_url", "branch", "user_email", "hostname", "worktree", "directory", "parent_session_id"] as const;
 
 /** 只保存已有元数据作为未知来源的基线；混合累计不能成为原生快照。 */
 function rememberMetadataBaseline(db: Database, sessionId: string): void {
@@ -193,7 +193,7 @@ export function ingestWithProvenance(
           db.query("INSERT OR IGNORE INTO otlp_projections VALUES (?, ?, ?, ?)").run(entity.key, event.session_id, entity.table, entity.id);
         }
         if (source === "native") {
-          const confirmed = event.type.startsWith("session.") && "agent" in event && event.agent === "opencode";
+          const confirmed = event.type.startsWith("session.") && "agent" in event && (event.agent === "opencode" || ("metadata" in event && event.metadata?.runtime === "opencode"));
           const validTurn = event.type === "turn.completed" && event.total_tokens > 0 && !event.error &&
             !!db.query("SELECT 1 FROM turns WHERE id = ? AND session_id = ? AND total_tokens > 0 AND error IS NULL").get(event.turn_id, event.session_id);
           if (confirmed || validTurn) db.query(`INSERT INTO native_sessions (session_id, confirmed, active) VALUES (?, ?, ?)

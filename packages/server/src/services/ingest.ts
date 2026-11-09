@@ -7,7 +7,7 @@ import type {
   IngestMessageEvent,
   IngestToolResultEvent,
 } from "@agent-tracker/shared";
-import { isHiddenSessionTitle } from "@agent-tracker/shared";
+import { isHiddenSessionTitle, parseClientId } from "@agent-tracker/shared";
 import { costService } from "./cost";
 import { enrichForkSessionMetadata, parseSessionMetadataJson } from "./fork";
 import { ingestWithProvenance, type SourcedEvent, type AppliedIngestResult } from "./provenance";
@@ -93,14 +93,14 @@ class IngestService {
 
     const insertTurnStmt = db.query(`
       INSERT OR IGNORE INTO turns
-      (id, session_id, message_id, model, provider, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, duration_ms, cost_usd, finish_reason, error, created_at)
-      VALUES ($id, $session_id, $message_id, $model, $provider, $input_tokens, $output_tokens, $cache_read_tokens, $cache_write_tokens, $reasoning_tokens, $total_tokens, $duration_ms, $cost_usd, $finish_reason, $error, $created_at)
+      (id, session_id, message_id, model, provider, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, reasoning_tokens, total_tokens, duration_ms, cost_usd, finish_reason, error, created_at, client_id)
+      VALUES ($id, $session_id, $message_id, $model, $provider, $input_tokens, $output_tokens, $cache_read_tokens, $cache_write_tokens, $reasoning_tokens, $total_tokens, $duration_ms, $cost_usd, $finish_reason, $error, $created_at, $client_id)
     `);
 
     const insertMessageStmt = db.query(`
       INSERT OR IGNORE INTO messages
-      (id, session_id, role, content, model, provider, parent_message_id, tool_calls, tool_call_id, created_at, agent_key)
-      VALUES ($id, $session_id, $role, $content, $model, $provider, $parent_message_id, $tool_calls, $tool_call_id, $created_at, $agent_key)
+      (id, session_id, role, content, model, provider, parent_message_id, tool_calls, tool_call_id, created_at, agent_key, client_id)
+      VALUES ($id, $session_id, $role, $content, $model, $provider, $parent_message_id, $tool_calls, $tool_call_id, $created_at, $agent_key, $client_id)
     `);
 
     const insertToolStmt = db.query(`
@@ -253,6 +253,7 @@ class IngestService {
 
             insertTurnStmt.run({
               $id: e.turn_id,
+              $client_id: parseClientId(e.client_id) ?? null,
               $session_id: e.session_id,
               $message_id: e.message_id ?? null,
               $model: e.model,
@@ -411,14 +412,16 @@ class IngestService {
               const dup = db
                 .query(
                   `SELECT 1 AS ok FROM messages
-                    WHERE session_id = $session_id AND role = 'user' AND content = $content AND COALESCE(agent_key, '') = $agent_key
+                     WHERE session_id = $session_id AND role = 'user' AND content = $content AND COALESCE(agent_key, '') = $agent_key
+                     AND COALESCE(client_id, '') = $client_id
                     AND NOT EXISTS (SELECT 1 FROM otlp_projections p WHERE p.kind = 'messages' AND p.entity_id = messages.id AND p.session_id = messages.session_id)
                    LIMIT 1`,
                 )
-                .get({ $session_id: e.session_id, $content: contentStr, $agent_key: e.agent_key ?? "" });
+                .get({ $session_id: e.session_id, $content: contentStr, $agent_key: e.agent_key ?? "", $client_id: parseClientId(e.client_id) ?? "" });
               if (dup) break;
             }
             insertMessageStmt.run({
+              $client_id: parseClientId(e.client_id) ?? null,
               $agent_key: e.agent_key ?? null,
               $id: e.message_id,
               $session_id: e.session_id,
@@ -434,6 +437,7 @@ class IngestService {
             // Cursor assistant 消息同步占位 turn，供 Usage 对账 UPDATE cost（与 Hook 双路径一致）
             if (e.role === "assistant" && e.provider === "cursor") {
               insertTurnStmt.run({
+                $client_id: parseClientId(e.client_id) ?? null,
                 $id: e.message_id,
                 $session_id: e.session_id,
                 $message_id: e.message_id,

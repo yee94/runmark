@@ -269,8 +269,7 @@ export function createSummaryPanels(ctx) {
         </div>
         <div className="session-list">
           {rows.map((s, i) => {
-            const icon = resolveAgentIconUrl?.(s.agent) || null
-            const label = formatAgentLabel?.(s.agent) || s.agent || '—'
+            const agents = ctx.sessionAgents(s, formatAgentLabel, resolveAgentIconUrl)
             return (
             <div
               key={s.id || i}
@@ -283,14 +282,12 @@ export function createSummaryPanels(ctx) {
                 </span>
               </div>
               <div className="session-agent-col">
-                {icon ? (
-                  <span className="agent-label">
-                    <img className="agent-label-icon" src={icon} alt="" />
-                    {label}
-                  </span>
-                ) : (
-                  <span className="badge badge-agent">{label}</span>
-                )}
+                {agents.map((agent, i) => (
+                  <span key={agent.id || i}>{i ? ' / ' : ''}<span className={agent.icon ? 'agent-label' : 'badge badge-agent'}>
+                    {agent.icon ? <img className="agent-label-icon" src={agent.icon} alt="" /> : null}
+                    {agent.label}
+                  </span></span>
+                ))}
               </div>
               <div className="session-number-col digits">{formatTokens(s.total_tokens)}</div>
               <div className="session-number-col session-cost-col digits">{formatCost(s.total_cost_cny)}</div>
