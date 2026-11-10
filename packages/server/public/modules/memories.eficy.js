@@ -44,6 +44,7 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
   const appliedQuery = signal('')
   const type = signal('')
   const status = signal('active')
+  const sort = signal('updated')
   const cursor = signal(null)
   const detail = signal(null)
   const detailOpen = signal(false)
@@ -122,7 +123,7 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
     detail.value = item
     detailError.value = ''
     detailLoading.value = false
-    const params = new URLSearchParams({view: 'all', agent_key: item.agent_key || ''})
+    const params = new URLSearchParams({view: 'all', agent_key: item.agent_key || '', usage: 'inspect'})
     if (item?.status === 'forgotten') return
     detailLoading.value = true
     try {
@@ -147,6 +148,7 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
     params.set('status', peek(status))
     params.set('query', peek(appliedQuery))
     if (peek(type)) params.set('type', peek(type))
+    if (peek(sort) !== 'updated') params.set('sort', peek(sort))
     if (more && peek(cursor)) params.set('cursor', peek(cursor))
     loading.value = true
     try {
@@ -223,6 +225,7 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
   const AgentPicker = createMemoryPicker('Agent 范围', value => { agentKey.value = value; selectSpace(); void loadMemories() })
   const TypePicker = createMemoryPicker('记忆类型', value => { type.value = value; void loadMemories() })
   const StatusPicker = createMemoryPicker('记忆状态', value => { status.value = value; void loadMemories() })
+  const SortPicker = createMemoryPicker('排序方式', value => { sort.value = value; void loadMemories() })
 
   effect(() => { if (activeTab.value === 'memories') void load(); else { cancelSearch(); setDetailOpen(false) } })
 
@@ -260,7 +263,7 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
       </div>
       <div className="memory-feed-heading">
         <h2>{status.value === 'forgotten' ? '已遗忘的记忆' : hasFilters ? '筛选结果' : '最近记住的事'}<span>{items.value.length ? '已显示 ' + items.value.length + ' 条' : ''}</span></h2>
-        {hasFilters ? <Button size="sm" variant="ghost" onClick={resetFilters}><X size={13} />清除筛选</Button> : <span>按最近更新排序</span>}
+        {hasFilters ? <Button size="sm" variant="ghost" onClick={resetFilters}><X size={13} />清除筛选</Button> : null}<SortPicker value={sort.value} options={[{value: 'updated', label: '最近更新'}, {value: 'recall_asc', label: '召回次数从少到多'}, {value: 'recall_desc', label: '召回次数从多到少'}]} />
       </div>
       {mode.value === 'index' ? <section className="memory-index" aria-label="记忆短索引"><div><h2>记忆短索引</h2><Button size="sm" variant="ghost" aria-label="关闭短索引" onClick={() => { ++detailVersion; detailLoading.value = false; mode.value = 'detail'; detail.value = null }}><X size={15} /></Button></div>{detailLoading.value ? <p className="memory-muted">读取中…</p> : detailError.value ? <p role="alert" className="memory-error">{detailError.value}</p> : <pre className="memory-code">{indexText.value}</pre>}</section> : null}
       <div className="memory-feed" aria-label="记忆列表" aria-busy={loading.value}>
@@ -274,7 +277,7 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
               <div className="memory-card-top"><span className="memory-type"><i />{TYPES[item.type]}</span><span className="memory-card-scope" title={item.scope === 'global' ? '适用于所有项目' : spaceLabel(project)}>{item.scope === 'global' ? <Globe2 size={12} /> : <Folder size={12} />}{item.scope === 'global' ? '全局记忆' : shortProjectLabel(project)}</span></div>
               <h3>{item.status === 'forgotten' ? item.name : item.description}</h3>
               <div className="memory-card-id" title={item.name}>{item.name}</div>
-              <div className="memory-card-footer"><time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time><span>{item.agent_key || ''}</span><span className="memory-read-label">查看详情<ArrowUpRight size={13} /></span></div>
+              <div className="memory-card-footer"><time dateTime={item.updated_at}>{formatDateTime(item.updated_at)}</time><span title={item.last_recalled_at ? '最近召回：' + formatDateTime(item.last_recalled_at) : '尚无召回记录'}>召回 {item.recall_count || 0} 次</span><span>{item.agent_key || ''}</span><span className="memory-read-label">查看详情<ArrowUpRight size={13} /></span></div>
             </button>
           </article>
         })}
@@ -285,14 +288,14 @@ export function createMemoriesPage({ apiFetch, activeTab, navigate, selectedAgen
           {current ? <div className="memory-card-top"><span className="memory-type"><i />{TYPES[current.type]}</span><span className="memory-card-scope" title={currentSpace ? spaceLabel(currentSpace) : ''}>{current.scope === 'global' ? <Globe2 size={13} /> : <Folder size={13} />}{current.scope === 'global' ? '全局记忆' : shortProjectLabel(currentSpace || {label: current.project_id})}</span></div> : null}
           <DialogTitle className="memory-dialog-title">{current ? current.status === 'forgotten' ? current.name : current.description : '记忆详情'}</DialogTitle>
           <DialogDescription className="memory-dialog-id">{current?.name}</DialogDescription>
-          {current ? <div className="memory-dialog-meta"><time dateTime={current.updated_at}>{formatDateTime(current.updated_at)}</time><span>r{current.revision}</span>{current.agent_key ? <span>{current.agent_key}</span> : null}</div> : null}
+          {current ? <div className="memory-dialog-meta"><time dateTime={current.updated_at}>{formatDateTime(current.updated_at)}</time><span>r{current.revision}</span><span>召回 {current.recall_count || 0} 次{current.last_recalled_at ? ' · 最近 ' + formatDateTime(current.last_recalled_at) : ''}</span>{current.agent_key ? <span>{current.agent_key}</span> : null}</div> : null}
         </DialogHeader>
         <div className="memory-dialog-content" aria-live="polite" aria-busy={detailLoading.value}>
           {detailLoading.value ? <p className="memory-muted" role="status">正在读取正文…</p> : detailError.value ? <div className="memory-error" role="alert">{detailError.value}<Button size="sm" variant="ghost" onClick={() => readMemory(current)}>重试</Button></div> : current?.status === 'forgotten' ? <p className="memory-muted">正文已移除。如需恢复，请在新对话中明确要求重新保存完整事实。</p> : current ? <><div className="memory-body">{current.body}</div><section className="memory-dialog-sources"><h3>来源与修订<span>{current.sources?.length || 0} 条记录</span></h3><div className="memory-sources">{(current.sources || []).map(source => <div key={source.revision}><span>r{source.revision} · {formatDateTime(source.created_at)}</span>{source.available ? <a href={'#/sessions/' + encodeURIComponent(source.session_id)}>查看来源会话<ArrowUpRight size={12} /></a> : <span className="memory-muted">来源已不可用</span>}{source.assessment ? <details className="memory-assessment"><summary>判断依据</summary><blockquote>{source.assessment.quote}</blockquote><p>留存：{source.assessment.retention_reason}</p><p>范围：{source.assessment.scope_reason}</p></details> : null}</div>)}</div></section></> : null}
         </div>
         <div className="memory-dialog-footer"><DialogClose asChild><Button size="sm" variant="outline">关闭</Button></DialogClose></div>
       </DialogContent></Dialog>
-      <details className="memory-help"><summary>范围与使用方式</summary><p>记忆跨机器共享。全局适用于所有项目；项目随仓库共享。选择命名 Agent 后，只查看它的专属记忆。内容类型与适用范围相互独立。</p><p>自动提取处理开启后的新增对话。OpenCode V2 配置 <code>memoryEnabled=true</code> 后，新会话一次加载适用范围的短索引，详情按需读取。当前明确要求和当前事实始终优先。</p></details>
+      <details className="memory-help"><summary>范围与使用方式</summary><p>记忆跨机器共享。全局适用于所有项目；项目随仓库共享。选择命名 Agent 后，只查看它的专属记忆。内容类型与适用范围相互独立。</p><p>召回次数从该功能启用后开始统计，包括接口读取正文和自动召回返回的正文；短索引、列表、管理页面查看及后台整理不计入。次数不能直接代表记忆的重要性。</p><p>自动提取处理开启后的新增对话。OpenCode V2 配置 <code>memoryEnabled=true</code> 后，新会话一次加载适用范围的短索引，详情按需读取。当前明确要求和当前事实始终优先。</p></details>
     </section>
   })
 }

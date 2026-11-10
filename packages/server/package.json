@@ -1,6 +1,6 @@
 {
   "name": "@agent-tracker/server",
-  "version": "0.2.48",
+  "version": "0.2.51",
   "private": true,
   "type": "module",
   "scripts": {

@@ -50,15 +50,21 @@ export function createMemoriesRoute(db: Database, config?: ServerConfig) {
       exclude_memory_ids: body.exclude_ids, signal: c.req.raw.signal,
     });
     const output = job.status === "success" ? JSON.parse(job.output_json) : { items: [] };
+    if (!c.req.raw.signal.aborted) service.recordRecalls(output.items);
     return c.json(output);
   });
   app.get("/v1/memories", c => c.json(service.list(context(c.req.query()), {
     query: c.req.query("query"), cursor: c.req.query("cursor"),
     type: c.req.query("type") as import("../services/memory").MemoryWrite["type"],
+    sort: c.req.query("sort") as "updated" | "recall_asc" | "recall_desc" | undefined,
     status: c.req.query("status") as "active" | "forgotten" | undefined,
     limit: c.req.query("limit") === undefined ? undefined : Number(c.req.query("limit")),
   })));
-  app.get("/v1/memories/:id", c => c.json(service.read(context(c.req.query()), c.req.param("id"))));
+  app.get("/v1/memories/:id", c => {
+    const detail = service.read(context(c.req.query()), c.req.param("id"));
+    if (c.req.query("usage") !== "inspect") service.recordRecalls([detail]);
+    return c.json(detail);
+  });
   app.post("/v1/memories", async c => {
     const body = await input(c);
     const result = service.create(context(c.req.query(), body), body);

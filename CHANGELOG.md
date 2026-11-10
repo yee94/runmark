@@ -2,6 +2,22 @@
 
 ## Unreleased
 
+## 0.2.51 (Server) - 2026-11-10
+
+- Add a Token activity matrix covering the past 12 months, with daily/weekly views, date-range tooltips and K/M/B abbreviations; retain the existing daily trend.
+- Use a lightweight annual-activity endpoint with a 60-second server cache and reuse loaded data when switching views. Add calendar-boundary, weekly aggregation, formatting and cache regression tests.
+
+## 0.2.50 (Server) - 2026-11-09
+
+- Track successful memory body reads and automatic recall results, counting related facts separately. Exclude indexes, lists, inspection and background maintenance.
+- Display recall counts and timestamps in memory lists/details, with count-based sorting and pagination. Preserve counts across revisions and forgetting; historical usage is not backfilled and returned bodies do not imply model use.
+
+## 0.2.49 (Server) - 2026-11-09
+
+- Add four idempotent session/time indexes and optimize last-activity lookups and bounded statistics without changing historical records, costs or usage.
+- Load Dashboard modules on demand and let direct session links render without waiting for global statistics or lists; preserve background refresh and navigation behavior.
+- Add query-plan, migration and page-loading regression tests, document automatic migrations, and update the bundled Runmark API contract for the new statistics and recall options.
+
 ## 0.2.48 (Server) - 2026-11-09
 
 - Display the stored `agent` consistently across the Dashboard, with Yuri branding and no separate client-source label in session lists, details or trace rows.

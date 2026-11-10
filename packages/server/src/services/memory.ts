@@ -22,13 +22,16 @@ export interface MemoryIndexEntry { id: string; description: string; related_ids
 interface MemoryRow {
   id: string; project_id: string; scope: MemoryScope; agent_key: string; context_json: string; name: string; description: string; type: string; body: string;
   origin_session_id: string; revision: number; status: string; created_at: string; updated_at: string; forgotten_at: string | null; forgotten_sequence: number | null;
+  recall_count?: number; last_recalled_at?: string | null;
 }
 export class MemoryError extends Error {
   constructor(public status: 400 | 404 | 409 | 410 | 422, message: string) { super(message); }
 }
 const fail = (status: MemoryError["status"], message: string): never => { throw new MemoryError(status, message); };
 const hash = (value: string) => createHash("sha256").update(value).digest("hex");
-const metadata = ({ body, context_json, ...row }: MemoryRow) => row;
+const metadata = ({ body, context_json, ...row }: MemoryRow) => ({ ...row, recall_count: row.recall_count ?? 0, last_recalled_at: row.last_recalled_at ?? null });
+const recallColumns = `COALESCE((SELECT recall_count FROM memory_recall_stats WHERE memory_id=memories.id),0) AS recall_count,
+  (SELECT last_recalled_at FROM memory_recall_stats WHERE memory_id=memories.id) AS last_recalled_at`;
 export type MemoryDetail = ReturnType<typeof metadata> & { body: string; markdown: string; sources: Array<Record<string, unknown>>; related_memories?: MemoryDetail[] };
 const priority = (row: { scope: MemoryScope; agent_key: string }) => ({ global: 0, project: 2 }[row.scope] + (row.agent_key ? 1 : 0));
 const prioritySQL = "(CASE scope WHEN 'project' THEN 2 ELSE 0 END + CASE WHEN agent_key='' THEN 0 ELSE 1 END)";
@@ -200,32 +203,40 @@ export class MemoryService {
     return { items: [...entries.values()] };
   }
 
-  list(context: MemoryContext, options: { query?: string; cursor?: string; limit?: number; status?: "active" | "forgotten"; type?: MemoryWrite["type"] } = {}) {
+  list(context: MemoryContext, options: { query?: string; cursor?: string; limit?: number; status?: "active" | "forgotten"; type?: MemoryWrite["type"]; sort?: "updated" | "recall_asc" | "recall_desc" } = {}) {
     const namespaces = this.namespaces(context);
     const project = namespaces[0]!;
     const selection = namespaces.map(n => n.id).sort().join(",");
     const status = options.status ?? "active";
     if (options.type !== undefined && !["user", "feedback", "project", "reference"].includes(options.type)) return fail(400, "Invalid memory type");
     if (status !== "active" && status !== "forgotten") return fail(400, "status must be active or forgotten");
+    const sort = options.sort ?? "updated";
+    if (!["updated", "recall_asc", "recall_desc"].includes(sort)) return fail(400, "Invalid memory sort");
     const limit = options.limit ?? 50;
     if (!Number.isInteger(limit) || limit < 1 || limit > 200) return fail(400, "limit must be 1–200");
-    let after = { updated_at: "", id: "", priority: 99 };
+    let after = { updated_at: "", id: "", priority: 99, recall_count: 0 };
     if (options.cursor) {
       try {
         const parsed = JSON.parse(Buffer.from(options.cursor, "base64url").toString());
-        if (parsed.project_id !== selection || typeof parsed.updated_at !== "string" || typeof parsed.id !== "string" || !Number.isInteger(parsed.priority)) throw new Error();
+        if (parsed.project_id !== selection || typeof parsed.updated_at !== "string" || typeof parsed.id !== "string" || !Number.isInteger(parsed.priority) || (parsed.sort ?? "updated") !== sort || (sort !== "updated" && (!Number.isInteger(parsed.recall_count) || parsed.recall_count < 0))) throw new Error();
         after = parsed;
       } catch { return fail(400, "Invalid project cursor"); }
     }
     const orderPriority = context.view === "all" ? "CAST(0 AS INTEGER)" : prioritySQL;
-    const rows = this.db.query(`SELECT * FROM memories WHERE project_id IN (${namespaces.map(() => "?").join(",")}) AND status = ? AND (? = '' OR type = ?)
+    const countExpr = "COALESCE((SELECT recall_count FROM memory_recall_stats WHERE memory_id=memories.id),0)";
+    const position = sort === "updated" ? `(? = '' OR ${orderPriority} < ? OR (${orderPriority} = ? AND (updated_at < ? OR (updated_at = ? AND id > ?))))`
+      : `(? = '' OR ${countExpr} ${sort === "recall_asc" ? ">" : "<"} ? OR (${countExpr} = ? AND id > ?))`;
+    const order = sort === "updated" ? `${orderPriority} DESC, updated_at DESC, id ASC` : `${countExpr} ${sort === "recall_asc" ? "ASC" : "DESC"}, id ASC`;
+    const positionArgs = sort === "updated" ? [after.id, after.priority, after.priority, after.updated_at, after.updated_at, after.id] : [after.id, after.recall_count, after.recall_count, after.id];
+    const rows = this.db.query(`SELECT *, ${recallColumns} FROM memories WHERE project_id IN (${namespaces.map(() => "?").join(",")}) AND status = ? AND (? = '' OR type = ?)
       AND (? = '' OR instr(lower(name || ' ' || description || ' ' || body), lower(?)) > 0)
-      AND (? = '' OR ${orderPriority} < ? OR (${orderPriority} = ? AND (updated_at < ? OR (updated_at = ? AND id > ?))))
-      ORDER BY ${orderPriority} DESC, updated_at DESC, id ASC LIMIT ?`).all(...namespaces.map(n => n.id), status, options.type ?? "", options.type ?? "", options.query ?? "", options.query ?? "", after.id, after.priority, after.priority, after.updated_at, after.updated_at, after.id, limit + 1) as MemoryRow[];
+      AND ${position}
+      ORDER BY ${order} LIMIT ?`).all(...namespaces.map(n => n.id), status, options.type ?? "", options.type ?? "", options.query ?? "", options.query ?? "", ...positionArgs, limit + 1) as MemoryRow[];
     const items = rows.slice(0, limit).map(metadata);
     const last = items.at(-1);
     const has_more = rows.length > limit;
-    return { project, namespaces, items, has_more, next_cursor: has_more && last ? this.cursor({ ...last, project_id: selection }, context.view === "all") : null };
+    const next = has_more && last ? (sort === "updated" ? this.cursor({ ...last, project_id: selection }, context.view === "all") : Buffer.from(JSON.stringify({ project_id: selection, updated_at: last.updated_at, id: last.id, priority: 0, recall_count: last.recall_count, sort })).toString("base64url")) : null;
+    return { project, namespaces, items, has_more, next_cursor: next };
   }
 
   private cursor(row: { project_id: string; updated_at: string; id: string; scope: MemoryScope; agent_key: string }, chronological = false) {
@@ -356,13 +367,13 @@ export class MemoryService {
   }
 
   private row(projectId: string, id: string): MemoryRow {
-    const row = this.db.query("SELECT * FROM memories WHERE id = ? AND project_id = ?").get(id, projectId) as MemoryRow | null;
+    const row = this.db.query(`SELECT *, ${recallColumns} FROM memories WHERE id = ? AND project_id = ?`).get(id, projectId) as MemoryRow | null;
     return row ?? fail(404, "Memory not found in project");
   }
 
   read(context: MemoryContext, id: string, includeRelated = true): MemoryDetail {
     const namespaces = this.namespaces(context);
-    const row = this.db.query(`SELECT * FROM memories WHERE id=? AND project_id IN (${namespaces.map(() => "?").join(",")})`).get(id, ...namespaces.map(n => n.id)) as MemoryRow | null;
+    const row = this.db.query(`SELECT *, ${recallColumns} FROM memories WHERE id=? AND project_id IN (${namespaces.map(() => "?").join(",")})`).get(id, ...namespaces.map(n => n.id)) as MemoryRow | null;
     if (!row) return fail(404, "Memory not found in applicable scope");
     if (row.status === "forgotten") return fail(410, "Memory forgotten; previous content must no longer be used");
     const sources = this.db.query(`SELECT s.*, CASE WHEN m.id IS NOT NULL AND m.session_id = s.session_id AND m.content IS NOT NULL THEN 1 ELSE 0 END AS available
@@ -376,6 +387,24 @@ export class MemoryService {
       ? (JSON.parse(snapshot.entries_json) as MemoryIndexEntry[]).find(entry => entry.id === id)?.related_ids ?? [] : [];
     return { ...metadata(row), body: row.body, markdown, sources,
       ...(related.length ? { related_memories: related.map(id => this.read(context, id, false)) } : {}) };
+  }
+
+  recordRecalls(items: MemoryDetail[]) {
+    const now = new Date().toISOString();
+    const seen = new Set<string>();
+    this.db.transaction(() => {
+      const record = (item: MemoryDetail) => {
+        if (seen.has(item.id)) return;
+        seen.add(item.id);
+        this.db.query(`INSERT INTO memory_recall_stats(memory_id, recall_count, last_recalled_at)
+          SELECT id, 1, ? FROM memories WHERE id=? AND status='active'
+          ON CONFLICT(memory_id) DO UPDATE SET recall_count=recall_count+1, last_recalled_at=excluded.last_recalled_at`).run(now, item.id);
+        const stats = this.db.query("SELECT recall_count,last_recalled_at FROM memory_recall_stats WHERE memory_id=?").get(item.id);
+        if (stats) Object.assign(item, stats);
+        for (const related of item.related_memories ?? []) record(related);
+      };
+      for (const item of items) record(item);
+    })();
   }
 
   create(context: MemoryContext, input: MemoryWrite) { return this.write(context, "create", undefined, input); }
@@ -444,6 +473,7 @@ export class MemoryService {
         status: action === "forget" ? "forgotten" : "active", created_at: old?.created_at ?? now, updated_at: now,
         forgotten_at: action === "forget" ? now : old?.forgotten_at ?? null,
         forgotten_sequence: action === "forget" ? (this.db.query("SELECT COALESCE(MAX(sequence),0) AS value FROM memory_message_arrivals").get() as { value: number }).value : old?.forgotten_sequence ?? null,
+        recall_count: old?.recall_count ?? 0, last_recalled_at: old?.last_recalled_at ?? null,
       };
       if (action !== "forget") {
         if (typeof row.name !== "string" || !/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(row.name) || row.name.length > 100) return fail(400, "name must be short kebab-case");

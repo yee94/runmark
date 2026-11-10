@@ -68,12 +68,14 @@ export function parseModelSort(sort: string | undefined): ModelSort {
   return sort === "tokens" ? "tokens" : "cost";
 }
 
-export function turnsTimeClause(alias = ""): string {
+export function turnsTimeClause(alias = "", bounds?: { from: string | null; to: string | null }): string {
   const col = alias ? `${alias}.created_at` : "created_at";
+  if (bounds?.from != null && bounds.to != null) return `${col} >= $from AND ${col} <= $to`;
   return `(${col} >= $from OR $from IS NULL) AND (${col} <= $to OR $to IS NULL)`;
 }
 
-export function sessionsTimeClause(alias = ""): string {
+export function sessionsTimeClause(alias = "", bounds?: { from: string | null; to: string | null }): string {
   const col = alias ? `${alias}.started_at` : "started_at";
+  if (bounds?.from != null && bounds.to != null) return `${col} >= $from AND ${col} <= $to`;
   return `(${col} >= $from OR $from IS NULL) AND (${col} <= $to OR $to IS NULL)`;
 }

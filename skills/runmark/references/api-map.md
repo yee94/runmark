@@ -6,6 +6,7 @@
 |---|---|
 | 登录/状态/退出 | POST `/auth/login`、GET `/auth/session`、POST `/auth/logout` |
 | 总览与模型排行 | GET `/v1/stats/summary`、`by-model`、`by-agent`、`daily` |
+| 年度 Token 活动矩阵 | GET `/v1/stats/annual-activity`（北京时间最近约 53 周，不受 range 筛选，缓存 60 秒） |
 | 全文搜索 | GET `/v1/sessions?q=...`（标题/摘要/消息） |
 | AI 会话搜索 | POST `/v1/sessions/agent-search` |
 | 会话详情/调用链 | GET `/v1/sessions/{id}` 及 `/messages`、`/turns`、`/tool-calls`、`/children` |

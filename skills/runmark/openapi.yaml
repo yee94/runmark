@@ -305,6 +305,25 @@ paths:
         "400":
           description: from / to 缺失配对、格式非法或起点晚于终点
 
+  /v1/stats/annual-activity:
+    get:
+      tags: [stats]
+      summary: Token 年度活动（北京时间，最近约 53 周至今天）
+      description: 仅汇总根会话的 turns，返回有记录日期的 Token 总量；不使用 range/from/to。服务端缓存 60 秒，跨北京时间日期重新计算窗口。
+      responses:
+        '200':
+          description: 日期正序的 Token 活动数组，缺失日期由调用方补零
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [date, total_tokens]
+                  properties:
+                    date: { type: string, format: date }
+                    total_tokens: { type: integer }
+
   /v1/stats/by-tool:
     get:
       tags: [stats]
@@ -1193,7 +1212,7 @@ paths:
                 query: { type: string, maxLength: 16000 }
                 exclude_ids: { type: array, maxItems: 200, items: { type: string } }
       responses:
-        '200': { description: 'items为最多5条适用记忆详情；Agent未启用或运行失败时为空，不重试或关键词兜底' }
+        '200': { description: 'items为最多5条适用记忆详情；成功返回的正文及关联事实各累计一次召回，同一响应按ID去重；Agent未启用或运行失败时为空，不重试或关键词兜底' }
         '400': { description: 参数无效或召回未配置 }
   /v1/memories:
     parameters:
@@ -1212,10 +1231,11 @@ paths:
         - { name: query, in: query, schema: { type: string } }
         - { name: type, in: query, schema: { type: string, enum: [user, feedback, project, reference] }, description: 内容类型过滤，在分页前执行，与 scope 独立 }
         - { name: status, in: query, schema: { type: string, enum: [active, forgotten], default: active }, description: 仅明确恢复时查询 forgotten 元数据，不能读取旧正文 }
+        - { name: sort, in: query, schema: { type: string, enum: [updated, recall_asc, recall_desc], default: updated }, description: updated 保留原有范围优先级及更新时间顺序；recall_asc/recall_desc 按召回次数及 ID 排序，游标不可跨排序方式复用 }
         - { name: cursor, in: query, schema: { type: string } }
         - { name: limit, in: query, schema: { type: integer } }
       responses:
-        '200': { description: 'items 元数据（含 scope/agent_key）与 namespaces、has_more、next_cursor，不返回正文' }
+        '200': { description: 'items 元数据（含 scope/agent_key、recall_count、last_recalled_at）与 namespaces、has_more、next_cursor，不返回正文；无召回记录时为0/null，列表读取不计数' }
     post:
       summary: 在精确范围创建记忆；scope 与定位也可放请求体
       security: [{ ApiKeyAuth: [] }]
@@ -1240,8 +1260,10 @@ paths:
     get:
       summary: 读取记忆详情、revision 与来源
       security: [{ ApiKeyAuth: [] }]
+      parameters:
+        - { name: usage, in: query, schema: { type: string, enum: [inspect] }, description: 默认成功读取正文时计数，关联事实在同一响应内按ID去重；inspect 只查看详情，不累计召回 }
       responses:
-        '200': { description: '记忆详情及sources；归组入口可含related_memories，各自保留正文和来源' }
+        '200': { description: '记忆详情及sources、recall_count、last_recalled_at；归组入口可含related_memories，各自保留正文、来源和计数；召回计数不改变revision、更新时间或索引版本' }
         '404': { description: 未找到当前适用范围的记忆 }
         '410': { description: 已遗忘 }
     patch:

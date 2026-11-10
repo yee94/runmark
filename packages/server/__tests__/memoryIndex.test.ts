@@ -80,6 +80,7 @@ test("forgetting invalidates grouped views immediately without resurrecting the 
   memory.forget(context, b.id, { expected_revision: 1, operation_id: "forget-b", source: { session_id: "source", message_id: "user", explicit: true } });
   expect(memory.read(context, a.id).related_memories).toBeUndefined();
   expect(memory.index(context).markdown).not.toContain(b.id);
+  expect(memory.list(context).items.every(item => item.recall_count === 0)).toBe(true);
   expect(() => memory.read(context, b.id)).toThrow("forgotten");
   expect(memory.indexState(context)).toEqual(state);
 });
@@ -136,6 +137,9 @@ test("recall API selects only applicable IDs with bounded output and records usa
   const output: any = await result.json();
   expect(output.items.map((item: any) => item.id)).toEqual([a.id]);
   expect(output.items[0].body).toContain("完整事实");
+  expect(output.items[0].recall_count).toBe(1);
+  expect(memory.list(context).items.find(item => item.id === a.id)?.recall_count).toBe(1);
+  expect(memory.list(context).items.find(item => item.id === b.id)?.recall_count).toBe(0);
   expect(calls).toBe(1);
   expect(runtime.listJobs().find(job => job.agent_id === MEMORY_RECALL_AGENT_ID).total_tokens).toBe(15);
 });

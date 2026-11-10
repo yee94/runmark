@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>Runmark</title>
   <link rel="stylesheet" href="https://unpkg.com/@eficy/shadcn-ui@1.1.3/dist/index.css" />
-  <link rel="stylesheet" href="./style.css?v=client-logo-20261109" />
+  <link rel="stylesheet" href="./style.css?v=activity-hover-scale-20261110" />
 </head>
 <body>
   <div class="ambient">
@@ -55,6 +55,9 @@
     const byModel = signal([])
     const byAgent = signal([])
     const dailyStats = signal([])
+    const annualStats = signal(null)
+    const activityHover = signal(null)
+    const activityMode = signal('daily')
     const sessions = signal([])
     const sessionLimit = 50
     const sessionOffset = signal(0)
@@ -256,6 +259,7 @@
         byModel.value = []
         byAgent.value = []
         dailyStats.value = []
+        annualStats.value = null
         sessions.value = []
         sessionOffset.value = 0
         sessionHasMore.value = false
@@ -604,7 +608,7 @@
       if (r.sessionId) {
         if (sessionChanged) expandedSubagents.value = {}
         fetchSessionDetail(r.sessionId, { fromRoute: true })
-      } else if (wasInDetail && r.tab === 'sessions') {
+      } else if (wasInDetail) {
         fetchData(false)
       }
     }
@@ -868,6 +872,7 @@
     // ─── Formatters ───
     function formatTokens(n) {
       if (n == null) return '0'
+      if (n >= 1_000_000_000) return (n / 1_000_000_000).toFixed(2) + 'B'
       if (n >= 1_000_000) return (n / 1_000_000).toFixed(1) + 'M'
       if (n >= 1_000) return (n / 1_000).toFixed(1) + 'K'
       return String(n)
@@ -1335,6 +1340,11 @@
     }
 
     async function fetchData(showRefreshSpinner = false) {
+      if (routeSessionId.value && loading.value && !summary.value) {
+        loading.value = false
+        refreshing.value = false
+        return
+      }
       if (showRefreshSpinner) {
         refreshing.value = true
       } else {
@@ -1342,7 +1352,7 @@
       }
       try {
         const qs = statsQueryString()
-        const [summaryRes, modelRes, agentRes, dailyRes, sessionsRes] = await Promise.all([
+        const [summaryRes, modelRes, agentRes, dailyRes, sessionsRes, annualRes] = await Promise.all([
           apiFetch('/v1/stats/summary' + qs).then(r => r.json()).catch(() => null),
           apiFetch('/v1/stats/by-model' + qs + '&group=model').then(r => r.json()).catch(() => []),
           apiFetch('/v1/stats/by-agent' + qs).then(r => r.json()).catch(() => []),
@@ -1350,12 +1360,14 @@
           sessionAiResultsMode.value
             ? Promise.resolve(null)
             : apiFetch('/v1/sessions' + sessionsQueryString()).then(r => r.json()).catch(() => []),
+          apiFetch('/v1/stats/annual-activity').then(r => { if (!r.ok) throw new Error('annual stats'); return r.json() }).catch(() => null),
         ])
         batch(() => {
           summary.value = summaryRes
           byModel.value = modelRes
           byAgent.value = agentRes
           dailyStats.value = dailyRes
+          annualStats.value = annualRes
           if (!sessionAiResultsMode.value) applySessionsResult(sessionsRes)
           loading.value = false
           refreshing.value = false
@@ -1715,6 +1727,59 @@
       return { rows, maxTokens, maxCost }
     })
 
+    const AnnualActivity = component(() => {
+      const weekly = activityMode.value === 'weekly'
+      const today = beijingCalendarParts()
+      const rows = annualStats.value
+      if (!Array.isArray(rows)) return <div className="annual-activity-status">年度活动数据暂不可用</div>
+      const byDate = new Map(rows.map(row => [row.date, row]))
+      const values = rows.map(row => row.total_tokens || 0).filter(value => value > 0).sort((a, b) => a - b)
+      const thresholds = [0.25, 0.5, 0.75].map(q => values[Math.floor((values.length - 1) * q)] || 0)
+      const end = new Date(Date.UTC(today.year, today.month, today.day + 1))
+      const weekday = new Date(Date.UTC(today.year, today.month, today.day)).getUTCDay()
+      const start = new Date(end.getTime() - (365 + weekday) * 24 * 60 * 60 * 1000)
+      const cells = []
+      for (let date = new Date(start); date < end; date.setUTCDate(date.getUTCDate() + 1)) {
+        const key = date.toISOString().slice(0, 10)
+        const tokens = byDate.get(key)?.total_tokens || 0
+        const level = tokens > 0 ? 1 + thresholds.filter(value => tokens > value).length : 0
+        cells.push({ key, tokens, level, month: date.getUTCDate() === 1 ? date.getUTCMonth() + 1 : null })
+      }
+      while (cells.length % 7) cells.push(null)
+      const weeks = Array.from({ length: cells.length / 7 }, (_, i) => cells.slice(i * 7, i * 7 + 7))
+      const weekTotals = weeks.map(week => week.reduce((sum, day) => sum + (day?.tokens || 0), 0))
+      const maxWeekTokens = Math.max(1, ...weekTotals)
+      function showDay(event, day) {
+        const rect = event.currentTarget.getBoundingClientRect()
+        activityHover.value = { ...day, x: Math.max(136, Math.min(window.innerWidth - 136, rect.left + rect.width / 2)), y: rect.top - 10 }
+      }
+      return (
+        <div className="annual-activity-scroll" onScroll={() => { activityHover.value = null }}>
+          <div className="annual-activity-grid" style={{ gridTemplateColumns: 'repeat(' + weeks.length + ', minmax(0, 1fr))' }}>
+            {weeks.map((week, i) => {
+              const total = weekTotals[i]
+              const weekInfo = { key: week[0].key + ' — ' + week.filter(Boolean).at(-1).key, tokens: total }
+              const height = total > 0 ? Math.max(1, Math.ceil(total / maxWeekTokens * 7)) : 0
+              return (
+              <div className={'annual-activity-week' + (weekly ? ' annual-activity-week--weekly' : '')} key={i}
+                tabIndex={weekly ? 0 : undefined} aria-label={weekly ? weekInfo.key + '：' + total.toLocaleString('zh-CN') + ' Token' : undefined}
+                onMouseEnter={weekly ? event => showDay(event, weekInfo) : undefined} onMouseLeave={weekly ? () => { activityHover.value = null } : undefined}
+                onFocus={weekly ? event => showDay(event, weekInfo) : undefined} onBlur={weekly ? () => { activityHover.value = null } : undefined}>
+                {weekly ? week.map((_, j) => <div key={j} aria-hidden="true" className={'annual-activity-cell annual-activity-cell--' + (j >= 7 - height ? (height === 7 ? 4 : 3) : 0)} />) : week.map((day, j) => day ? <div key={day.key} tabIndex={0} className={'annual-activity-cell annual-activity-cell--' + day.level} aria-label={day.key + '：' + day.tokens.toLocaleString('zh-CN') + ' Token'} onMouseEnter={event => showDay(event, day)} onMouseLeave={() => { activityHover.value = null }} onFocus={event => showDay(event, day)} onBlur={() => { activityHover.value = null }} /> : <div key={'future-' + j} className="annual-activity-placeholder" aria-hidden="true" />)}
+                <span className="annual-activity-month">{week.find(day => day?.month)?.month ? week.find(day => day?.month).month + '月' : ''}</span>
+              </div>
+            )})}
+          </div>
+        </div>
+      )
+    })
+
+    const ActivityTooltip = component(() => {
+      const day = activityHover.value
+      if (!day) return null
+      return <div className="annual-activity-tooltip" role="tooltip" style={{ left: day.x + 'px', top: day.y + 'px' }}><span>{day.key}</span><strong>{formatTokens(day.tokens)} Token</strong></div>
+    })
+
     // 全部日行模型 label → 按 dailyChartMetric 聚合，取 Top 8 作为图例
     const dailyModelLegend = computed(() => {
       const rows = dailyStats.value || []
@@ -1912,7 +1977,15 @@
       if (!loadedSummary.value) return null
       const { TokenBreakdownPanel, EfficiencyPanel, DailyTrendPanel, AgentBreakdownPanel, TopModelsPanel, TopSessionsPanel } = SummaryPanels
       return (
+        <>
         <div className="summary-stack fade-up fade-up-d3">
+          <div className="panel-card annual-activity-panel">
+            <SectionTitle title="Token 活动" actions={<div className="annual-activity-actions"><span className="annual-activity-range">过去 12 个月</span><div className="annual-activity-modes" role="group" aria-label="活动统计粒度">{[{ key: 'daily', label: '每天' }, { key: 'weekly', label: '每周' }].map(mode => <button key={mode.key} type="button" aria-pressed={activityMode.value === mode.key} className={'annual-activity-mode' + (activityMode.value === mode.key ? ' annual-activity-mode--active' : '')} onClick={() => { activityHover.value = null; activityMode.value = mode.key }}>{mode.label}</button>)}</div></div>} />
+            <div className="annual-activity-content">
+              <AnnualActivity />
+              <div className="annual-activity-legend"><span>较少</span>{[0, 1, 2, 3, 4].map(level => <i key={level} className={'annual-activity-cell annual-activity-cell--' + level} />)}<span>较多</span></div>
+            </div>
+          </div>
           <div className="content-grid">
             <div className="panel-card">
               <SectionTitle title="Token 组成" subtitle="五类 Token 占比分布" />
@@ -1963,6 +2036,8 @@
             <TopSessionsPanel />
           </div>
         </div>
+        <ActivityTooltip />
+        </>
       )
     })
 
@@ -2151,15 +2226,17 @@
     })
 
     // 启动模块加载
-    loadSummaryPanels()
-    loadModelsPage()
-    loadSessionsListPage()
-    loadAgentConfigPage()
-    loadAgentRunsPage()
-    loadSystemConfigPage()
-    loadMattersPage()
-    loadMemoriesPage()
-    loadHelpCenterPage()
+    effect(() => {
+      if (authChecking.value || !authenticated.value || shareMode.value) return
+      if (activeTab.value === 'sessions' && routeSessionId.value) return
+      const loaders = {
+        summary: loadSummaryPanels, models: loadModelsPage, sessions: loadSessionsListPage,
+        'agent-config': loadAgentConfigPage, 'agent-runs': loadAgentRunsPage,
+        'system-config': loadSystemConfigPage, matters: loadMattersPage,
+        memories: loadMemoriesPage, help: loadHelpCenterPage,
+      }
+      loaders[activeTab.value]?.()
+    })
 
     // ─── Session Detail（密集 trace 视图） ───
 
@@ -2371,7 +2448,7 @@
 
     // ─── Dashboard App ───
     const App = component(() => {
-      if (loading.value && !summary.value) {
+      if (loading.value && !summary.value && !routeSessionId.value) {
         return <LoadingScreen />
       }
 

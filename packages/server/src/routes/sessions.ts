@@ -104,9 +104,9 @@ const SESSION_LAST_ACTIVITY_ORDER = `(
     UNION ALL
     SELECT ended_at AS t FROM sessions s1 WHERE s1.id = sessions.id AND ended_at IS NOT NULL
     UNION ALL
-    SELECT created_at AS t FROM messages WHERE session_id = sessions.id
+    SELECT MAX(created_at) AS t FROM messages WHERE session_id = sessions.id
     UNION ALL
-    SELECT created_at AS t FROM turns WHERE session_id = sessions.id
+    SELECT MAX(created_at) AS t FROM turns WHERE session_id = sessions.id
   )
 )`;
 
@@ -462,7 +462,7 @@ export function createStatsRoute(db: Database) {
     const params = { $from: from, $to: to };
 
     const totalSessions = db.query(
-      `SELECT COUNT(*) as count FROM sessions WHERE parent_session_id IS NULL AND ${sessionsTimeClause()}`,
+      `SELECT COUNT(*) as count FROM sessions WHERE parent_session_id IS NULL AND ${sessionsTimeClause("", { from, to })}`,
     ).get(params) as { count?: number };
 
     const turnStats = db.query(`
@@ -476,7 +476,7 @@ export function createStatsRoute(db: Database) {
         COALESCE(SUM(reasoning_tokens), 0) as reasoning,
         COALESCE(SUM(cost_usd), 0) as cost_usd
       FROM turns
-      WHERE ${turnsTimeClause()}
+      WHERE ${turnsTimeClause("", { from, to })}
     `).get(params) as {
       turn_count?: number;
       total?: number;
@@ -525,7 +525,7 @@ export function createStatsRoute(db: Database) {
         SUM(cost_usd) as total_cost_usd,
         AVG(duration_ms) as avg_duration_ms
       FROM turns
-      WHERE ${turnsTimeClause()} AND model != ''
+      WHERE ${turnsTimeClause("", { from, to })} AND model != ''
       GROUP BY model, provider
       ORDER BY ${orderBy}
     `).all({ $from: from, $to: to }) as ModelStatsRow[];
@@ -549,7 +549,7 @@ export function createStatsRoute(db: Database) {
         COALESCE(SUM(s.total_cost_usd), 0) as total_cost_usd
       FROM sessions s
       WHERE s.parent_session_id IS NULL AND s.agent != '' AND COALESCE(s.total_cost_usd, 0) > 0
-        AND ${sessionsTimeClause("s")}
+        AND ${sessionsTimeClause("s", { from, to })}
       GROUP BY s.agent
       ORDER BY total_cost_usd DESC
     `).all(params) as { total_cost_usd?: number }[];
@@ -567,6 +567,27 @@ export function createStatsRoute(db: Database) {
       FROM tool_calls GROUP BY tool_name ORDER BY call_count DESC
     `).all();
     return c.json(rows);
+  });
+
+  let annualActivityCache: { day: string; expiresAt: number; rows: { date: string; total_tokens: number }[] } | null = null;
+  app.get("/v1/stats/annual-activity", (c) => {
+    const now = Date.now();
+    const today = new Date(now + 8 * 60 * 60 * 1000);
+    const year = today.getUTCFullYear(), month = today.getUTCMonth(), day = today.getUTCDate();
+    const dateKey = today.toISOString().slice(0, 10);
+    if (!annualActivityCache || annualActivityCache.day !== dateKey || annualActivityCache.expiresAt <= now) {
+      const from = new Date(Date.UTC(year, month, day - today.getUTCDay() - 364) - 8 * 60 * 60 * 1000).toISOString();
+      const to = new Date(Date.UTC(year, month, day + 1) - 8 * 60 * 60 * 1000).toISOString();
+      const date = beijingDateExpr("t.created_at");
+      const rows = db.query(`
+        SELECT ${date} as date, COALESCE(SUM(t.total_tokens), 0) as total_tokens
+        FROM turns t JOIN sessions s ON s.id = t.session_id
+        WHERE s.parent_session_id IS NULL AND t.created_at >= $from AND t.created_at < $to
+        GROUP BY ${date} ORDER BY date ASC
+      `).all({ $from: from, $to: to }) as { date: string; total_tokens: number }[];
+      annualActivityCache = { day: dateKey, expiresAt: now + 60_000, rows };
+    }
+    return c.json(annualActivityCache.rows);
   });
 
   app.get("/v1/stats/daily", (c) => {
@@ -587,7 +608,7 @@ export function createStatsRoute(db: Database) {
         COALESCE(SUM(t.cost_usd), 0) as total_cost_usd
       FROM turns t
       JOIN sessions s ON s.id = t.session_id
-      WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t")}
+      WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t", { from, to })}
       GROUP BY ${beijingDate}
       ORDER BY date ASC
     `).all(params) as { date: string; total_cost_usd?: number }[];
@@ -601,7 +622,7 @@ export function createStatsRoute(db: Database) {
         COALESCE(SUM(t.cost_usd), 0) as total_cost_usd
       FROM turns t
       JOIN sessions s ON s.id = t.session_id
-      WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t")}
+      WHERE s.parent_session_id IS NULL AND ${turnsTimeClause("t", { from, to })}
       GROUP BY ${beijingDate}, t.provider, t.model
       ORDER BY date ASC, total_cost_usd DESC
     `).all(params) as DailyModelStatsRow[];

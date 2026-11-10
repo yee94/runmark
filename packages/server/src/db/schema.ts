@@ -23,6 +23,11 @@ CREATE TABLE IF NOT EXISTS memories (
   UNIQUE(project_id, name)
 );
 CREATE INDEX IF NOT EXISTS idx_memories_project ON memories(project_id, status, updated_at DESC, id);
+CREATE TABLE IF NOT EXISTS memory_recall_stats (
+  memory_id TEXT PRIMARY KEY REFERENCES memories(id) ON DELETE CASCADE,
+  recall_count INTEGER NOT NULL DEFAULT 0,
+  last_recalled_at TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS memory_sources (
   memory_id TEXT NOT NULL REFERENCES memories(id),
   revision INTEGER NOT NULL,
@@ -111,6 +116,7 @@ CREATE TABLE IF NOT EXISTS sessions (
 CREATE INDEX IF NOT EXISTS idx_sessions_started_at ON sessions(started_at);
 CREATE INDEX IF NOT EXISTS idx_sessions_user_email ON sessions(user_email);
 CREATE INDEX IF NOT EXISTS idx_sessions_repo_url ON sessions(repo_url);
+CREATE INDEX IF NOT EXISTS idx_sessions_parent_started_at ON sessions(parent_session_id, started_at);
 
 CREATE TABLE IF NOT EXISTS messages (
   id TEXT PRIMARY KEY,
@@ -129,6 +135,7 @@ CREATE TABLE IF NOT EXISTS messages (
 );
 
 CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id);
+CREATE INDEX IF NOT EXISTS idx_messages_session_created_at ON messages(session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS memory_message_arrivals (
   sequence INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -167,6 +174,7 @@ CREATE TABLE IF NOT EXISTS turns (
 
 CREATE INDEX IF NOT EXISTS idx_turns_session_id ON turns(session_id);
 CREATE INDEX IF NOT EXISTS idx_turns_created_at ON turns(created_at);
+CREATE INDEX IF NOT EXISTS idx_turns_session_created_at ON turns(session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS tool_calls (
   id TEXT PRIMARY KEY,
@@ -192,6 +200,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session_id ON tool_calls(session_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_turn_id ON tool_calls(turn_id);
 CREATE INDEX IF NOT EXISTS idx_tool_calls_session_call_id ON tool_calls(session_id, call_id);
+CREATE INDEX IF NOT EXISTS idx_tool_calls_session_created_at ON tool_calls(session_id, created_at);
 
 CREATE TABLE IF NOT EXISTS pricing (
   provider TEXT NOT NULL,

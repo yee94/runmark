@@ -38,6 +38,59 @@ describe("Project memory API", () => {
   });
   afterEach(() => db.close());
 
+  it("initializes recall statistics on an existing database without changing memories", () => {
+    const saved = service.create(context, {...write(), type: "user" as const});
+    db.exec("DROP TABLE memory_recall_stats");
+    initializeDatabase(db);
+    expect(service.read(context, saved.id)).toMatchObject({ body: write().body, revision: 1, recall_count: 0, last_recalled_at: null });
+  });
+
+  it("counts successful API body reads without counting inspection, indexes, failed reads or maintenance", async () => {
+    const first = (await request("POST", "", write())).data;
+    const related = (await request("POST", "", write("related", "related"))).data;
+    service.consolidateIndex(context, service.version(context), [{ id: first.id, related_ids: [related.id], description: "合并摘要" }], "job");
+    const version = service.index(context).version;
+    await request("GET", "/index");
+    await request("GET", "");
+    await request("GET", `/${first.id}`, undefined, "session_id=s1&usage=inspect");
+    service.read(context, first.id);
+    expect((await request("GET", `/${first.id}`, undefined, "session_id=foreign")).status).toBe(404);
+    expect(service.list(context).items.map(item => item.recall_count)).toEqual([0, 0]);
+    const detail = (await request("GET", `/${first.id}`)).data;
+    expect(detail.recall_count).toBe(1);
+    expect(detail.related_memories[0].recall_count).toBe(1);
+    expect(detail.last_recalled_at).toBeTruthy();
+    expect(service.index(context).version).toBe(version);
+    expect(service.list(context).items.map(item => item.recall_count)).toEqual([1, 1]);
+    const updated = (await request("PATCH", `/${first.id}`, { operation_id: "update", source, expected_revision: 1, body: "新正文" })).data;
+    expect(updated.recall_count).toBe(1);
+    await request("DELETE", `/${first.id}`, { operation_id: "forget", source, expected_revision: 2 });
+    expect((await request("GET", `/${first.id}`)).status).toBe(410);
+    expect(service.list(context, {status: "forgotten"}).items[0].recall_count).toBe(1);
+  });
+
+  it("sorts recall counts across pages with stable ties and rejects mismatched cursors", async () => {
+    const entries = [];
+    for (let i = 0; i < 4; i++) entries.push((await request("POST", "", write(`sort-${i}`, `sort-${i}`))).data);
+    await request("GET", `/${entries[0].id}`);
+    await request("GET", `/${entries[0].id}`);
+    await request("GET", `/${entries[1].id}`);
+    for (const sort of ["recall_asc", "recall_desc"]) {
+      let cursor = "", values: number[] = [], ids: string[] = [];
+      do {
+        const query = `view=all&sort=${sort}&limit=2${cursor ? `&cursor=${cursor}` : ""}`;
+        const page = (await request("GET", "", undefined, query)).data;
+        values.push(...page.items.map((item: any) => item.recall_count));
+        ids.push(...page.items.map((item: any) => item.id));
+        cursor = page.next_cursor;
+        if (cursor) expect((await request("GET", "", undefined, `view=all&sort=updated&cursor=${cursor}`)).status).toBe(400);
+      } while (cursor);
+      expect(values).toEqual(sort === "recall_asc" ? [0, 0, 1, 2] : [2, 1, 0, 0]);
+      expect(new Set(ids).size).toBe(4);
+    }
+    expect((await request("GET", "", undefined, "view=all&sort=invalid")).status).toBe(400);
+  });
+
   it("repairs reviewed identities atomically and invalidates over-extracted facts without losing source history", async () => {
     const a=(await request("POST","",write())).data;
     const b=(await request("POST","",write("second","temporary"))).data;

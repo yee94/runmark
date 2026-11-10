@@ -150,6 +150,7 @@ test("detail dialogs read the selected memory's Agent namespace", async () => {
   const detail = page.requests.find(url => url.pathname === "/v1/memories/memory-one")!;
   expect(detail.searchParams.get("agent_key")).toBe("opencode/build");
   expect(detail.searchParams.get("view")).toBe("all");
+  expect(detail.searchParams.get("usage")).toBe("inspect");
   expect(page.searches()).toHaveLength(1);
   expect(page.find(node => node.props.className === "memory-body")).toBeDefined();
 });

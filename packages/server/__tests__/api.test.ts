@@ -478,6 +478,23 @@ describe("API integration", () => {
     expect(rows[0].total_cost_cny).toBeCloseTo(0.08 * USD_TO_CNY, 6);
   });
 
+  it("caches annual activity between requests", async () => {
+    const event = {
+      type: "turn.completed" as const, session_id: "s-annual", turn_id: "t-annual",
+      model: "m", provider: "p", input_tokens: 300, output_tokens: 100,
+      total_tokens: 400, duration_ms: 100, cost_usd: 0.03, created_at: new Date().toISOString(),
+    };
+    ingestService.ingestBatch(db, [event]);
+    const old = new Date();
+    old.setUTCFullYear(old.getUTCFullYear() - 2);
+    ingestService.ingestBatch(db, [{ ...event, turn_id: "t-annual-old", created_at: old.toISOString() }]);
+    const first = await (await app.request("/v1/stats/annual-activity")).json();
+    expect(first.reduce((sum: number, row: { total_tokens: number }) => sum + row.total_tokens, 0)).toBe(400);
+    ingestService.ingestBatch(db, [{ ...event, turn_id: "t-annual-2" }]);
+    const cached = await (await app.request("/v1/stats/annual-activity")).json();
+    expect(cached).toEqual(first);
+  });
+
   it("GET /v1/stats/daily groups turns by date within range", async () => {
     const today = new Date().toISOString();
     ingestService.ingestBatch(db, [

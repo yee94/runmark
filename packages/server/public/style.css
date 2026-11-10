@@ -2028,6 +2028,51 @@ body {
   flex-direction: column;
   gap: 16px;
 }
+
+.annual-activity-panel { padding: 24px 28px 20px; overflow: visible; }
+.annual-activity-content { width: 100%; max-width: 1100px; margin: 0 auto; }
+.annual-activity-panel > .section-title-block { margin-bottom: 22px; }
+.annual-activity-range { color: var(--text-secondary); font-size: 12px; font-weight: 400; }
+.annual-activity-actions { display: flex; align-items: center; gap: 18px; }
+.annual-activity-modes { display: flex; align-items: center; gap: 4px; }
+.annual-activity-mode { padding: 4px 9px; border: 0; border-radius: 6px; background: transparent; color: var(--text-secondary); font-size: 12px; cursor: pointer; }
+.annual-activity-mode:hover { color: var(--text-primary); background: #ffffff08; }
+.annual-activity-mode--active { color: var(--text-primary); background: #ffffff0d; }
+.annual-activity-mode:focus-visible { outline: 2px solid #68b5ff; outline-offset: 2px; }
+.annual-activity-scroll { overflow-x: auto; scrollbar-width: thin; padding: 4px; margin: -4px; }
+.annual-activity-grid { display: grid; gap: 5px; min-width: 640px; }
+.annual-activity-week { display: grid; grid-template-columns: minmax(0, 1fr); grid-template-rows: repeat(7, auto) 25px; gap: 5px; min-width: 0; }
+.annual-activity-cell, .annual-activity-placeholder { display: block; width: 100%; aspect-ratio: 1; border-radius: 3px; }
+.annual-activity-cell { position: relative; background: #2b2d31; transition: transform 150ms ease-out; }
+.annual-activity-week:not(.annual-activity-week--weekly) .annual-activity-cell:hover,
+.annual-activity-week:not(.annual-activity-week--weekly) .annual-activity-cell:focus-visible { z-index: 2; transform: scale(1.3); outline: 1px solid #b8dcff88; outline-offset: 0; }
+.annual-activity-week--weekly { cursor: pointer; border-radius: 3px; outline: none; }
+.annual-activity-week--weekly:hover .annual-activity-cell,
+.annual-activity-week--weekly:focus-visible .annual-activity-cell { z-index: 2; transform: scale(1.15); outline: 1px solid #b8dcff66; outline-offset: 0; }
+.annual-activity-cell--1 { background: #0b3765; }
+.annual-activity-cell--2 { background: #07539c; }
+.annual-activity-cell--3 { background: #1685e9; }
+.annual-activity-cell--4 { background: #68b5ff; }
+.annual-activity-tooltip { position: fixed; z-index: 1000; transform: translate(-50%, -100%); display: flex; flex-direction: column; gap: 4px; padding: 10px 14px; border: 1px solid #45474d; border-radius: 10px; background: #282a2e; box-shadow: 0 6px 24px #0005; color: #f4f4f5; white-space: nowrap; font-size: 12px; pointer-events: none; }
+.annual-activity-tooltip > span { color: #bfc2ca; }
+.annual-activity-tooltip > strong { font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; }
+.annual-activity-month { color: #8c9099; font-size: 12px; white-space: nowrap; padding-top: 6px; }
+.annual-activity-legend { display: flex; align-items: center; justify-content: flex-end; gap: 5px; margin-top: 8px; color: #8c9099; font-size: 11px; }
+.annual-activity-legend .annual-activity-cell { width: 11px; height: 11px; }
+.annual-activity-status { padding: 24px 0; color: #8c9099; font-size: 13px; }
+@media (max-width: 700px) {
+  .annual-activity-panel { padding: 18px 16px; }
+  .annual-activity-panel > .section-title-block { margin-bottom: 18px; }
+  .annual-activity-actions { gap: 6px; }
+  .annual-activity-range { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .annual-activity-cell { transition: none; }
+  .annual-activity-week .annual-activity-cell:hover,
+  .annual-activity-week .annual-activity-cell:focus-visible,
+  .annual-activity-week--weekly:hover .annual-activity-cell,
+  .annual-activity-week--weekly:focus-visible .annual-activity-cell { transform: none; }
+}
 .token-stack-bar {
   display: flex;
   height: 10px;

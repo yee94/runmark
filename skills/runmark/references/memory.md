@@ -28,6 +28,8 @@ runmark_get "/v1/memories/$MEMORY_ID" -G --data-urlencode "session_id=$SESSION_I
 
 接口复用全站 Cookie、API Key 与公开 Dashboard 策略，不设置独立登录。`GET /v1/memories/scopes` 返回全部可管理空间及可直接使用的 context；旧 `/projects` 保留通用项目目录。需要精确范围时使用目录的 context，不自行拼接 namespace ID。内容类型过滤用 `type`，由服务端在分页前过滤。
 
+`recall_count` / `last_recalled_at` 统计成功读取或自动召回返回的正文，关联事实分别计数；只查看详情可传 `usage=inspect`，列表、短索引和后台维护不计数。列表支持 `sort=recall_asc|recall_desc`，分页沿用相同排序。旧使用不回填，返回正文不等于模型已使用，低频不等于无价值，不能据此直接遗忘。
+
 ## 保存、纠正与遗忘
 
 一条记忆只表达一个可复用事实。保存前搜索已有记录：已有事实用其稳定 ID 更新，新事实才创建。正文用 Markdown，metadata 中的 `type` 区分：

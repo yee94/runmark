@@ -143,6 +143,10 @@ Dashboard: `http://localhost:3456/`. The script is idempotent — rerunning neve
 
 </details>
 
+#### Server updates and database migrations
+
+After updating the server code or package, restart the service to migrate the existing database automatically; no manual SQL is required. Startup adds missing columns and indexes with `CREATE INDEX IF NOT EXISTS`, including the four composite indexes used by session lists and details. Repeated startup is safe. The performance upgrade does not change historical records, costs, or usage. Building indexes on a large database may extend the first startup; wait for the health check to recover.
+
 ### 2. Install clients
 
 Once the server is up, install the plugins on each machine: Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build. The unified entry point is the `@runmarks/runmark` package.
