@@ -94,10 +94,12 @@ export function createSummaryPanels(ctx) {
     const modelVal = (m) => byCost ? (m.total_cost_cny || 0) : (m.total_tokens || 0)
     const rowTotal = (row) => byCost ? (row.total_cost_cny || 0) : (row.total_tokens || 0)
     const plotH = 144
+    // 全部范围可达数百天：收窄柱间距并只保留每月 1 日的横轴标签，避免柱宽被 gap 挤成 0。
+    const dense = chart.rows.length > 60
     return (
       <div className="daily-trend-wrap">
         <div className="bar-chart">
-          <div className="bar-chart-plot">
+          <div className={'bar-chart-plot' + (dense ? ' bar-chart-plot--dense' : '')}>
           {chart.rows.map((row, i) => {
             const dayTotal = rowTotal(row)
             const barH = Math.max(3, Math.round((dayTotal / chartMax) * plotH))
@@ -135,7 +137,7 @@ export function createSummaryPanels(ctx) {
                     )
                   })}
                 </div>
-                <span className="bar-chart-label">{formatDateShort(row.date)}</span>
+                {!dense || String(row.date).slice(8, 10) === '01' ? <span className="bar-chart-label">{formatDateShort(row.date)}</span> : null}
                 {isHovered ? (
                   <div className="bar-chart-tip">
                     <div className="bar-chart-tip-date">{row.date}</div>

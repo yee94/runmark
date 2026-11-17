@@ -11,3 +11,9 @@ export function dashboardUrl(endpoint: string): string {
   url.hash = "/summary";
   return url.href;
 }
+
+export function sessionDashboardUrl(endpoint: string, sessionID: string): string {
+  const url = new URL(dashboardUrl(endpoint));
+  url.hash = `/sessions/${encodeURIComponent(sessionID)}`;
+  return url.href;
+}

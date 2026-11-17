@@ -78,7 +78,7 @@ test.skipIf(process.env.RUNMARK_HOST_TEST !== "1")("standalone host sends short 
     const args = action === "read" ? { id: created.id } : {
       operation_id: "host-write", scope: "project", agent_key: "opencode/build", name: "new-preference", description: "开始协作时读取", type: "user", body: "请用中文回答",
     };
-    const delta = hasResult ? { content: "done" } : { tool_calls: [{ index: 0, id: `call_${action}`, type: "function", function: { name: switching ? "test_switch_agent" : `runmark_memory_${action}`, arguments: JSON.stringify(switching ? {} : args) } }] };
+    const delta = hasResult ? { content: "done" } : { tool_calls: [{ index: 0, id: `call_${action}`, type: "function", function: { name: switching ? "test_switch_agent" : "runmark_memory", arguments: JSON.stringify(switching ? {} : { action, ...args }) } }] };
     const chunk = (value: any, finish_reason: string | null) => `data: ${JSON.stringify({ id: "chatcmpl_test", object: "chat.completion.chunk", created: 1, model: "memory-test", choices: [{ index: 0, delta: value, finish_reason }] })}\n\n`;
     return new Response(chunk(delta, null) + chunk({}, hasResult ? "stop" : "tool_calls") + "data: [DONE]\n\n", { headers: { "Content-Type": "text/event-stream" } });
   }});
@@ -92,7 +92,7 @@ test.skipIf(process.env.RUNMARK_HOST_TEST !== "1")("standalone host sends short 
     } },
   };
   async function run(enabled = true, sessionID?: string, cwd = project) {
-    const proc = Bun.spawn([binary!, "run", "--standalone", "--print-logs", "--auto", "--format", "json", "--title", "Memory integration", ...(sessionID ? ["--session", sessionID] : []), "Recall the deploy memory using runmark_memory_read. 另请记住本项目用中文回答。"], {
+    const proc = Bun.spawn([binary!, "run", "--standalone", "--print-logs", "--auto", "--format", "json", "--title", "Memory integration", ...(sessionID ? ["--session", sessionID] : []), "Recall the deploy memory using runmark_memory(action=read). 另请记住本项目用中文回答。"], {
     cwd, stdout: "pipe", stderr: "pipe",
     env: {
       PATH: process.env.PATH, TMPDIR: directory, HOME: directory, OPENCODE_TEST_HOME: directory,
@@ -126,7 +126,7 @@ test.skipIf(process.env.RUNMARK_HOST_TEST !== "1")("standalone host sends short 
     expect(db.query("SELECT agent, hostname, directory FROM sessions WHERE id=?").get(source.session_id)).toMatchObject({ agent: "opencode", hostname: hostname(), directory: project });
     const sourceMessage = db.query<{ role: string; content: string; agent_key: string }, string>("SELECT role,content,agent_key FROM messages WHERE id=?").get(source.message_id);
     expect(sourceMessage).toMatchObject({ role: "user", agent_key: "opencode/build" });
-    const promptText = "Recall the deploy memory using runmark_memory_read. 另请记住本项目用中文回答。";
+    const promptText = "Recall the deploy memory using runmark_memory(action=read). 另请记住本项目用中文回答。";
     expect([promptText, JSON.stringify(promptText)]).toContain(sourceMessage?.content);
     const system = (request: any) => request.messages.filter((message: any) => message.role === "system").map((message: any) => message.content).join("\n");
     expect(system(requests[0])).toContain("查询 Runmark 历史会话与工作记录");
@@ -142,7 +142,7 @@ test.skipIf(process.env.RUNMARK_HOST_TEST !== "1")("standalone host sends short 
     expect(indexes).toBe(3);
     expect(system(requests.at(-1))).not.toContain(MEMORY_MARKER);
     expect(system(requests.at(-1))).toContain("查询 Runmark 历史会话与工作记录");
-    expect(requests.at(-1).tools.some((item: any) => item.function.name.startsWith("runmark_memory_"))).toBe(false);
+    expect(requests.at(-1).tools.some((item: any) => item.function.name.startsWith("runmark_memory"))).toBe(false);
     slowIndex = true;
     await run();
     expect(indexes).toBe(4);

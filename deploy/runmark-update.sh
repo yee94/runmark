@@ -67,6 +67,8 @@ reflink_database() {
 
 resolve_db_path() {
   local env_file="$APP_ROOT/.env" db_path="packages/server/data/agent-tracker.db"
+  # Linux Bash 的 EXIT trap 中，裸 return 会沿用退出状态；成功解析路径必须显式返回 0。
+  if [ -f "$env_file" ]; then local current; current=$(grep -m1 '^RUNMARK_DB_PATH=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d ' \r' || true); [ -n "$current" ] && { [ "${current:0:1}" != "/" ] && echo "$APP_ROOT/$current" || echo "$current"; return 0; }; fi
   if [ -f "$env_file" ]; then local val; val=$(grep -m1 '^AGENT_TRACKER_DB_PATH=' "$env_file" 2>/dev/null | cut -d= -f2- | tr -d ' \r'); [ -n "$val" ] && db_path="$val"; fi
   [ "${db_path:0:1}" != "/" ] && echo "$APP_ROOT/$db_path" || echo "$db_path"
 }
@@ -80,6 +82,24 @@ snapshot_database() {
 
   mkdir -p "$BACKUP_PATH/data"
   snapshot="$BACKUP_PATH/data/$(basename "$DB_FILE")"
+  local catalog monthly
+  catalog=$(sqlite3 -readonly "$DB_FILE" "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='payload_storage';")
+  if [ "$catalog" = 1 ]; then
+    monthly=$(sqlite3 -readonly "$DB_FILE" "SELECT (SELECT enabled FROM payload_storage WHERE id=1) + (SELECT COUNT(*) FROM payload_refs);")
+    if [ "$monthly" -gt 0 ] && [ ! -f "$STAGING_APP/scripts/sqlite-storage.ts" ]; then
+      log ERROR "Target release cannot read monthly storage; run inline before downgrading"; return 1
+    fi
+  fi
+  if [ -f "$STAGING_APP/scripts/sqlite-storage.ts" ]; then
+      log INFO "Backing up storage and foreign key baseline with shared immutable objects"
+      "$BUN_BIN" "$STAGING_APP/scripts/sqlite-storage.ts" backup --db "$DB_FILE" --out "$BACKUP_DIR/storage" > "$BACKUP_PATH/storage-backup.json" || return 1
+      local object
+      object=$("$BUN_BIN" -e 'const fs=require("fs"),p=require("path"),r=JSON.parse(fs.readFileSync(process.argv[1],"utf8")),m=JSON.parse(fs.readFileSync(r.manifest,"utf8"));process.stdout.write(p.join(p.dirname(p.dirname(r.manifest)),"objects",m.main.hash+".db"))' "$BACKUP_PATH/storage-backup.json") || return 1
+      ln "$object" "$snapshot" 2>/dev/null || cp --reflink=auto "$object" "$snapshot" || return 1
+      DB_SNAPSHOT_SESSIONS=$(sqlite3 -readonly "$snapshot" "SELECT COUNT(*) FROM sessions;")
+      DB_SNAPSHOT_TURNS=$(sqlite3 -readonly "$snapshot" "SELECT COUNT(*) FROM turns;")
+      return 0
+  fi
   log INFO "Creating consistent DB snapshot"
   mode="${AGENT_TRACKER_BACKUP_MODE:-auto}"
   case "$mode" in auto|sqlite|reflink) ;; *) log ERROR "Invalid backup mode: $mode"; return 1 ;; esac
@@ -105,6 +125,15 @@ snapshot_database() {
 
 verify_database_after_update() {
   local integrity sessions turns
+  if [ -f "$BACKUP_PATH/storage-backup.json" ] && [ -f "$APP_ROOT/scripts/sqlite-storage.ts" ]; then
+    local baseline=()
+    if [ -f "$BACKUP_PATH/storage-backup.json" ]; then
+      local manifest
+      manifest=$("$BUN_BIN" -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).manifest)' "$BACKUP_PATH/storage-backup.json") || return 1
+      baseline=(--baseline-manifest "$manifest")
+    fi
+    "$BUN_BIN" "$APP_ROOT/scripts/sqlite-storage.ts" verify --db "$DB_FILE" "${baseline[@]}" >> "$LOG_FILE" 2>&1 || { log ERROR "Monthly storage verification failed"; return 1; }
+  fi
   integrity=$(sqlite3 -readonly "$DB_FILE" "PRAGMA integrity_check;" 2>>"$LOG_FILE" || true)
   [ "$integrity" = "ok" ] || { log ERROR "Updated DB integrity check failed"; return 1; }
   sessions=$(sqlite3 -readonly "$DB_FILE" "SELECT COUNT(*) FROM sessions;" 2>>"$LOG_FILE" || true)
@@ -113,6 +142,16 @@ verify_database_after_update() {
   [ "$sessions" -ge "$DB_SNAPSHOT_SESSIONS" ] || { log ERROR "Updated DB session count decreased"; return 1; }
   [ "$turns" -ge "$DB_SNAPSHOT_TURNS" ] || { log ERROR "Updated DB turn count decreased"; return 1; }
   log INFO "Updated DB verified: sessions=${sessions}, turns=${turns}"
+}
+
+migrate_database_after_update() {
+  [ -f "$APP_ROOT/scripts/sqlite-storage.ts" ] || return 0
+  if [ -f "$APP_ROOT/.env" ] && grep -qE '^RUNMARK_PAYLOAD_SHARDING="?false"?[[:space:]]*$' "$APP_ROOT/.env"; then
+    log INFO "Monthly migration explicitly disabled in environment"
+    return 0
+  fi
+  log INFO "Migrating historical payloads online (completed migrations are skipped)"
+  "$BUN_BIN" "$APP_ROOT/scripts/sqlite-storage.ts" upgrade --db "$DB_FILE" --batch-size 100 >> "$LOG_FILE" 2>&1 || { log ERROR "Monthly storage migration failed"; return 1; }
 }
 
 # ---- rollback ----
@@ -128,6 +167,16 @@ perform_rollback() {
   else log ERROR "No code backup"; rollback_ok=false; fi
 
   local db_file; db_file=$(resolve_db_path)
+  if [ -f "$BACKUP_PATH/storage-backup.json" ]; then
+    local manifest restored
+    manifest=$("$BUN_BIN" -e 'process.stdout.write(JSON.parse(require("fs").readFileSync(process.argv[1],"utf8")).manifest)' "$BACKUP_PATH/storage-backup.json") || return 1
+    restored="$BACKUP_PATH/storage-restored-$$"
+    "$BUN_BIN" "$STAGING_APP/scripts/sqlite-storage.ts" restore --manifest "$manifest" --out "$restored" >> "$LOG_FILE" 2>&1 || return 1
+    if [ -d "$restored/main.db.payloads" ]; then
+      mkdir -p "${db_file}.payloads" || return 1
+      cp -a "$restored/main.db.payloads/." "${db_file}.payloads/" || return 1
+    fi
+  fi
   # 先删除目标 DB/wal/shm（即使备份中无也清掉），再从备份恢复存在的
   rm -f "$db_file" "${db_file}-wal" "${db_file}-shm" 2>/dev/null || true
   if [ -n "${BACKUP_PATH:-}" ] && [ -d "$BACKUP_PATH/data" ]; then
@@ -281,6 +330,7 @@ while [ $i -le $max ]; do
   i=$((i+1)); sleep "$HEALTH_POLL_INTERVAL"
 done
 [ "$HEALTH_OK" != "true" ] && { log ERROR "Health check failed"; exit 1; }
+migrate_database_after_update || { log ERROR "Updated DB migration failed"; exit 1; }
 verify_database_after_update || { log ERROR "Updated DB verification failed"; exit 1; }
 
 # ---- 11. completed ----

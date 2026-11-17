@@ -2,6 +2,7 @@ import { createHash, createHmac, randomBytes, timingSafeEqual } from "crypto";
 import { Hono } from "hono";
 import type { Context } from "hono";
 import type { Database } from "bun:sqlite";
+import { hydratePayloads, searchToolPayloads } from "../db/payloads";
 import { withCostCny, withTotalCostCny } from "../services/currency";
 
 /** 人类可复制 share 链接 HMAC 前缀（与 apiKey 组合，不入库） */
@@ -663,7 +664,7 @@ function resolveFocusTarget(
       )
       .get({ $session_id: sessionId, $id: parsed.id }) as FocusToolRow | null;
     if (!row) return null;
-    return { key: parsed.key, kind: "tool", created_at: row.created_at, row };
+    return { key: parsed.key, kind: "tool", created_at: row.created_at, row: hydratePayloads(db, "tool_calls", row) };
   }
 
   if (parsed.kind === "subagent") {
@@ -1071,30 +1072,7 @@ export function createPublicSessionSharesRoute(db: Database, apiKey: string) {
     if (kind === "all" || kind === "tool") {
       const remaining = Math.max(0, limit - items.length);
       if (remaining > 0) {
-        const rows = db
-          .query(
-            `SELECT id, tool_name, output_title, output_text, created_at
-             FROM tool_calls
-             WHERE session_id = $session_id
-               AND (
-                 tool_name LIKE $q ESCAPE '\\'
-                 OR IFNULL(output_title, '') LIKE $q ESCAPE '\\'
-                 OR IFNULL(output_text, '') LIKE $q ESCAPE '\\'
-               )
-             ORDER BY created_at ASC
-             LIMIT $limit`,
-          )
-          .all({
-            $session_id: access.share.session_id,
-            $q: like,
-            $limit: remaining,
-          }) as Array<{
-          id: string;
-          tool_name: string;
-          output_title: string | null;
-          output_text: string | null;
-          created_at: string;
-        }>;
+        const rows = searchToolPayloads(db, access.share.session_id, like, remaining);
         for (const row of rows) {
           const snippetSource =
             (row.output_title && row.output_title.includes(q) && row.output_title) ||
@@ -1481,7 +1459,7 @@ export function createPublicSessionSharesRoute(db: Database, apiKey: string) {
     }>;
 
     const hasMore = rows.length > limit;
-    const page = rows.slice(0, limit).map(projectToolCall);
+    const page = rows.slice(0, limit).map(row => projectToolCall(hydratePayloads(db, "tool_calls", row)));
     return respondList(c, format, page, hasMore ? offset + limit : null);
   });
 

@@ -4,6 +4,7 @@ import { DEFAULT_PRICING, type ModelPricing } from "@agent-tracker/shared";
 import { seedBuiltinAgentConfig } from "../services/agents";
 import { mergeSessionModels } from "../services/ingest";
 import { MemoryService } from "../services/memory";
+import { initializePayloadStorage } from "./payloads";
 
 export type { Database };
 
@@ -19,7 +20,7 @@ export function getDatabase(path: string): Database {
 }
 
 export function initializeDatabase(db: Database): void {
-  db.exec("PRAGMA foreign_keys = ON;");
+  db.exec("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;");
   const migrateMemoryCursor = !db.query("SELECT 1 FROM sqlite_master WHERE type='table' AND name='memory_message_arrivals'").get();
   // 先补齐旧表缺失的列，确保 SCHEMA_SQL 中的索引/约束能成功执行。
   ensureSessionsColumns(db);
@@ -35,6 +36,7 @@ export function initializeDatabase(db: Database): void {
   ensureTableColumns(db, "messages", [["agent_key", "TEXT"]]);
   ensureTableColumns(db, "memory_sources", [["assessment_json", "TEXT"]]);
   db.exec(SCHEMA_SQL);
+  initializePayloadStorage(db);
   new MemoryService(db).migrateWorkspaceMemories();
   if (migrateMemoryCursor) {
     // 首次迁移按现存 rowid 初始化到达序列；已删除尾部消息的旧水位收敛到现存最大序列。

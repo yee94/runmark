@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import { initializePayloadStorage } from "./db/payloads";
 import type { Context, Next } from "hono";
 import { cors } from "hono/cors";
 import { loadConfig, getServerVersion, type ServerConfig } from "./config";
@@ -44,6 +45,7 @@ export function createApp(config?: ServerConfig) {
   const cfg = config ?? loadConfig();
   initLogger(cfg);
   const db = getDatabase(cfg.dbPath);
+  if (cfg.payloadSharding !== undefined) initializePayloadStorage(db, cfg.payloadSharding);
 
   // costService 默认用 DEFAULT_PRICING（代码为源）；seedPricing 同步展示表；PUT /v1/pricing 会同步内存
   const app = new Hono();

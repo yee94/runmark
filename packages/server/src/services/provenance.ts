@@ -1,6 +1,7 @@
 import type { Database } from "bun:sqlite";
 import type { IngestEvent, IngestBatchResponse } from "@agent-tracker/shared";
 import { createHash } from "node:crypto";
+import { digest, externalizePayloads, hasPayloadCatalog } from "../db/payloads";
 
 export type SourcedEvent = IngestEvent & {
   otlp?: { traceId: string; spanId: string; nativeSession?: string; magpieOpenCode: boolean };
@@ -173,11 +174,20 @@ export function ingestWithProvenance(
         rememberMetadataBaseline(db, event.session_id);
         const entity = identity(event);
         const origin = source === "otlp" ? event.otlp : undefined;
-        db.query(`INSERT OR IGNORE INTO ingest_events (source, event_key, session_id, trace_id, span_id, linked_session, event_json)
-          VALUES (?, ?, ?, ?, ?, ?, ?)`).run(source, entity.key, event.session_id, origin?.traceId ?? null, origin?.spanId ?? null, origin?.nativeSession ?? null, JSON.stringify(event));
+        const json = JSON.stringify(event);
+        const catalog = hasPayloadCatalog(db);
+        const hash = digest(json);
+        const archived = db.query(`SELECT id FROM ingest_events WHERE source=? AND event_key=? AND
+          (${catalog ? "event_hash=? OR " : ""}event_json=?) LIMIT 1`).get(source, entity.key, ...(catalog ? [hash] : []), json) as { id: number } | null;
+        if (!archived) {
+          const inserted = db.query(`INSERT INTO ingest_events (source, event_key, session_id, trace_id, span_id, linked_session, event_json${catalog ? ", event_hash" : ""})
+            VALUES (?, ?, ?, ?, ?, ?, ?${catalog ? ", ?" : ""})`).run(source, entity.key, event.session_id, origin?.traceId ?? null, origin?.spanId ?? null, origin?.nativeSession ?? null, json, ...(catalog ? [hash] : []));
+          externalizePayloads(db, "ingest_events", Number(inserted.lastInsertRowid));
+        }
         if (source === "otlp") {
           linkExactCalls(db, event.session_id, origin?.traceId);
-          const linked = db.query("SELECT linked_session FROM ingest_events WHERE source = 'otlp' AND event_key = ? AND event_json = ?").get(entity.key, JSON.stringify(event)) as { linked_session: string | null };
+          const linked = db.query(`SELECT linked_session FROM ingest_events WHERE source = 'otlp' AND event_key = ? AND (${catalog ? "event_hash=? OR " : ""}event_json = ?)`)
+            .get(entity.key, ...(catalog ? [hash] : []), json) as { linked_session: string | null };
           if (active(db, linked?.linked_session ?? undefined)) {
             return changedSessionEvents(db, reconcile(db, event.session_id, origin?.traceId));
           }

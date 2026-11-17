@@ -17,7 +17,7 @@ test("plugin tools integrate with actual memory routes and SQLite, including new
     db.query("INSERT OR IGNORE INTO messages(id,session_id,role,content,created_at) VALUES ('msg_user','ses_new','user','请记住发布前核对变更','2026-10-29T00:00:00Z')").run();
     return "msg_user";
   });
-  const execute = async (action: string, args: Record<string, unknown>) => JSON.parse((await memory.tools.find(t => t.name.endsWith(action))!.execute(args, { sessionID: "ses_new" })).content);
+  const execute = async (action: string, args: Record<string, unknown>) => JSON.parse((await memory.tools[0]!.execute({ action, ...args }, { sessionID: "ses_new" })).content);
   try {
     expect(await memory.snapshot("ses_new")).toContain("<runmark-project-memory>");
     const created = await execute("write", { operation_id: "op1", name: "release-check", description: "发布前读取", type: "user", body: "核对变更 ORIGINAL_BODY" });
@@ -27,7 +27,7 @@ test("plugin tools integrate with actual memory routes and SQLite, including new
     expect(detail.markdown).toContain("ORIGINAL_BODY");
     expect(detail.sources[0]).toMatchObject({ session_id: "ses_new", message_id: "msg_user", available: 1 });
     expect(await memory.snapshot("ses_new")).not.toContain(created.id);
-    const refreshed = await memory.tools.find(t => t.name.endsWith("refresh"))!.execute({}, { sessionID: "ses_new" });
+    const refreshed = await memory.tools[0]!.execute({ action: "refresh" }, { sessionID: "ses_new" });
     expect(refreshed.content).toContain(created.id);
     expect(refreshed.content).not.toContain("ORIGINAL_BODY");
     const updated = await execute("update", { id: created.id, operation_id: "op2", expected_revision: 1, body: "修订后的事实" });
@@ -53,7 +53,7 @@ test("six namespaces support source-checked write/read/update/forget and effecti
   db.query("INSERT INTO messages(id,session_id,role,content,agent_key,created_at) VALUES ('user','source','user','请记住','opencode/build','2026-10-29')").run();
   const make = (identity: typeof project | {}) => createMemoryClient({ endpoint: server.url.href, apiKey: "test" }, identity, () => {}, async () => "user");
   const memory = make(project);
-  const execute = async (action: string, args: Record<string, unknown>, agent = "build") => JSON.parse((await memory.tools.find(t => t.name.endsWith(action))!.execute(args, { sessionID: "source", agent })).content);
+  const execute = async (action: string, args: Record<string, unknown>, agent = "build") => JSON.parse((await memory.tools[0]!.execute({ action, ...args }, { sessionID: "source", agent })).content);
   try {
     const records: Array<{ id: string; scope: string; agent_key: string }> = [];
     for (const scope of ["global", "project"]) for (const agent_key of ["", "opencode/build"]) {

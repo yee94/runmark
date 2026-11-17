@@ -12,4 +12,9 @@ export function dashboardUrl(endpoint) {
     url.hash = "/summary";
     return url.href;
 }
+export function sessionDashboardUrl(endpoint, sessionID) {
+    const url = new URL(dashboardUrl(endpoint));
+    url.hash = `/sessions/${encodeURIComponent(sessionID)}`;
+    return url.href;
+}
 //# sourceMappingURL=dashboard.js.map

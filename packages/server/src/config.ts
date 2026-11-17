@@ -9,6 +9,8 @@ export interface ServerConfig {
   port: number;
   apiKey: string;
   dbPath: string;
+  /** 未指定时沿用数据库中的开关；关闭新外置写入不会禁用已有引用读取。 */
+  payloadSharding?: boolean;
   publicDir: string;
   /** 为 true 时 Dashboard 读 API 免鉴权（仅建议本地开发） */
   publicDashboard: boolean;
@@ -57,6 +59,7 @@ export function loadConfig(): ServerConfig {
     port: Number(env("RUNMARK_PORT") ?? 3456),
     apiKey,
     dbPath: env("RUNMARK_DB_PATH") ?? "data/agent-tracker.db",
+    payloadSharding: env("RUNMARK_PAYLOAD_SHARDING") === undefined ? undefined : env("RUNMARK_PAYLOAD_SHARDING") === "true",
     publicDir: env("RUNMARK_PUBLIC_DIR") ?? "./public",
     publicDashboard: (env("RUNMARK_PUBLIC_DASHBOARD") ?? "false") === "true",
     extraApiKeys: (env("RUNMARK_EXTRA_API_KEYS") ?? "")

@@ -1,5 +1,23 @@
 # @runmarks/opencode-plugin
 
+## 0.2.20
+
+### Patch Changes
+
+- Consolidate six memory tools into `runmark_memory`, with action-specific validation and detailed rules in the bundled `runmark` Skill.
+
+## 0.2.19
+
+### Patch Changes
+
+- Add the Yuri session-record widget with Token/CNY usage, credential-free session links, retry states and cancellation on unmount.
+
+## 0.2.18
+
+### Patch Changes
+
+- Improve narrow embedded navigation and address selection; prefer TypeScript sources over generated JavaScript during GUI builds.
+
 ## 0.2.17
 
 ### Patch Changes

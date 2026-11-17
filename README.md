@@ -147,6 +147,8 @@ Dashboard: `http://localhost:3456/`. The script is idempotent — rerunning neve
 
 After updating the server code or package, restart the service to migrate the existing database automatically; no manual SQL is required. Startup adds missing columns and indexes with `CREATE INDEX IF NOT EXISTS`, including the four composite indexes used by session lists and details. Repeated startup is safe. The performance upgrade does not change historical records, costs, or usage. Building indexes on a large database may extend the first startup; wait for the health check to recover.
 
+Monthly large-payload storage requires the updated external updater for automatic migration; replacing only the server package does not update that script. Direct deployments can migrate explicitly. Back up the main database and its monthly files together, and inline all payloads before downgrading to an older server. See the [storage and rollback guide](docs/monthly-sqlite-storage.md).
+
 ### 2. Install clients
 
 Once the server is up, install the plugins on each machine: Cursor / OpenCode / Codex / Claude Code / CodeBuddy / WorkBuddy / Grok Build. The unified entry point is the `@runmarks/runmark` package.

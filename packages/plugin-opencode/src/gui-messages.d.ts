@@ -10,6 +10,15 @@ export declare const dashboardMessages: {
         forward: string;
         reload: string;
         address: string;
+        statusOpen: string;
+        statusViewRecord: string;
+        statusCopy: string;
+        statusCopied: string;
+        statusActionFailed: string;
+        statusLoading: string;
+        statusPending: string;
+        statusUnavailable: string;
+        statusRequestLabel: string;
     };
     zh: {
         open: string;
@@ -22,6 +31,15 @@ export declare const dashboardMessages: {
         forward: string;
         reload: string;
         address: string;
+        statusOpen: string;
+        statusViewRecord: string;
+        statusCopy: string;
+        statusCopied: string;
+        statusActionFailed: string;
+        statusLoading: string;
+        statusPending: string;
+        statusUnavailable: string;
+        statusRequestLabel: string;
     };
 };
 //# sourceMappingURL=gui-messages.d.ts.map

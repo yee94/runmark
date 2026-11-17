@@ -6,7 +6,7 @@
   <meta name="color-scheme" content="dark" />
   <title>Runmark</title>
   <link rel="stylesheet" href="https://unpkg.com/@eficy/shadcn-ui@1.1.3/dist/index.css" />
-  <link rel="stylesheet" href="./style.css?v=activity-hover-scale-20261110" />
+  <link rel="stylesheet" href="./style.css?v=mobile-trend-0.2.53" />
 </head>
 <body>
   <div class="ambient">
@@ -1961,7 +1961,7 @@
     let SummaryPanels = null
     async function loadSummaryPanels() {
       if (SummaryPanels) return
-      const mod = await loadModule('./modules/summary.eficy.js?v=client-agent-20261109-2')
+      const mod = await loadModule('./modules/summary.eficy.js?v=trend-dense-20261110')
       SummaryPanels = mod.createSummaryPanels({
         summary, summaryEfficiency, dailyChart, dailyModelLegend, hoveredDailyRow, dailyChartMetric, topAgents, topAgentMax, topModels, topModelMax, topCostSessions,
         statsRange, modelSort, activeTab,

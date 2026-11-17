@@ -6,7 +6,7 @@ function excerpt(text: string) {
   let bytes = 0;
   for (const line of text.replace(/^\uFEFF/, "").replace(/\r\n/g, "\n").split("\n")) {
     const size = Buffer.byteLength(line, "utf8") + 1;
-    if (lines.length >= 200 || bytes + size > 4096) return lines.join("\n") + "\n[记忆内容已截断；需要完整内容请用 runmark_memory_read]";
+    if (lines.length >= 200 || bytes + size > 4096) return lines.join("\n") + "\n[记忆内容已截断；需要完整内容请用 runmark_memory(action=read)]";
     lines.push(line); bytes += size;
   }
   return lines.join("\n");

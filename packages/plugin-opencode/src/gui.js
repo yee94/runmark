@@ -1,14 +1,17 @@
-import { Command, Plugin, TitlebarItem } from "@opencode/plugin/gui";
+import { Command, Plugin, Style, TitlebarItem } from "@opencode/plugin/gui";
 import { createComponent } from "solid-js";
 import { DashboardFrame } from "./gui-frame";
 import { dashboardMessages } from "./gui-messages";
 import { Page, Pages } from "./gui-pages";
+import { RunmarkWorkStatus, WorkStatus, workStatusStyle } from "./gui-work-status";
 export default Plugin.define({
     i18n: dashboardMessages,
     setup(ctx) {
         const { endpoint, apiKey } = ctx.options;
         if (typeof endpoint !== "string" || !endpoint.trim() || typeof apiKey !== "string" || !apiKey.trim())
             return;
+        ctx.add(Style, workStatusStyle);
+        ctx.add(WorkStatus, { id: "session", render: (props) => createComponent(RunmarkWorkStatus, props) });
         const pages = ctx.use(Pages);
         ctx.add(Page, { id: "dashboard", title: "Runmark", icon: "window-analytics", render: () => createComponent(DashboardFrame, {}) });
         const open = () => {

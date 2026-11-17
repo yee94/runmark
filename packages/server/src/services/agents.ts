@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { externalizePayloads, hydratePayloads } from "../db/payloads";
 import type { FileLogger } from "@agent-tracker/shared";
 import type { ServerConfig } from "../config";
 import { formatSchedule, parseSchedule } from "./agentSchedule";
@@ -1625,13 +1626,13 @@ export class AgentRuntime {
     `).get({ $id: id }) as (JobRow & { agent_name?: string; agent_label?: string }) | null;
     if (!row) return null;
     return {
-      ...row,
+      ...hydratePayloads(this.db, "agent_jobs", row),
       tools: this.db.query(`
         SELECT id, job_id, tool_name, state, detail, args, result, created_at
         FROM agent_tool_calls
         WHERE job_id = $job_id
         ORDER BY created_at ASC
-      `).all({ $job_id: row.id }),
+      `).all({ $job_id: row.id }).map(tool => hydratePayloads(this.db, "agent_tool_calls", tool)),
     };
   }
 
@@ -1644,7 +1645,7 @@ export class AgentRuntime {
     const row = this.db.query("SELECT * FROM agent_jobs WHERE id = $id").get({ $id: id }) as JobRow | null;
     if (!row) throw new Error("Agent run not found");
     if (row.status !== "failed") throw new Error("Only failed agent runs can be retried");
-    const retryInput = readJson<AgentRunInput>(row.input_json, {});
+    const retryInput = readJson<AgentRunInput>(hydratePayloads(this.db, "agent_jobs", { id: row.id, input_json: row.input_json }).input_json, {});
     const overrideSessionIds = normalizeStringList(overrides.session_ids);
     const restoredSessionIds = overrideSessionIds.length
       ? overrideSessionIds
@@ -1720,8 +1721,8 @@ export class AgentRuntime {
       $provider_id: provider.id,
       $model: model.model,
     });
-
     try {
+      externalizePayloads(this.db, "agent_jobs", jobId);
       const result = agentId === MEMORY_CONSOLIDATION_AGENT_ID
         ? await this.runMemoryConsolidation(jobId, agent, effectiveProvider, model, input)
         : agentId === MEMORY_RECALL_AGENT_ID
@@ -1759,6 +1760,7 @@ export class AgentRuntime {
         $prompt: result.prompt,
         $output_json: JSON.stringify(result.output),
       });
+      externalizePayloads(this.db, "agent_jobs", jobId);
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.logger?.error(`agent job failed: ${message}`);

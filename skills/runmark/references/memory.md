@@ -10,6 +10,10 @@
 
 默认不存。先确认真实用户原文支持跨任务复用，再确定事实对象与来源仓库是否匹配：当前任务结束后，该事实仍在哪类独立任务适用？不能回答就跳过。单次交付/发布/有损授权、实验参数、临时环境与进度留在原会话；代码、Skill及任务配置已有的信息保留在原处。子任务派发、assistant、宿主附加内容和历史摘要不是用户偏好依据。身份矛盾或范围无依据时跳过，不用全局兜底。详情 sources.assessment 提供原文和判断依据；提取任务 output_json.batches[].skipped 提供跳过原因，历史记录不补造。
 
+## OpenCode 内置工具
+
+OpenCode 插件只注册一个 `runmark_memory`，用 `action` 区分 read / list / refresh / write / update / forget，不再有独立的 `runmark_memory_*`。必填：read 需 `id`；write 需 `name`、`description`、`type`、`body`、`operation_id`；update 与 forget 需 `id`、`expected_revision`、`operation_id`。write 前先 `list` 查重，同一事实更新原 ID；`source_message_id` 默认取工具执行前最新的真实用户消息。准入、范围与写入规则以下文为准。
+
 ## 读取与应用
 
 1. 先执行 `runmark_health` 核对服务可用；新接口返回 404 时核对部署版本，不解释为没有记忆。

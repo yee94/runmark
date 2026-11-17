@@ -102,7 +102,7 @@ test("real HTTP index snapshot is session-scoped, refreshable, cold-reloaded and
   expect(event.system[1].text).toContain("v1");
   expect(event.system[1].text).not.toContain("DETAIL_ONLY");
   expect(f.requests).toHaveLength(1);
-  await memory.tools.find(t => t.name.endsWith("refresh"))!.execute({}, { sessionID: "ses_1" });
+  await memory.tools[0]!.execute({ action: "refresh" }, { sessionID: "ses_1" });
   await hook(event);
   expect(event.system[1].text).toContain("v2");
   expect(await memory.snapshot("ses_new")).toContain("v2");
@@ -113,7 +113,7 @@ test("real HTTP index snapshot is session-scoped, refreshable, cold-reloaded and
 test("tools scope/auth requests, preserve revision conflict, never return cached details on failure", async () => {
   const f = fixture();
   const memory = f.make();
-  const execute = (action: string, args: Record<string, unknown>) => memory.tools.find(t => t.name.endsWith(action))!.execute(args, { sessionID: "ses_1" });
+  const execute = (action: string, args: Record<string, unknown>) => memory.tools[0]!.execute({ action, ...args }, { sessionID: "ses_1" });
   expect((await execute("read", { id: "mem_1" })).content).toContain("DETAIL_ONLY_ON_READ");
   await execute("list", { query: "deploy", cursor: "next", limit: 10 });
   await execute("write", { name: "a", description: "when deploy", type: "user", body: "fact", operation_id: "op1" });
@@ -150,7 +150,7 @@ test("snapshots isolate named agents, including unknown identity, without extra 
   expect(f.requests).toHaveLength(3);
   expect(f.requests.map(r => r.url.searchParams.get("agent_key"))).toEqual(["opencode/build", "opencode/plan", null]);
   expect(f.requests.every(r => r.url.searchParams.get("view") === "effective")).toBe(true);
-  await expect(memory.tools.find(t => t.name.endsWith("write"))!.execute({ agent_key: "opencode/plan" }, { sessionID: "same", agent: "build" })).rejects.toThrow("current named Agent");
+  await expect(memory.tools[0]!.execute({ action: "write", name: "n", description: "d", type: "user", body: "b", operation_id: "o", agent_key: "opencode/plan" }, { sessionID: "same", agent: "build" })).rejects.toThrow("current named Agent");
 });
 
 test("location-scoped hooks and tools ignore sessions belonging to another plugin location", async () => {
@@ -174,16 +174,18 @@ test("location-scoped hooks and tools ignore sessions belonging to another plugi
   const foreign = {sessionID:"session", system:[{type:"text",text:MEMORY_MARKER + "other location"}]};
   await hook(foreign);
   expect(foreign.system[0].text).toBe(MEMORY_MARKER + "other location");
-  await expect(tools.find(t=>t.name.endsWith("write")).execute({scope:"global"},{sessionID:"session"})).rejects.toThrow("location");
+  await expect(tools[0].execute({action:"write",scope:"global"},{sessionID:"session"})).rejects.toThrow("location");
   expect(f.requests).toHaveLength(1);
 });
 
-test("scope protocol is injected once, not repeated in each tool description", async () => {
+test("memory is exposed as a single compact tool and the injected protocol defers rules to the skill", async () => {
   const memory = fixture().make();
   const text = await memory.snapshot("session", "build");
-  expect(text).toContain("内容 type 与存储 scope 独立");
-  expect(memory.tools.every(tool => !tool.description.includes("内容 type 与存储 scope 独立"))).toBe(true);
-  expect(text).toContain("实际采用某条记忆前");
+  expect(memory.tools).toHaveLength(1);
+  expect(memory.tools[0]!.name).toBe("runmark_memory");
+  expect(text).toContain("references/memory.md");
+  expect(text).toContain("runmark_memory(action=read,id)");
+  expect(text!.length).toBeLessThan(400);
 });
 
 test("consolidation adds one synthetic notice on a new user turn without changing the frozen system index", async () => {
@@ -212,7 +214,7 @@ test("consolidation adds one synthetic notice on a new user turn without changin
   await hook(event);
   expect(notices).toHaveLength(1);
   expect(notices[0]).toMatchObject({ sessionID: "session", resume: false, metadata: { synthetic: true, source: "runmark-memory" } });
-  expect(notices[0].text).toContain("runmark_memory_refresh");
+  expect(notices[0].text).toContain("action=refresh");
   expect(JSON.stringify(event.system)).toBe(initial);
   expect(indexes).toBe(1);
   await hook(event);

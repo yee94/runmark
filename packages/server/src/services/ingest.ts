@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { externalizePayloads } from "../db/payloads";
 import type {
   IngestEvent,
   IngestBatchResponse,
@@ -472,8 +473,9 @@ class IngestService {
               const turnExists = db.query("SELECT 1 AS ok FROM turns WHERE id = $id LIMIT 1").get({ $id: turnId });
               if (!turnExists) turnId = null;
             }
+            const toolId = crypto.randomUUID();
             insertToolStmt.run({
-              $id: crypto.randomUUID(),
+              $id: toolId,
               $session_id: e.session_id,
               $turn_id: turnId,
               $tool_name: e.tool_name,
@@ -490,6 +492,7 @@ class IngestService {
               $error: e.error ?? null,
               $created_at: e.created_at,
             });
+            externalizePayloads(db, "tool_calls", toolId);
             break;
           }
         }

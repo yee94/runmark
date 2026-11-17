@@ -1,5 +1,6 @@
 import { Hono } from "hono";
 import type { Database } from "bun:sqlite";
+import { hydratePayloads } from "../db/payloads";
 import { type ModelPricing } from "@agent-tracker/shared";
 import { getPricing } from "../db";
 import { displayCny, withCostCny, withPricingCny, withTotalCostCny } from "../services/currency";
@@ -311,7 +312,7 @@ export function createSessionsRoute(db: Database) {
     const rows = db.query(
       "SELECT * FROM tool_calls WHERE session_id = $id ORDER BY created_at ASC",
     ).all({ $id: id });
-    return c.json(rows);
+    return c.json(rows.map(row => hydratePayloads(db, "tool_calls", row)));
   });
 
   return app;

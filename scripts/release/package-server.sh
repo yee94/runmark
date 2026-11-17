@@ -20,6 +20,8 @@ mkdir -p "$STAGING"
 cp "$ROOT_DIR/package.json" "$STAGING/"
 cp "$ROOT_DIR/bun.lock" "$STAGING/"
 cp "$ROOT_DIR/tsconfig.json" "$STAGING/"
+mkdir -p "$STAGING/scripts"
+cp "$ROOT_DIR/scripts/sqlite-storage.ts" "$STAGING/scripts/"
 
 # packages/shared：递归复制（排除 tests/data/dist/node_modules）
 if [ -d "$ROOT_DIR/packages/shared" ]; then

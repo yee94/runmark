@@ -2,6 +2,27 @@
 
 ## Unreleased
 
+## 0.2.54 (Server) - 2026-11-17
+
+- Include the monthly payload storage, updater safeguards and mobile Dashboard improvements below; keep the public DeepSeek provider and model defaults unchanged.
+
+## 0.2.53 (Server) - 2026-11-10
+
+- Keep dense all-time daily trends readable by reducing bar gaps and labeling months; refresh static asset cache keys.
+- Fix embedded mobile navigation, duplicate horizontal padding, scrollbar spacing and dark backgrounds.
+
+## 0.2.52 (Server) - 2026-11-10
+
+- Store large tool/job payloads and non-session raw events in compressed, deduplicated monthly SQLite files without changing HTTP contents, search or usage accounting.
+- Add resumable migration, reference/checksum verification, consistent backups with reusable immutable month snapshots, restore-to-new-directory and lossless inline rollback.
+- Ship the storage CLI and update the external updater to back up storage, migrate after health checks, verify before completion and reject unsupported downgrades. Update the external updater separately; inline all references before downgrading to an older server.
+
+## OpenCode Plugin 0.2.20 - 2026-11-17
+
+- Replace six memory tools with one `runmark_memory` tool using read/list/refresh/write/update/forget actions; disclose detailed rules through the bundled `runmark` Skill.
+- Add the Yuri session-record widget with Token/CNY usage, safe session links, retry states and request cancellation.
+- Improve narrow embedded navigation and resolve TypeScript sources before generated JavaScript during GUI builds.
+
 ## 0.2.51 (Server) - 2026-11-10
 
 - Add a Token activity matrix covering the past 12 months, with daily/weekly views, date-range tooltips and K/M/B abbreviations; retain the existing daily trend.

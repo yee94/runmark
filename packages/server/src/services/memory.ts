@@ -1,4 +1,5 @@
 import type { Database } from "bun:sqlite";
+import { hydratePayloads } from "../db/payloads";
 import { createHash, randomUUID } from "node:crypto";
 
 export type MemoryScope = "global" | "project";
@@ -450,7 +451,7 @@ export class MemoryService {
       }
       if (source.job_id) {
         if (typeof source.job_id !== "string") return fail(400, "Invalid source job_id");
-        const job = this.db.query("SELECT target_session_id, input_json FROM agent_jobs WHERE id = ?").get(source.job_id) as { target_session_id: string | null; input_json: string | null } | null;
+        const job = hydratePayloads(this.db, "agent_jobs", this.db.query("SELECT id, target_session_id, input_json FROM agent_jobs WHERE id = ?").get(source.job_id)) as { target_session_id: string | null; input_json: string | null } | null;
         let sessions: unknown = [];
         try { sessions = JSON.parse(job?.input_json ?? "{}").session_ids; } catch {}
         if (!job || (job.target_session_id !== source.session_id && !(Array.isArray(sessions) && sessions.includes(source.session_id)))) return fail(422, "Source job unavailable or belongs to another session");

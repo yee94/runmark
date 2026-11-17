@@ -7,6 +7,101 @@ import * as Gui from "@opencode/plugin/gui";
 import { gui } from "@opencode/plugin/gui/vite";
 import { build } from "vite";
 import { createFrameNavigation } from '../src/gui-navigation';
+import { sessionDashboardUrl } from '../src/dashboard';
+
+test('session links preserve proxy paths and never contain credentials', () => {
+  expect(sessionDashboardUrl('https://user:secret@runmark.example/proxy?apiKey=secret#/summary', 'session/a'))
+    .toBe('https://runmark.example/proxy/#/sessions/session%2Fa');
+  expect(() => sessionDashboardUrl('javascript:alert(1)', 'session')).toThrow();
+});
+
+test('work status uses its displayed session, copies a safe link and cancels on unmount', async () => {
+  const directory = await mkdtemp(join(tmpdir(), 'runmark-status-'));
+  try {
+    await build({ configFile: false, root: resolve(import.meta.dir, '..'), logLevel: 'silent', resolve: { extensions: ['.ts', '.tsx', '.js', '.json'] }, plugins: [gui({ entry: 'src/gui.ts', outFile: join(directory, 'gui.cjs') })] });
+    const module = { exports: {} as { default?: Gui.Plugin.Definition } };
+    const cleanups: Array<() => void> = [];
+    const nodes: Array<any> = [];
+    const requests: Array<{ url: string; init: RequestInit }> = [];
+    const copies: string[] = [], opened: string[] = [], toasts: unknown[] = [];
+    const timers = new Map<number, () => void>();
+    let sequence = 0;
+    let response: () => Promise<Response> = async () => Response.json({ total_tokens: 12500, total_cost_cny: 1.23, request_count: 4 });
+    const entries = new Map<string, any>();
+    let context: any;
+    runInNewContext(await readFile(join(directory, 'gui.cjs'), 'utf8'), {
+      module, exports: module.exports, URL, AbortController, Intl, Promise,
+      setTimeout: (fn: () => void) => { const id = ++sequence; timers.set(id, fn); return id; },
+      clearTimeout: (id: number) => timers.delete(id),
+      fetch: async (url: URL, init: RequestInit) => { requests.push({ url: String(url), init }); return response(); },
+      document: {
+        createElement(tag: string) { const node = { tag, style: {}, children: [] as unknown[], attributes: {} as Record<string, string>, setAttribute(key: string, value: string) { this.attributes[key] = value; }, append(...items: unknown[]) { this.children.push(...items); } }; nodes.push(node); return node; },
+        createElementNS(_ns: string, tag: string) { return { tag, setAttribute() {}, append() {} }; },
+      },
+      require(name: string) {
+        if (name === '@opencode/plugin/gui') return { ...Gui, usePlugin: () => context };
+        if (name === 'solid-js') return { createComponent: (fn: (props: unknown) => unknown, props: unknown) => fn(props), createEffect: (fn: () => void) => fn(), onCleanup: (fn: () => void) => cleanups.push(fn) };
+        throw new Error(name);
+      },
+    });
+    const plugin = module.exports.default!;
+    context = {
+      options: { endpoint: 'https://runmark.example/proxy?secret=hidden', apiKey: 'fixture-only-key' },
+      use: () => () => ({ status: 'inactive' }),
+      add: (token: { id: string }, item: unknown) => entries.set(token.id, item),
+      t: (key: string) => plugin.i18n!.zh[key],
+      system: { copy: async (url: string) => { copies.push(url); }, openExternal: (url: string) => { opened.push(url); } },
+      toast: { show: (toast: unknown) => toasts.push(toast) },
+      sessions: { current: () => ({ id: 'wrong-primary-session' }) },
+    };
+    plugin.setup!(context);
+    const render = entries.get('yuri.work-status').render;
+    const abort = new AbortController();
+    render({ session: { id: 'displayed-session' }, active: true, signal: abort.signal });
+    await Bun.sleep(0);
+    expect(requests[0].url).toBe('https://runmark.example/proxy/v1/sessions/displayed-session');
+    expect(requests[0].init).toMatchObject({ credentials: 'omit', redirect: 'error', cache: 'no-store', headers: { 'X-API-Key': 'fixture-only-key' } });
+    const detail = nodes.find(node => node.className === 'runmark-status-detail');
+    const label = nodes.find(node => node.className === 'runmark-status-link');
+    expect(label.textContent).toBe('查看会话记录');
+    expect(detail.textContent).toBe('12.5K Token · ¥1.23');
+    expect(detail.title).toContain('请求 4');
+    expect(nodes.some(node => node.textContent === 'Runmark')).toBe(false);
+    const css = entries.get(Gui.Style.id);
+    expect(css).toContain('.runmark-status-detail { margin:0;');
+    expect(css).toContain('font-size:calc(13 * var(--dpt,1px))');
+    expect(css).toContain('margin-inline:var(--runmark-inset)');
+    expect(css).toContain('margin-inline-start:calc(-1 * var(--runmark-inset))');
+    expect(css).toContain('margin-inline-end:calc(-1 * var(--runmark-inset))');
+    expect(css).not.toContain('font-size:11px');
+    expect(css).not.toContain('grid-template-columns');
+    expect(css).not.toContain('text-overflow:ellipsis');
+    const buttons = nodes.filter(node => node.tag === 'button');
+    expect(buttons[0].children).toEqual([label]);
+    expect(buttons[1].attributes['aria-label']).toBe('分享会话（复制链接）');
+    buttons[0].onclick(); buttons[1].onclick(); await Bun.sleep(0);
+    expect(opened).toEqual(['https://runmark.example/proxy/#/sessions/displayed-session']);
+    expect(copies).toEqual(opened); expect(toasts).toHaveLength(1);
+    response = async () => new Response(null, { status: 404 });
+    const poll = [...timers.entries()][0]; timers.delete(poll[0]); poll[1](); await Bun.sleep(0);
+    expect(detail.textContent).toBe('等待会话同步');
+    response = async () => { throw new Error('offline'); };
+    const retry = [...timers.entries()][0]; timers.delete(retry[0]); retry[1](); await Bun.sleep(0);
+    expect(detail.textContent).toContain('用量暂不可用');
+    let finish!: (value: Response) => void;
+    response = () => new Promise(resolve => { finish = resolve; });
+    const pending = [...timers.entries()][0]; timers.delete(pending[0]); pending[1](); await Bun.sleep(0);
+    abort.abort();
+    expect(requests.at(-1)!.init.signal!.aborted).toBe(true);
+    finish(Response.json({ total_tokens: 999 })); await Bun.sleep(0);
+    expect(detail.textContent).toContain('用量暂不可用');
+    expect(timers.size).toBe(0);
+    cleanups.forEach(stop => stop());
+    const count = requests.length;
+    const draft = render({ active: true, signal: new AbortController().signal });
+    expect(draft.hidden).toBe(true); expect(requests).toHaveLength(count);
+  } finally { await rm(directory, { recursive: true, force: true }); }
+}, 30_000);
 
 test('frame navigation bounds history, branches after Back and confines URLs to the dashboard document', () => {
   const base = new URL('https://runmark.example/?embedOrigin=https%3A%2F%2Fyuri.example#/summary');
@@ -52,10 +147,19 @@ test("existing Dashboard embed bridge authenticates only its parent and never se
   expect(requests).toHaveLength(2);
 });
 
-test("real bundle hides unconfigured entries, embeds the existing dashboard, confines auth to the frame and hides mobile", async () => {
+test("Dashboard mobile styles remove root scrollbar space and duplicate padding without disabling scrolling", async () => {
+  const css = await readFile(resolve(import.meta.dir, "../../server/public/style.css"), "utf8");
+  expect(css).toContain("color-scheme: dark;");
+  expect(css).toContain("html { scrollbar-width: none; }");
+  expect(css).toContain("html::-webkit-scrollbar { width: 0; height: 0; }");
+  expect(css).toContain(".main-content { width: 100%; padding: 16px 0 32px; }");
+  expect(css).not.toContain("html { overflow: hidden;");
+});
+
+test("real bundle hides unconfigured entries, confines auth to the frame and renders responsive mobile pages", async () => {
   const directory = await mkdtemp(join(tmpdir(), "runmark-gui-"));
   try {
-    await build({ configFile: false, root: resolve(import.meta.dir, ".."), logLevel: "silent", plugins: [gui({ entry: "src/gui.ts", outFile: join(directory, "gui.cjs") })] });
+    await build({ configFile: false, root: resolve(import.meta.dir, ".."), logLevel: "silent", resolve: { extensions: [".mts", ".ts", ".tsx", ".mjs", ".js", ".jsx", ".json"] }, plugins: [gui({ entry: "src/gui.ts", outFile: join(directory, "gui.cjs") })] });
     const code = await readFile(join(directory, "gui.cjs"), "utf8");
     const module: { exports: { default?: Gui.Plugin.Definition } } = { exports: {} };
     const cleanups: Array<() => void> = [];
@@ -108,8 +212,8 @@ test("real bundle hides unconfigured entries, embeds the existing dashboard, con
       plugin.setup!(context as Parameters<Gui.Plugin.Setup>[0]);
       const button = entries.get(Gui.TitlebarItem.id) as Gui.TitlebarItem | undefined;
       expect((entries.get(Gui.Command.id) as Gui.Command).enabled).toBe(!mobile);
-      if (mobile) { expect(button).toBeUndefined(); continue; }
-      expect(button!.icon).toBe("window-analytics"); button!.run!(); expect(opened).toEqual(["dashboard"]);
+       if (mobile) expect(button).toBeUndefined();
+       else { expect(button!.icon).toBe("window-analytics"); button!.run!(); expect(opened).toEqual(["dashboard"]); }
       (entries.get("yuri.page") as { render(): unknown }).render();
       const frame = elements.find((node) => node.tag === "iframe")!;
       expect(String(frame.src)).toContain("embedOrigin=https%3A%2F%2Fyuri.example");
@@ -122,11 +226,22 @@ test("real bundle hides unconfigured entries, embeds the existing dashboard, con
       for (const listener of listeners) listener({ source: frameWindow, origin: "https://runmark.example", data: { type: "runmark.embed.ready" } });
       expect(messages).toEqual([[{ type: "runmark.embed.auth", apiKey: "fixture-only-key" }, "https://runmark.example"]]);
       const [back, forward, reload] = elements.filter((node) => node.tag === 'button');
-      const address = elements.find((node) => node.tag === 'input')!;
+       const address = elements.find((node) => node.tag === 'input')!;
+       expect(address.className).toBe('runmark-address');
+       const css = String(elements.find((node) => node.tag === 'style')!.textContent);
+       expect(css).toContain('@container (max-width:480px)');
+       expect(css).toContain('flex-wrap:nowrap;gap:0;padding:2px 4px');
+       expect(css).toContain('min-width:28px !important');
+       expect(css).not.toContain('display:grid;grid-template-columns');
+       let selected = false;
+       address.select = () => { selected = true; };
+       (address.onfocus as () => void)();
+       expect(selected).toBe(true);
       const collapsed: number[][] = [];
       address.setSelectionRange = (start: number, end: number) => collapsed.push([start, end]);
       (address.onblur as () => void)();
-      expect(collapsed).toEqual([[0, 0]]);
+       expect(collapsed).toEqual([[0, 0]]);
+       expect(address.scrollLeft).toBe(0);
       const emit = (data: unknown) => { for (const listener of listeners) listener({ source: frameWindow, origin: 'https://runmark.example', data }); };
       emit({ type: 'runmark.embed.location', href: frame.src, mode: 'push' });
       expect(back.disabled).toBe(true); expect(forward.disabled).toBe(true); expect(reload.disabled).toBe(false);
@@ -157,7 +272,8 @@ test("real bundle hides unconfigured entries, embeds the existing dashboard, con
       emit({ type: 'runmark.embed.location', href: next.href, mode: 'traverse', id: 5 });
       expect(address.value).toBe('https://runmark.example/#/models');
       expect(elements.filter((node) => node.tag === 'iframe')).toHaveLength(1);
-      cleanups.forEach((stop) => stop()); expect(listeners.size).toBe(0);
+       cleanups.forEach((stop) => stop()); expect(listeners.size).toBe(0);
+       elements.length = 0; messages.length = 0; cleanups.length = 0;
     }
   } finally { await rm(directory, { recursive: true, force: true }); }
 }, 30_000);

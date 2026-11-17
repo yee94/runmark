@@ -6,7 +6,21 @@ import { createFrameNavigation } from "./gui-navigation";
 export function DashboardFrame(): HTMLElement {
   const ctx = usePlugin();
   const container = document.createElement("div");
-  container.style.cssText = "display:flex;flex-direction:column;height:100%;min-height:0";
+  container.className = "runmark-frame";
+  container.style.cssText = "display:flex;flex-direction:column;height:100%;min-height:0;min-width:0;container-type:inline-size";
+  const style = document.createElement("style");
+  style.textContent = `
+    .runmark-frame > .runmark-navigation { display:flex;align-items:center;gap:2px;flex:none;min-height:30px;padding:2px 5px;box-sizing:border-box;color:var(--muted-foreground);border-bottom:1px solid var(--interactive-border);background:var(--background); }
+    .runmark-frame .runmark-address { flex:1;min-width:0;height:22px;margin-left:4px;padding:0 6px;box-sizing:border-box;border:0;border-radius:5px;background:transparent;color:inherit;font:11px system-ui;outline-offset:-2px;text-overflow:ellipsis; }
+    .runmark-frame .runmark-navigation > button { width:24px;height:24px; }
+    .runmark-frame button:focus-visible { outline:2px solid var(--interactive-focus-ring) !important;outline-offset:-2px; }
+    @container (max-width:480px) {
+      .runmark-frame > .runmark-navigation { flex-wrap:nowrap;gap:0;padding:2px 4px; }
+      .runmark-frame .runmark-navigation > button { width:28px;min-width:28px !important;height:32px;min-height:32px !important; }
+      .runmark-frame .runmark-address { height:28px;margin:0;padding:0 4px;font-size:12px; }
+      .runmark-frame .runmark-address:focus { font-size:16px;text-overflow:clip; }
+    }
+  `;
   const { endpoint, apiKey } = ctx.options;
   if (typeof endpoint !== "string" || typeof apiKey !== "string" || !apiKey.trim() || window.location.origin === "null") {
     throw new Error(ctx.t("config"));
@@ -18,13 +32,13 @@ export function DashboardFrame(): HTMLElement {
   const toolbar = document.createElement("div");
   toolbar.setAttribute("role", "toolbar");
   toolbar.setAttribute("aria-label", ctx.t("navigation"));
-  toolbar.style.cssText = "display:flex;align-items:center;gap:2px;flex:none;height:30px;padding:0 5px;color:var(--muted-foreground);border-bottom:1px solid var(--interactive-border);background:var(--background)";
+  toolbar.className = "runmark-navigation";
   const button = (label: string, path: string) => {
     const node = document.createElement("button");
     node.type = "button";
     node.title = ctx.t(label);
     node.setAttribute("aria-label", ctx.t(label));
-    node.style.cssText = "display:grid;place-items:center;width:24px;height:24px;padding:0;border:0;border-radius:6px;background:transparent;color:inherit;cursor:pointer";
+    node.style.cssText = "display:grid;place-items:center;flex-shrink:0;padding:0;border:0;border-radius:6px;background:transparent;color:inherit;cursor:pointer";
     const icon = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     icon.setAttribute("viewBox", "0 0 24 24"); icon.setAttribute("width", "14"); icon.setAttribute("height", "14"); icon.setAttribute("fill", "none"); icon.setAttribute("aria-hidden", "true");
     const shape = document.createElementNS("http://www.w3.org/2000/svg", "path");
@@ -39,13 +53,14 @@ export function DashboardFrame(): HTMLElement {
   const reload = button("reload", "M20 10a8 8 0 1 0-2 8M20 4v6h-6");
   const address = document.createElement("input");
   address.readOnly = true;
-  address.onblur = () => address.setSelectionRange(0, 0);
+  address.onfocus = () => address.select();
+  address.onblur = () => { address.setSelectionRange(0, 0); address.scrollLeft = 0; };
   address.setAttribute("aria-label", ctx.t("address"));
-  address.style.cssText = "flex:1;min-width:0;height:22px;margin-left:4px;padding:0 6px;border:0;border-radius:5px;background:transparent;color:inherit;font:11px system-ui;outline-offset:-2px;text-overflow:ellipsis";
+  address.className = "runmark-address";
   toolbar.append(back, forward, reload, address);
   const frame = document.createElement("iframe");
   frame.title = "Runmark";
-  frame.style.cssText = "width:100%;height:100%;flex:1;min-height:0;border:0";
+  frame.style.cssText = "display:block;width:100%;height:100%;flex:1;min-height:0;min-width:0;border:0;background:#08090d";
   frame.setAttribute("sandbox", "allow-scripts allow-same-origin allow-forms allow-downloads");
   frame.referrerPolicy = "no-referrer";
   let ready = false;
@@ -82,7 +97,7 @@ export function DashboardFrame(): HTMLElement {
   window.addEventListener("message", receive);
   frame.src = url.href;
   update();
-  container.append(toolbar, frame);
+  container.append(style, toolbar, frame);
   onCleanup(() => { window.removeEventListener("message", receive); frame.remove(); });
   return container;
 }
